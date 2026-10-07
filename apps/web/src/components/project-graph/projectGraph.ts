@@ -2,6 +2,7 @@ import { sha256 } from "@noble/hashes/sha2";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import type { VcsProjectGraph } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { threadRuntimeIsActive } from "@t3tools/client-runtime/state/models";
 import { PROJECT_ICON_COLORS } from "../../projectIconColors";
 
 export type GraphStation = { lane: number; x: number; color: string };
@@ -525,9 +526,7 @@ export function canCloseGraphWorktree(
         thread.worktreePath !== null &&
         normalizeProjectPathForComparison(thread.worktreePath) ===
           normalizeProjectPathForComparison(tree.path) &&
-        (thread.session?.status === "running" ||
-          thread.session?.status === "starting" ||
-          thread.backgroundLiveness != null),
+        (threadRuntimeIsActive(thread.runtime) || thread.pendingBackgroundTasks.length > 0),
     )
   );
 }

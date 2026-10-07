@@ -7,6 +7,7 @@ import {
   type VcsProjectGraph,
 } from "@t3tools/contracts";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { makeThreadFixture } from "../../test-fixtures";
 import {
   BRANCH_LABEL_WIDTH,
   graphAuthorIdentity,
@@ -39,7 +40,7 @@ const graph: VcsProjectGraph = {
   worktrees: [tree],
 };
 function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
-  return {
+  return makeThreadFixture({
     id: ThreadId.make("thread"),
     environmentId: EnvironmentId.make("local"),
     projectId: ProjectId.make("project"),
@@ -49,8 +50,8 @@ function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThr
     interactionMode: "default",
     branch: "feat/new",
     worktreePath: null,
-    latestTurn: null,
-    session: null,
+    latestRun: null,
+    runtime: null,
     createdAt: "2026-09-16T10:00:00.000Z",
     updatedAt: "2026-09-16T10:00:00.000Z",
     archivedAt: null,
@@ -62,7 +63,7 @@ function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThr
     hasActionableProposedPlan: false,
     pullRequests: [],
     ...overrides,
-  };
+  });
 }
 describe("project graph", () => {
   it("keeps shared-tip branches separate and orders unsettled threads first", () => {
@@ -708,10 +709,43 @@ describe("project graph", () => {
 
 it("protects worktrees with live background tasks and normalizes checkout paths", () => {
   const windowsTree = { ...tree, path: "C:/repo/worktree" };
-  const active = thread({ worktreePath: "c:\\repo\\worktree\\", backgroundLiveness: "working" });
+  const active = thread({
+    worktreePath: "c:\\repo\\worktree\\",
+    pendingBackgroundTasks: [
+      { kind: "command", taskId: "background-command", description: "Dev server" },
+    ],
+  });
   expect(canCloseGraphWorktree(windowsTree, [active])).toBe(false);
   const layout = layoutProjectGraph({ ...graph, worktrees: [windowsTree] }, [active]);
   expect(layout.nodes.find((node) => node.id === "branch:feat/new")?.threads).toHaveLength(1);
+});
+
+it.each([
+  ["preparing", false],
+  ["queued", false],
+  ["starting", false],
+  ["running", false],
+  ["waiting", false],
+  ["idle", true],
+  ["completed", true],
+  ["interrupted", true],
+  ["failed", true],
+  ["cancelled", true],
+  ["rolled_back", true],
+] as const)("checks worktree closure against a %s runtime", (status, canClose) => {
+  const active = thread({
+    worktreePath: tree.path,
+    runtime: {
+      status,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: null,
+      lastError: null,
+      updatedAt: "2026-09-16T10:00:00.000Z",
+    },
+  });
+  expect(canCloseGraphWorktree(tree, [active])).toBe(canClose);
+  expect(canCloseGraphWorktree(tree, [{ ...active, worktreePath: "/repo/other" }])).toBe(true);
 });
 
 it("offers GitHub and Gravatar portraits with local initials as the final fallback", () => {
