@@ -60,6 +60,10 @@ export function ScreenHeader(props: ScreenHeaderProps) {
         ]}
         options={{
           headerShown: true,
+          headerBackVisible:
+            !layout.usesSplitView ||
+            !props.backInSplitView ||
+            !(props.backInSplitView.onPress || props.onBack),
           title: props.title,
           unstable_headerSubtitle: titleIcon ? undefined : subtitle || undefined,
           ...(titleIcon ? { headerTitle: renderTitle } : undefined),

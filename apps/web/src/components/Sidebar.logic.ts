@@ -1,14 +1,16 @@
+import { resolveThreadWorkingStartedAt } from "@t3tools/client-runtime/state/models";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { threadPullRequestSearchTerms } from "@t3tools/shared/threadPullRequests";
 import * as React from "react";
-import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import {
   isAtomCommandInterrupted,
   type AtomCommandResult,
 } from "@t3tools/client-runtime/state/runtime";
+import { defaultAnimateLayoutChanges, type AnimateLayoutChanges } from "@dnd-kit/sortable";
 import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import type { ContextMenuItem, EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { SidebarProjectSortOrder, SidebarThreadSortOrder } from "@t3tools/contracts/settings";
-import type { AsyncResult } from "effect/unstable/reactivity";
+import type { AsyncResult } from "effect/reactivity";
 import { planPinnedReorder } from "@t3tools/client-runtime/state/thread-sort";
 import {
   effectiveSnoozed,
@@ -22,7 +24,8 @@ import {
 } from "../lib/threadSort";
 import type { SidebarThreadSummary, Thread } from "../types";
 import { cn } from "../lib/utils";
-import { isLatestTurnSettled } from "../session-logic";
+import { isLatestRunSettled } from "../session-logic";
+import { resolveServerBackedAppStageLabel } from "../branding.logic";
 
 export function shouldNavigateAfterThreadPark(input: {
   readonly threadKey: string;
@@ -129,6 +132,19 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 // follows live status, so it is neither a drag source nor a destination.
 
 export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
+
+/** Resolve the shelf a visible thread belongs to. Snooze is temporary and
+ * wins until its wake boundary; settlement then wins over a stale pin. */
+export function resolveSidebarThreadSection(input: {
+  readonly snoozed: boolean;
+  readonly settled: boolean;
+  readonly pinned: boolean;
+}): SidebarSection {
+  if (input.snoozed) return "snoozed";
+  if (input.settled) return "settled";
+  if (input.pinned) return "pinned";
+  return "active";
+}
 
 /** Sortable ids: thread rows use their scoped key; structural items use a
     colon-free prefix: scoped thread keys always contain a colon. */
@@ -258,6 +274,34 @@ export function resolveSidebarDropVerb(
   return "wake";
 }
 
+/** Eligible rows between the pressed action and the pointer, in sidebar order. */
+export function resolveSidebarSweepKeys(
+  orderedKeys: readonly string[],
+  originKey: string,
+  targetKey: string,
+  canApply: (key: string) => boolean,
+): string[] {
+  const origin = orderedKeys.indexOf(originKey);
+  const target = orderedKeys.indexOf(targetKey);
+  if (origin === -1 || target === -1) return [];
+  return orderedKeys.slice(Math.min(origin, target), Math.max(origin, target) + 1).filter(canApply);
+}
+
+/** The thread row at a pointer height, clamped to the rows visible in the
+    sidebar's scroll viewport. A gap between rows resolves to the row above
+    it. Rows carry their key in data-thread-item, which departing motion
+    clones drop. */
+export function sidebarThreadKeyAtY(list: HTMLElement, y: number): string | null {
+  const viewport = list.closest('[data-slot="scroll-area-viewport"]')?.getBoundingClientRect();
+  const visibleY = viewport ? Math.min(Math.max(y, viewport.top), viewport.bottom - 1) : y;
+  let key: string | null = null;
+  for (const row of list.querySelectorAll<HTMLElement>("li[data-thread-item]")) {
+    if (key !== null && row.getBoundingClientRect().top > visibleY) break;
+    key = row.dataset.threadItem ?? null;
+  }
+  return key;
+}
+
 export function planSidebarThreadDrop(input: {
   readonly activeKey: string;
   readonly activeSection: SidebarSection;
@@ -292,6 +336,24 @@ export function planSidebarThreadDrop(input: {
   if (input.supportsSettlement === false && (target.section === "settled" || activeSettled)) {
     return { kind: "none" };
   }
+  // Rows whose server cannot store an order (an older server, or a machine
+  // that is offline) are never written. Keyless ones sort outside the keyed
+  // run, so they leave the plan; keyed ones stay as bounds. Before, one keyless row
+  // refused every drop that needed fresh keys for its neighbors.
+  const arrange = (
+    order: readonly string[],
+    keysById: ReadonlyMap<string, string | null | undefined>,
+    writable: ReadonlySet<string> | undefined,
+  ) => {
+    if (!writable) return planPinnedReorder({ orderedIds: order, keysById, movedId: activeKey });
+    if (!writable.has(activeKey)) return null;
+    const assignments = planPinnedReorder({
+      orderedIds: order.filter((key) => writable.has(key) || keysById.get(key) != null),
+      keysById,
+      movedId: activeKey,
+    });
+    return assignments.every(({ id }) => writable.has(id)) ? assignments : null;
+  };
   switch (target.section) {
     case "active": {
       // Like the settled tail: threads can enter a time-ordered inbox, but
@@ -316,14 +378,8 @@ export function planSidebarThreadDrop(input: {
       ) {
         return { kind: "none" };
       }
-      const assignments = planPinnedReorder({
-        orderedIds: order,
-        keysById: activeKeysById,
-        movedId: activeKey,
-      });
-      if (activeReorderableKeys && assignments.some(({ id }) => !activeReorderableKeys.has(id))) {
-        return { kind: "none" };
-      }
+      const assignments = arrange(order, activeKeysById, activeReorderableKeys);
+      if (assignments === null) return { kind: "none" };
       return {
         kind: "move-active",
         order,
@@ -345,14 +401,8 @@ export function planSidebarThreadDrop(input: {
       ) {
         return { kind: "none" };
       }
-      const assignments = planPinnedReorder({
-        orderedIds: order,
-        keysById: pinnedKeysById,
-        movedId: activeKey,
-      });
-      if (reorderableKeys && assignments.some(({ id }) => !reorderableKeys.has(id))) {
-        return { kind: "none" };
-      }
+      const assignments = arrange(order, pinnedKeysById, reorderableKeys);
+      if (assignments === null) return { kind: "none" };
       if (activeSection === "pinned") {
         return assignments.length === 0
           ? { kind: "none" }
@@ -485,9 +535,7 @@ export async function archiveSelectedThreadEntries<
     const result = await input.archive(entry, () => {
       didArchive = true;
     });
-    if (didArchive || result._tag === "Success") {
-      archivedThreadKeys.push(entry.threadKey);
-    }
+    if (didArchive || result._tag === "Success") archivedThreadKeys.push(entry.threadKey);
     if (result._tag === "Success") continue;
     const failure = result as Extract<TResult, { readonly _tag: "Failure" }>;
     if (didArchive) {
@@ -513,6 +561,36 @@ export function buildMultiSelectThreadContextMenuItems(input: {
     },
     { id: "delete", label: `Delete (${input.count})`, destructive: true },
   ];
+}
+
+export function isSidebarSubagentThread(thread: Pick<SidebarThreadSummary, "lineage">): boolean {
+  return thread.lineage.relationshipToParent === "subagent";
+}
+
+export function filterSidebarV2VisibleThreads<
+  T extends Pick<SidebarThreadSummary, "archivedAt" | "lineage"> & {
+    environmentId: string;
+    projectId: string;
+  },
+>(threads: readonly T[], scopedProjectKeys: ReadonlySet<string> | null): T[] {
+  return threads.filter(
+    (thread) =>
+      thread.archivedAt === null &&
+      !isSidebarSubagentThread(thread) &&
+      (scopedProjectKeys === null ||
+        scopedProjectKeys.has(`${thread.environmentId}:${thread.projectId}`)),
+  );
+}
+
+export function getSidebarForkParentThreadId(
+  thread: Pick<SidebarThreadSummary, "forkedFrom" | "lineage">,
+) {
+  if (thread.lineage.relationshipToParent !== "fork") {
+    return null;
+  }
+  return thread.forkedFrom?.type === "run"
+    ? thread.forkedFrom.threadId
+    : thread.lineage.parentThreadId;
 }
 
 export function buildBulkTitleRegenerationContextMenuItem(input: {
@@ -548,27 +626,24 @@ export function buildBulkUnpinContextMenuItem(input: {
 export interface ThreadStatusPill {
   label:
     | "Working"
-    | "Monitoring"
     | "Connecting"
     | "Completed"
     | "Pending Approval"
     | "Awaiting Input"
+    | "Waiting"
     | "Plan Ready";
   colorClass: string;
   dotClass: string;
   pulse: boolean;
 }
 
-// Rollup order mirrors the per-thread resolver exactly: attention states,
-// then active work, then the actionable plan prompt, then passive
-// monitoring. A Monitoring sibling must never hide a Plan Ready thread.
 const THREAD_STATUS_PRIORITY: Record<ThreadStatusPill["label"], number> = {
-  "Pending Approval": 6,
-  "Awaiting Input": 5,
-  Working: 4,
-  Connecting: 4,
-  "Plan Ready": 3,
-  Monitoring: 2,
+  "Pending Approval": 5,
+  "Awaiting Input": 4,
+  Working: 3,
+  Connecting: 3,
+  Waiting: 2.5,
+  "Plan Ready": 2,
   Completed: 1,
 };
 
@@ -578,16 +653,23 @@ type ThreadStatusInput = Pick<
   | "hasPendingApprovals"
   | "hasPendingUserInput"
   | "interactionMode"
-  | "latestTurn"
-  | "session"
-  | "backgroundLiveness"
+  | "latestRun"
+  | "runtime"
 > & {
-  lastVisitedAt?: string | undefined;
+  lastVisitedAt?: string | null | undefined;
+  pendingBackgroundTasks?: SidebarThreadSummary["pendingBackgroundTasks"] | undefined;
 };
 
 export interface ThreadJumpHintVisibilityController {
   sync: (shouldShow: boolean) => void;
   dispose: () => void;
+}
+
+export function resolveSidebarStageBadgeLabel(input: {
+  primaryServerVersion: string | null | undefined;
+  fallbackStageLabel: string;
+}): string {
+  return resolveServerBackedAppStageLabel(input);
 }
 
 export function createThreadJumpHintVisibilityController(input: {
@@ -670,9 +752,27 @@ export function useThreadJumpHintVisibility(): {
   };
 }
 
+/**
+ * Effective visited watermark for a thread. Servers with visited tracking
+ * project `lastVisitedAt` on the shell and are authoritative — that value is
+ * shared across every device connected to the environment. Pre-tracking
+ * servers omit the field, and the browser's locally persisted watermark keeps
+ * working as before.
+ */
+export function resolveThreadLastVisitedAt(
+  serverLastVisitedAt: string | null | undefined,
+  localLastVisitedAt: string | undefined,
+): string | undefined {
+  // When the server tracks visits it is authoritative — including explicit
+  // rewinds from mark-unread, which a newer browser-local watermark must not
+  // mask. The local value only carries servers without visited tracking.
+  if (serverLastVisitedAt === undefined) return localLastVisitedAt;
+  return serverLastVisitedAt ?? undefined;
+}
+
 export function hasUnseenCompletion(thread: ThreadStatusInput): boolean {
-  if (!thread.latestTurn?.completedAt) return false;
-  const completedAt = Date.parse(thread.latestTurn.completedAt);
+  if (!thread.latestRun?.completedAt) return false;
+  const completedAt = Date.parse(thread.latestRun.completedAt);
   if (Number.isNaN(completedAt)) return false;
   if (!thread.lastVisitedAt) return false;
 
@@ -806,19 +906,58 @@ export function isContextMenuPointerDown(input: {
   return input.isMac && input.button === 0 && input.ctrlKey;
 }
 
-// ── Sidebar thread status model ─────────────────────────────────────
-// Five visual states, three colors: color is reserved for "act now"
+export function resolveThreadRowClassName(input: {
+  isActive: boolean;
+  isSelected: boolean;
+}): string {
+  const baseClassName =
+    "h-8 w-full translate-x-0 cursor-pointer justify-start rounded-md px-2 text-left text-sm select-none focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-ring";
+
+  if (input.isSelected && input.isActive) {
+    return cn(
+      baseClassName,
+      "bg-sidebar-row-active text-sidebar-foreground font-medium hover:bg-sidebar-row-active hover:text-sidebar-foreground",
+    );
+  }
+
+  if (input.isSelected) {
+    return cn(
+      baseClassName,
+      "bg-sidebar-row-selected text-sidebar-foreground hover:bg-sidebar-row-active hover:text-sidebar-foreground",
+    );
+  }
+
+  if (input.isActive) {
+    return cn(
+      baseClassName,
+      "bg-sidebar-row-active text-sidebar-foreground font-medium hover:bg-sidebar-row-active hover:text-sidebar-foreground",
+    );
+  }
+
+  return cn(
+    baseClassName,
+    "text-sidebar-muted-foreground/80 hover:bg-sidebar-row-hover hover:text-sidebar-foreground",
+  );
+}
+
+// ── Sidebar v2 status model ─────────────────────────────────────────
+// Six visual states, three colors: color is reserved for "act now"
 // (approval), "in motion" (working), and "broken" (failed). Ready is the
 // unlabeled resting state — the agent stopped and is waiting on the user,
-// whether it finished, asked a question, or proposed a plan.
+// whether it finished, asked a question, or proposed a plan. Waiting
+// (runtime status "idle") is the agent stopped with background work that will
+// wake it (subagents, monitors): not the user's turn yet, so it renders grey
+// like working, not as a false Done. Commands it left running, such as a dev
+// server, do not hold the thread; it reads as ready.
 // Unread completion is tracked separately: it describes whether a ready
 // thread needs attention, not what the thread is currently doing.
 export type SidebarThreadStatus =
   | "approval"
   | "input"
   | "working"
-  | "monitoring"
+  | "waiting"
   | "failed"
+  | "limited"
   | "ready";
 
 export function shouldRecedeSidebarThread(input: {
@@ -829,7 +968,7 @@ export function shouldRecedeSidebarThread(input: {
   isSelected: boolean;
 }): boolean {
   if (input.isActive || input.isSelected || input.status === "input") return false;
-  if (input.status === "working" || input.status === "monitoring") return true;
+  if (input.status === "working" || input.status === "waiting") return true;
   if (input.status === "ready" || input.status === "approval") {
     return !input.isUnread && !input.isWoke;
   }
@@ -838,7 +977,7 @@ export function shouldRecedeSidebarThread(input: {
 
 type SidebarThreadStatusInput = Pick<
   SidebarThreadSummary,
-  "hasPendingApprovals" | "hasPendingUserInput" | "session" | "backgroundLiveness"
+  "hasPendingApprovals" | "hasPendingUserInput" | "runtime"
 >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
@@ -848,33 +987,59 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
   if (thread.hasPendingUserInput) {
     return "input";
   }
-  if (thread.session?.status === "running" || thread.session?.status === "starting") {
+  if (
+    thread.runtime !== null &&
+    ["preparing", "queued", "starting", "running", "waiting"].includes(thread.runtime.status)
+  ) {
     return "working";
   }
-  // A failed session outranks lingering background liveness: the user must
-  // see the failure, not a stale Working (review finding).
-  if (thread.session?.status === "error") {
-    return "failed";
+  if (thread.runtime?.status === "idle") {
+    return "waiting";
   }
-  // Background work outlives the turn: fleets read as working; monitoring
-  // only when watch loops are the sole live work.
-  if (thread.backgroundLiveness === "working") {
-    return "working";
-  }
-  if (thread.backgroundLiveness === "monitoring") {
-    return "monitoring";
+  if (thread.runtime?.status === "failed") {
+    return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
   }
   return "ready";
 }
 
-/** Working beta: threads busy with work that does not need the user fold into
-    the Working shelf. Approvals, questions, plan prompts, and failures stay
-    in the inbox. */
-export function isSidebarThreadWorking(thread: ThreadStatusInput): boolean {
-  const status = resolveSidebarThreadStatus(thread);
-  if (status !== "working" && status !== "monitoring") return false;
-  // A plan prompt outranks lingering background work, as in the status pill.
-  return resolveThreadStatusPill({ thread })?.label !== "Plan Ready";
+export type SidebarV2TopStatusKind =
+  | "approval"
+  | "done"
+  | "failed"
+  | "limited"
+  | "input"
+  | "waiting"
+  | "woke"
+  | "working";
+
+export function resolveSidebarV2TopStatus(input: {
+  readonly status: SidebarThreadStatus;
+  readonly isUnread: boolean;
+  readonly isWoke: boolean;
+}): SidebarV2TopStatusKind | null {
+  if (input.status === "working") {
+    return "working";
+  }
+  if (input.status === "waiting") {
+    return "waiting";
+  }
+  if (input.status === "approval") {
+    return "approval";
+  }
+  if (input.status === "input") {
+    return "input";
+  }
+  if (input.status === "failed" || input.status === "limited") {
+    return input.status;
+  }
+  if (input.isWoke) {
+    return "woke";
+  }
+  return input.isUnread ? "done" : null;
+}
+
+export function shouldShowSidebarV2Duration(status: SidebarThreadStatus): boolean {
+  return status === "working";
 }
 
 /** First VALID timestamp wins: `a ?? b` falls through on null, but a present-
@@ -891,19 +1056,13 @@ export function firstValidTimestampMs(
   return 0;
 }
 
-/** String twin of firstValidTimestampMs for callers that need the ISO string
-    (display labels, tick anchors) rather than epoch ms. */
-function firstValidTimestamp(
-  ...candidates: ReadonlyArray<string | null | undefined>
-): string | null {
-  for (const candidate of candidates) {
-    if (candidate == null) continue;
-    if (!Number.isNaN(Date.parse(candidate))) return candidate;
-  }
-  return null;
-}
-
 export { sortActiveThreadsByOrderKey as sortThreadsForSidebar } from "@t3tools/client-runtime/state/thread-sort";
+// The Working section beta folds and orders the inbox the same way on mobile.
+export {
+  isThreadWorking as isSidebarThreadWorking,
+  sortInboxThreadsByReturn,
+  sortWorkingThreadsBySend,
+} from "@t3tools/client-runtime/state/thread-inbox";
 
 // Pinned-reorder key math and the keyed sort live in client-runtime
 // (state/thread-sort) so web and mobile compute identical pinned orders.
@@ -985,48 +1144,13 @@ export function reduceSidebarProjectScopeMenuState(
   }
 }
 
-/** Working beta: the inbox lists threads newest first by when each last came
-    back to the user, so a thread that leaves the Working shelf lands on top.
-    `observedReturnAt` adds returns the server does not stamp, such as an
-    approval request mid-turn or background work ending. */
-export function sortInboxThreadsByReturn<
-  T extends Pick<
-    SidebarThreadSummary,
-    "id" | "environmentId" | "createdAt" | "unsettledAt" | "latestTurn"
-  >,
->(threads: readonly T[], observedReturnAt?: (thread: T) => number | undefined): T[] {
-  const timestamps = new Map(
-    threads.map((thread) => [
-      thread,
-      Math.max(
-        toSortableTimestamp(thread.createdAt) ?? 0,
-        toSortableTimestamp(thread.unsettledAt ?? undefined) ?? 0,
-        toSortableTimestamp(thread.latestTurn?.requestedAt) ?? 0,
-        toSortableTimestamp(thread.latestTurn?.completedAt ?? undefined) ?? 0,
-        observedReturnAt?.(thread) ?? 0,
-      ),
-    ]),
-  );
-  return [...threads].sort(
-    (left, right) =>
-      timestamps.get(right)! - timestamps.get(left)! ||
-      left.id.localeCompare(right.id) ||
-      left.environmentId.localeCompare(right.environmentId),
-  );
-}
-
-/** The timestamp a working thread's elapsed label counts from: the running
-    turn's start (request time until adoption), falling back to the session's
-    last transition when the turn projection lags behind. Malformed
-    timestamps fall through to the next candidate, not just missing ones. */
+/** The timestamp a working thread's elapsed label counts from: when its
+    current work started (request time until adoption). Background wakes do
+    not reset it. Malformed timestamps fall through to the next candidate. */
 export function resolveWorkingStartedAt(
-  thread: Pick<SidebarThreadSummary, "latestTurn" | "session">,
+  thread: Pick<SidebarThreadSummary, "latestRun" | "runtime">,
 ): string | null {
-  const turn = thread.latestTurn;
-  if (turn && turn.completedAt === null) {
-    return firstValidTimestamp(turn.startedAt, turn.requestedAt, thread.session?.updatedAt);
-  }
-  return firstValidTimestamp(thread.session?.updatedAt);
+  return resolveThreadWorkingStartedAt(thread);
 }
 
 export function formatWorkingDurationLabel(elapsedMs: number): string {
@@ -1060,7 +1184,7 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "running") {
+  if (thread.runtime?.status === "running" || thread.runtime?.status === "waiting") {
     return {
       label: "Working",
       colorClass: "text-sky-600 dark:text-sky-300/80",
@@ -1069,7 +1193,11 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  if (thread.session?.status === "starting") {
+  if (
+    thread.runtime?.status === "preparing" ||
+    thread.runtime?.status === "starting" ||
+    thread.runtime?.status === "queued"
+  ) {
     return {
       label: "Connecting",
       colorClass: "text-sky-600 dark:text-sky-300/80",
@@ -1078,40 +1206,25 @@ export function resolveThreadStatusPill(input: {
     };
   }
 
-  // An actionable plan prompt outranks lingering background work: it needs
-  // the user's decision, while liveness merely reports (review finding).
+  if (backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])) {
+    return {
+      label: "Waiting",
+      colorClass: "text-sidebar-muted-foreground",
+      dotClass: "bg-sidebar-muted-foreground",
+      pulse: false,
+    };
+  }
+
   const hasPlanReadyPrompt =
     !thread.hasPendingUserInput &&
     thread.interactionMode === "plan" &&
-    isLatestTurnSettled(thread.latestTurn, thread.session) &&
+    isLatestRunSettled(thread.latestRun, thread.runtime) &&
     thread.hasActionableProposedPlan;
   if (hasPlanReadyPrompt) {
     return {
       label: "Plan Ready",
       colorClass: "text-violet-600 dark:text-violet-300/90",
       dotClass: "bg-violet-500 dark:bg-violet-300/90",
-      pulse: false,
-    };
-  }
-
-  // The turn can settle while native background work runs on. Subagent and
-  // workflow fleets read as plain Working; Monitoring is reserved for watch
-  // loops (a parent agent babysitting a PR, tailing checks) with no other
-  // live work. Same recede treatment as Working per inbox-zero.
-  if (thread.backgroundLiveness === "working") {
-    return {
-      label: "Working",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
-      pulse: true,
-    };
-  }
-
-  if (thread.backgroundLiveness === "monitoring") {
-    return {
-      label: "Monitoring",
-      colorClass: "text-sky-600 dark:text-sky-300/80",
-      dotClass: "bg-sky-500 dark:bg-sky-300/80",
       pulse: false,
     };
   }
@@ -1273,6 +1386,21 @@ export function sortLogicalProjectsForSidebar<
     (project) => threadsByProjectKey.get(project.projectKey) ?? [],
     (left, right) =>
       left.title.localeCompare(right.title) || left.projectKey.localeCompare(right.projectKey),
+  );
+}
+
+export function sortSidebarV2ProjectGroups<
+  TProject extends LogicalSidebarProject,
+  TThread extends ScopedSidebarThread & Pick<SidebarThreadSummary, "lineage">,
+>(
+  projects: readonly TProject[],
+  threads: readonly TThread[],
+  sortOrder: SidebarProjectSortOrder,
+): TProject[] {
+  return sortLogicalProjectsForSidebar(
+    projects,
+    filterSidebarV2VisibleThreads(threads, null),
+    sortOrder,
   );
 }
 
