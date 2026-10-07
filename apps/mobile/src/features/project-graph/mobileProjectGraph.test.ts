@@ -12,6 +12,7 @@ import {
   layoutProjectGraph,
 } from "@t3tools/client-runtime/project-graph";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { makeThreadShellFixture } from "../../test-fixtures";
 import { branchStatus, graphNodeTitle, graphRowMatches, rowSearchText } from "./mobileProjectGraph";
 
 const graph: VcsProjectGraph = {
@@ -42,7 +43,7 @@ const graph: VcsProjectGraph = {
   ],
 };
 function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
-  return {
+  return makeThreadShellFixture({
     id: ThreadId.make("thread"),
     environmentId: EnvironmentId.make("remote"),
     projectId: ProjectId.make("project"),
@@ -52,8 +53,8 @@ function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThr
     interactionMode: "default",
     branch: "feature",
     worktreePath: "/repo/feature",
-    latestTurn: null,
-    session: null,
+    latestRun: null,
+    runtime: null,
     createdAt: "2026-09-21T10:00:00.000Z",
     updatedAt: "2026-09-21T10:00:00.000Z",
     archivedAt: null,
@@ -65,7 +66,7 @@ function thread(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThr
     hasActionableProposedPlan: false,
     pullRequests: [],
     ...overrides,
-  };
+  });
 }
 const options = {
   colors: ["#06b6d4", "#3b82f6"],
