@@ -254,7 +254,7 @@ export function AppSidebarLayout({ children }: { children: ReactNode }) {
   const sidebarProviderStyle = {
     "--sidebar-width": `${clampThreadSidebarWidth(sidebarWidth, sidebarMinimumWidth, sidebarMaximumWidth)}px`,
     "--panel-animation-duration": `${panelAnimationDurationMs}ms`,
-    "--app-rail-width": "3rem",
+    "--app-rail-width": "3.5rem",
     ...windowControlsInsetStyle,
   } as CSSProperties;
 

@@ -33,10 +33,9 @@ function AppRailItem(props: {
             disabled={props.disabled}
             onClick={props.onClick}
             className={cn(
-              "flex size-8 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[17px]",
-              // The current page lifts out as a panel chip with the soft glow.
+              "flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[17px]",
               props.active
-                ? "relative bg-(--panel-surface-active) bg-(image:--panel-glow) text-foreground shadow-(--panel-drop) panel-edge"
+                ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
                 : "hover:bg-(--panel-surface) hover:text-foreground",
             )}
           />
@@ -64,7 +63,7 @@ export const AppRail = memo(function AppRail() {
   return (
     <nav
       aria-label="App"
-      className="relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col items-center gap-1 bg-sidebar pt-(--workspace-topbar-height) pb-5 md:flex"
+      className="relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col items-center gap-1.5 border-r border-(--rail-border) bg-(--rail-surface) pt-(--workspace-topbar-height) shadow-(--rail-shadow) pb-5 md:flex"
     >
       <AppRailItem
         icon={<ChatsCircleIcon />}

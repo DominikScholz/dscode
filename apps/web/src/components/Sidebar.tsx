@@ -831,7 +831,7 @@ function SidebarSectionFilterBar(props: {
     <div
       role="group"
       aria-label="Thread sections (shift-click to show several)"
-      className="flex shrink-0 gap-0.5 rounded-xl p-0.5 panel-well"
+      className="flex shrink-0 gap-0.5 rounded-lg p-0.5 panel-well"
     >
       {SIDEBAR_SECTION_FILTER_OPTIONS.map(
         ({ section, label, icon: SectionIcon, hideWhenEmpty }) => {
@@ -849,10 +849,10 @@ function SidebarSectionFilterBar(props: {
                     data-testid={`sidebar-section-filter-${section}`}
                     onClick={(event) => props.onSelect(section, event.shiftKey)}
                     className={cn(
-                      "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg text-xs font-medium tabular-nums outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
+                      "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-xs font-medium tabular-nums outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
                       // The selected section lifts out of the well as a chip.
                       pressed
-                        ? "relative bg-(--panel-surface-active) bg-(image:--panel-sheen) text-foreground shadow-(--panel-drop) panel-edge"
+                        ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
                         : "text-muted-foreground hover:text-foreground",
                     )}
                   />
@@ -1662,20 +1662,18 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // lives in the row content.
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-    variant === "card" ? "rounded-2xl" : "rounded-xl",
-    "shadow-(--panel-drop) panel-edge",
-    // The open thread carries the soft glow; every other row the plain sheen.
-    props.isActive ? "bg-(image:--panel-glow)" : "bg-(image:--panel-sheen)",
+    // Flat cards: a fill a hair off the canvas, defined by the panel edge.
+    "rounded-md panel-edge",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     props.isActive
-      ? "bg-sidebar-row-active text-sidebar-foreground"
+      ? "bg-(--row-surface-active) text-sidebar-foreground"
       : isSelected || props.sweepAction !== null
         ? "bg-sidebar-row-selected text-sidebar-foreground"
         : hasUnsentDraft
           ? cn(draftSurfaceClassName, "text-sidebar-foreground")
           : shouldRecede
-            ? "bg-sidebar-card text-sidebar-muted-foreground/75 hover:bg-sidebar-card-hover hover:text-sidebar-foreground"
-            : "bg-sidebar-card text-sidebar-foreground hover:bg-sidebar-card-hover",
+            ? "bg-(--row-surface) text-sidebar-muted-foreground/75 hover:bg-(--row-surface-hover) hover:text-sidebar-foreground"
+            : "bg-(--row-surface) text-sidebar-foreground hover:bg-(--row-surface-hover)",
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
@@ -1759,9 +1757,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   ? "text-secondary-label"
                   : isUnread || isWoke || status === "input"
                     ? "text-foreground"
-                    : status === "failed"
-                      ? "text-foreground/95"
-                      : "text-foreground/90",
+                    : "text-foreground",
               )
             : cn(
                 "truncate group-focus-within/sidebar-row:text-foreground group-hover/sidebar-row:text-foreground",
@@ -5465,7 +5461,7 @@ export default function Sidebar() {
         </SidebarGroup>
       </SidebarContent>
       {/* The dock: section filters over search, one panel under the list. */}
-      <div className="relative mx-2 mb-2 flex shrink-0 flex-col gap-1 rounded-2xl bg-(--panel-surface) bg-(image:--panel-sheen) p-1 shadow-(--panel-drop) panel-edge squircle">
+      <div className="relative mx-2 mb-2 flex shrink-0 flex-col gap-1 rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge squircle">
         {!isSearchingThreads ? (
           <SidebarSectionFilterBar
             selected={sectionFilter}

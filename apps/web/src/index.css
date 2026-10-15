@@ -273,8 +273,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-hover: var(--sidebar-row-hover);
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
-  --color-sidebar-card: var(--sidebar-card);
-  --color-sidebar-card-hover: var(--sidebar-card-hover);
   --color-sidebar-border: var(--contrast-sidebar-border);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -638,15 +636,20 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 @layer base {
-  ::highlight(t3-assistant-citation) {
-    background-color: color-mix(
-      in oklab,
-      var(--primary) calc(var(--assistant-citation-highlight-opacity) * 100%),
-      transparent
-    );
-  }
-  ::highlight(t3-assistant-citation-comment) {
-    background-color: color-mix(in oklab, var(--primary) 45%, transparent);
+  /* The explicit @supports keeps Tailwind from nesting its color-mix() fallback
+     inside these rules in dev: Chrome DevTools' Styles pane crashes on any
+     at-rule nested in a ::highlight() rule, for every element on the page. */
+  @supports (color: color-mix(in lab, red, red)) {
+    ::highlight(t3-assistant-citation) {
+      background-color: color-mix(
+        in oklab,
+        var(--primary) calc(var(--assistant-citation-highlight-opacity) * 100%),
+        transparent
+      );
+    }
+    ::highlight(t3-assistant-citation-comment) {
+      background-color: color-mix(in oklab, var(--primary) 45%, transparent);
+    }
   }
   :root {
     /* Keep the original T3 Code artwork palettes as the defaults. Built-in
@@ -1161,28 +1164,30 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @variant dark {
     color-scheme: dark;
-    /* Keep controls and floating surfaces close to the neutral-black canvas.
-       Borders and hover states provide separation without milky gray fills. */
-    --background: var(--color-neutral-950);
+    /* A slightly lifted, faintly blue near-black. Text grays share the tint,
+       and control fills, borders, and inputs mix from a soft blue so buttons
+       carry it too, separating by tone rather than milky gray fills. */
+    --background: oklch(0.16 0.004 264);
+    --control-tint: oklch(0.82 0.06 264);
     --surface-raised: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --foreground: var(--color-neutral-100);
+    --foreground: oklch(0.97 0.004 264);
     --card: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --card-foreground: var(--color-neutral-100);
+    --card-foreground: var(--foreground);
     --popover: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --popover-foreground: var(--color-neutral-100);
+    --popover-foreground: var(--foreground);
     --primary: oklch(0.571 0.21 264);
-    --secondary: --alpha(var(--color-white) / 3%);
-    --secondary-foreground: var(--color-neutral-100);
-    --muted: --alpha(var(--color-white) / 3%);
-    --muted-foreground: color-mix(in srgb, var(--color-neutral-500) 90%, var(--color-white));
-    --accent: --alpha(var(--color-white) / 4%);
-    --accent-foreground: var(--color-neutral-100);
+    --secondary: --alpha(var(--control-tint) / 4%);
+    --secondary-foreground: var(--foreground);
+    --muted: --alpha(var(--control-tint) / 4%);
+    --muted-foreground: oklch(0.6 0.012 264);
+    --accent: --alpha(var(--control-tint) / 6%);
+    --accent-foreground: var(--foreground);
     --error: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
     --error-foreground: var(--color-red-400);
     --tool-error-icon: #fca5a5;
     --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
-    --border: --alpha(var(--color-white) / 6%);
-    --input: --alpha(var(--color-white) / 8%);
+    --border: --alpha(var(--control-tint) / 7%);
+    --input: --alpha(var(--control-tint) / 10%);
     --info-foreground: var(--color-blue-400);
     --success-foreground: var(--color-emerald-400);
     --warning-foreground: var(--color-amber-400);
@@ -1224,16 +1229,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --sidebar-stage-fade: var(--sidebar);
 
   @variant dark {
-    --background: #000;
+    --background: var(--app-canvas);
     --foreground: #f1f3f7;
-    --card: #000;
+    --card: var(--app-canvas);
     --card-foreground: var(--foreground);
-    --accent: #191a1d;
+    --accent: color-mix(in srgb, var(--app-canvas) 94%, var(--color-white));
     --accent-foreground: #f7f9ff;
-    --muted: #0a0a0a;
-    --muted-foreground: #a3a3a3;
-    --border: rgb(255 255 255 / 8%);
-    --input: rgb(255 255 255 / 18%);
+    --muted: color-mix(in srgb, var(--app-canvas) 85%, var(--color-black));
+    --muted-foreground: oklch(0.7 0.012 264);
+    --border: --alpha(var(--control-tint) / 8%);
+    --input: --alpha(var(--control-tint) / 16%);
     --sidebar: var(--app-canvas);
     --sidebar-foreground: var(--foreground);
     --sidebar-muted-foreground: var(--muted-foreground);
@@ -1516,14 +1521,19 @@ html[data-theme-id] [data-app-sidebar] {
 
 /* The surface language (after Fey): charcoal panels one step off the canvas
    with a faint top-left sheen, a hairline edge lit from the top-left corner
-   that fades across the surface (panel-edge), an inner top highlight over a
-   deep soft drop, superellipse corners (squircle), and darker pressed-in wells
+   that fades across the surface (panel-edge), a faint inner top highlight over
+   a shallow drop, superellipse corners (squircle), and darker pressed-in wells
    for controls nested inside a panel. Resolved on the root from theme colors,
    so every theme matches and subtrees that re-scope colors share it. */
 :root {
   --panel-surface: color-mix(in srgb, var(--foreground) 4%, var(--background));
   --panel-surface-hover: color-mix(in srgb, var(--foreground) 6.5%, var(--background));
   --panel-surface-active: color-mix(in srgb, var(--foreground) 9%, var(--background));
+  /* Thread cards sit flatter than panels: a fill a hair off the canvas and the
+     edge as their main definition. */
+  --row-surface: color-mix(in srgb, var(--foreground) 2.5%, var(--background));
+  --row-surface-hover: color-mix(in srgb, var(--foreground) 4.5%, var(--background));
+  --row-surface-active: color-mix(in srgb, var(--foreground) 7%, var(--background));
   --panel-sheen: linear-gradient(
     135deg,
     color-mix(in srgb, var(--foreground) 3%, transparent),
@@ -1532,46 +1542,42 @@ html[data-theme-id] [data-app-sidebar] {
   --panel-edge: color-mix(in srgb, var(--foreground) 3.5%, transparent);
   --panel-edge-gradient: radial-gradient(
     140% 180% at 0% 0%,
-    color-mix(in srgb, var(--foreground) 14%, transparent),
-    color-mix(in srgb, var(--foreground) 4%, transparent) 38%,
+    color-mix(in srgb, var(--foreground) 10%, transparent),
+    color-mix(in srgb, var(--foreground) 3.5%, transparent) 38%,
     color-mix(in srgb, var(--foreground) 2%, transparent) 100%
   );
   --panel-drop:
-    inset 0 1px 0 0 color-mix(in srgb, var(--color-white) 60%, transparent),
-    0 1px 2px rgb(0 0 0 / 0.05), 0 10px 28px -12px rgb(0 0 0 / 0.14);
+    inset 0 1px 0 0 color-mix(in srgb, var(--color-white) 40%, transparent),
+    0 1px 1px rgb(0 0 0 / 0.03), 0 6px 16px -10px rgb(0 0 0 / 0.08);
   --panel-well: color-mix(in srgb, var(--foreground) 2%, var(--background));
   --panel-well-shadow:
     inset 0 1px 2px rgb(0 0 0 / 0.06),
     inset 0 0 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
-  --panel-glow: radial-gradient(
-    90% 140% at 0% 0%,
-    color-mix(in srgb, var(--primary) 10%, transparent),
-    transparent 70%
-  );
   --label-accent: oklch(0.52 0.06 105);
+  /* The app rail reads as a recessed channel: inner shadows deepest toward the
+     sidebar and a hairline border on that edge (brighter than the canvas in dark). */
+  --rail-surface: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --rail-shadow: inset -6px 0 10px -8px rgb(0 0 0 / 0.1);
+  --rail-border: color-mix(in srgb, var(--foreground) 1.5%, transparent);
 
   @variant dark {
     --panel-edge: color-mix(in srgb, var(--foreground) 3%, transparent);
     --panel-edge-gradient: radial-gradient(
       140% 180% at 0% 0%,
-      color-mix(in srgb, var(--foreground) 13%, transparent),
-      color-mix(in srgb, var(--foreground) 3.5%, transparent) 38%,
+      color-mix(in srgb, var(--foreground) 9%, transparent),
+      color-mix(in srgb, var(--foreground) 3%, transparent) 38%,
       color-mix(in srgb, var(--foreground) 1.5%, transparent) 100%
     );
     --panel-drop:
-      inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 1px 2px rgb(0 0 0 / 0.45),
-      0 14px 36px -12px rgb(0 0 0 / 0.7);
+      inset 0 1px 0 0 rgb(255 255 255 / 0.02), 0 1px 1px rgb(0 0 0 / 0.25),
+      0 6px 16px -10px rgb(0 0 0 / 0.5);
     --panel-well: color-mix(in srgb, var(--background) 55%, var(--color-black));
-    --panel-well-shadow:
-      inset 0 1px 2px rgb(0 0 0 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.035);
+    --panel-well-shadow: inset 0 1px 1px rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.025);
     --label-accent: oklch(0.74 0.055 105);
+    --rail-surface: color-mix(in srgb, var(--background) 97.5%, var(--color-white));
+    --rail-shadow: inset -10px 0 14px -10px rgb(0 0 0 / 0.65), inset 0 1px 3px rgb(0 0 0 / 0.35);
+    --rail-border: color-mix(in srgb, var(--foreground) 1%, transparent);
   }
-}
-
-:root,
-[data-app-sidebar] {
-  --sidebar-card: var(--panel-surface);
-  --sidebar-card-hover: var(--panel-surface-hover);
 }
 
 /* Superellipse corners where supported; plain rounded corners elsewhere. */

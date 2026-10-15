@@ -143,10 +143,10 @@ export function ChatCanvas({
     reportDetailsCard,
     detailsCardTopInset,
   ]);
-  // The main panel is a window onto a chat canvas centered on the whole window:
-  // the canvas reaches left past the panel's edge by the panel's offset, and the
-  // panel clips it. Tracked per resize frame so the chat holds still while the
-  // sidebar is dragged wider or narrower.
+  // The main panel is a window onto a chat canvas centered on the window right
+  // of the app rail: the canvas reaches left past the panel's edge to the rail,
+  // and the panel clips it. Tracked per resize frame so the chat holds still
+  // while the sidebar is dragged wider or narrower.
   useLayoutEffect(() => {
     const element = elementRef.current;
     const panel = element?.parentElement;
@@ -167,7 +167,7 @@ export function ChatCanvas({
         ref={elementRef}
         data-chat-canvas
         data-preview-overlaps-chat={layout.overlapsChat || undefined}
-        className="relative ms-[calc(-1*var(--chat-window-offset,0px))] flex min-h-0 min-w-0 flex-1 flex-col"
+        className="relative ms-[calc(-1*max(0px,var(--chat-window-offset,0px)-var(--app-rail-width,0px)))] flex min-h-0 min-w-0 flex-1 flex-col"
         style={
           {
             "--chat-timeline-gutter": `${measurements.timelineGutter}px`,
