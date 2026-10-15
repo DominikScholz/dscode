@@ -1561,11 +1561,18 @@ html[data-theme-id] [data-app-sidebar] {
     color-mix(in srgb, var(--primary) 9%, transparent),
     transparent 70%
   );
-  /* The app rail reads as a recessed channel: inner shadows deepest toward the
-     sidebar and a hairline border on that edge (brighter than the canvas in dark). */
-  --rail-surface: color-mix(in srgb, var(--surface-tint) 3%, var(--background));
-  --rail-shadow: inset -6px 0 10px -8px rgb(0 0 0 / 0.1);
-  --rail-border: color-mix(in srgb, var(--surface-tint) 1.5%, transparent);
+  /* The app rail sits a step below the sidebar: a long, soft falloff toward
+     the sidebar edge plus a faint contact line, rather than a dark band. Its
+     edge is lit from the top like the panel edges. */
+  --rail-surface: color-mix(in srgb, var(--surface-tint) 2%, var(--background));
+  --rail-shadow:
+    inset -20px 0 28px -24px rgb(0 0 0 / 0.08), inset -1px 0 2px -1px rgb(0 0 0 / 0.04);
+  --rail-edge: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface-tint) 6%, transparent),
+    color-mix(in srgb, var(--surface-tint) 1.5%, transparent) 45%,
+    color-mix(in srgb, var(--surface-tint) 0.5%, transparent)
+  );
 
   @variant dark {
     --surface-tint: oklch(0.86 0.05 262);
@@ -1581,9 +1588,14 @@ html[data-theme-id] [data-app-sidebar] {
       0 6px 16px -10px rgb(0 0 0 / 0.5);
     --panel-well: color-mix(in srgb, var(--background) 80%, var(--color-black));
     --panel-well-shadow: inset 0 1px 1px rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.025);
-    --rail-surface: color-mix(in srgb, var(--background) 97.5%, var(--color-white));
-    --rail-shadow: inset -10px 0 14px -10px rgb(0 0 0 / 0.65), inset 0 1px 3px rgb(0 0 0 / 0.35);
-    --rail-border: color-mix(in srgb, var(--surface-tint) 1%, transparent);
+    --rail-shadow:
+      inset -20px 0 28px -24px rgb(0 0 0 / 0.32), inset -1px 0 2px -1px rgb(0 0 0 / 0.2);
+    --rail-edge: linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--surface-tint) 9%, transparent),
+      color-mix(in srgb, var(--surface-tint) 2%, transparent) 45%,
+      color-mix(in srgb, var(--surface-tint) 1%, transparent)
+    );
   }
 }
 

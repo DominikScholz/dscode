@@ -49,7 +49,7 @@ export const ChangedFilesCard = memo(function ChangedFilesCard(props: {
     >
       <div
         data-changed-files-header=""
-        className="sticky top-2 z-10 flex items-center justify-between gap-2 rounded-t-2xl bg-(--panel-surface) squircle px-4 py-3"
+        className="sticky top-2 z-10 flex items-center justify-between gap-2 rounded-t-2xl bg-(--panel-surface) squircle px-4 py-2.5"
       >
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-foreground">
           <span>
@@ -247,7 +247,7 @@ export const ChangedFilesTree = memo(function ChangedFilesTree(props: {
   };
 
   // Rows inset 8px inside 8px of padding, so names line up with the header's 16px.
-  return <div className="px-2 pb-2.5">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
+  return <div className="px-2 pb-2">{treeNodes.map((node) => renderTreeNode(node, 0))}</div>;
 });
 
 function collectDirectoryPaths(nodes: ReadonlyArray<TurnDiffTreeNode>): string[] {

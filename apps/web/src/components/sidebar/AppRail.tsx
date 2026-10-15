@@ -5,45 +5,123 @@ import {
   GitPullRequestIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
+import * as Schema from "effect/Schema";
 import type { ReactNode } from "react";
-import { memo } from "react";
+import { memo, useEffect } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
+import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 
-function AppRailItem(props: {
+// Redesign exploration: app navigation as a slim rail left of the sidebar, or
+// as a menu at the top of the sidebar, where the bottom-up thread list leaves room.
+const APP_NAV_VARIANT_KEY = "t3code:redesign:app-nav";
+const AppNavVariant = Schema.Literals(["rail", "seamless", "menu"]);
+const isAppNavVariant = Schema.is(AppNavVariant);
+
+/**
+ * `?nav=seamless` (the default: a rail on the canvas color, without separation),
+ * `?nav=rail` or `?nav=menu` picks the variant, which then sticks across navigation.
+ */
+export function useAppNavVariant() {
+  const [storedVariant, setStoredVariant] = useLocalStorage(
+    APP_NAV_VARIANT_KEY,
+    "seamless",
+    AppNavVariant,
+  );
+  const requested = useLocation({
+    select: (location) => new URLSearchParams(location.searchStr).get("nav"),
+  });
+  const requestedVariant = isAppNavVariant(requested) ? requested : null;
+  useEffect(() => {
+    if (requestedVariant) setStoredVariant(requestedVariant);
+  }, [requestedVariant, setStoredVariant]);
+  return requestedVariant ?? storedVariant;
+}
+
+interface AppNavItem {
+  key: string;
   icon: ReactNode;
   label: string;
   active?: boolean;
   disabled?: boolean;
   onClick?: () => void;
-}) {
+}
+
+function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
+  const navigate = useNavigate();
+  const navigateToMainApp = useNavigateToMainApp();
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const pullRequestsSupported = usePullRequestsSupported();
+
+  const primary: AppNavItem[] = [
+    {
+      key: "chats",
+      icon: <ChatsCircleIcon />,
+      label: "Chats",
+      active: !isSidebarUtilityPage(pathname),
+      onClick: () => void navigateToMainApp(),
+    },
+    { key: "dashboard", icon: <SquaresFourIcon />, label: "Dashboard", disabled: true },
+  ];
+  if (pullRequestsSupported) {
+    primary.push({
+      key: "pull-requests",
+      icon: <GitPullRequestIcon />,
+      label: "Pull Requests",
+      active: pathname === "/pull-requests",
+      onClick: () =>
+        void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() }),
+    });
+  }
+  const secondary: AppNavItem[] = [
+    {
+      key: "usage",
+      icon: <ChartBarIcon />,
+      label: "Usage & limits",
+      active: pathname === "/usage",
+      onClick: () => void navigate({ to: "/usage" }),
+    },
+    {
+      key: "settings",
+      icon: <GearIcon />,
+      label: "Settings",
+      active: pathname === "/settings" || pathname.startsWith("/settings/"),
+      onClick: () => void navigate({ to: "/settings" }),
+    },
+  ];
+  return { primary, secondary };
+}
+
+function AppRailItem({ item }: { item: AppNavItem }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <button
             type="button"
-            aria-label={props.label}
-            aria-current={props.active ? "page" : undefined}
-            disabled={props.disabled}
-            onClick={props.onClick}
+            aria-label={item.disabled ? `${item.label} (coming soon)` : item.label}
+            aria-current={item.active ? "page" : undefined}
+            disabled={item.disabled}
+            onClick={item.onClick}
             className={cn(
-              "flex size-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[17px]",
-              props.active
-                ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
+              "flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[18px]",
+              item.active
+                ? "relative bg-(--panel-surface) text-foreground panel-edge"
                 : "hover:bg-(--panel-surface) hover:text-foreground",
             )}
           />
         }
       >
-        {props.icon}
+        {item.icon}
       </TooltipTrigger>
-      <TooltipPopup side="right">{props.label}</TooltipPopup>
+      <TooltipPopup side="right">
+        {item.disabled ? `${item.label} (coming soon)` : item.label}
+      </TooltipPopup>
     </Tooltip>
   );
 }
@@ -53,49 +131,67 @@ function AppRailItem(props: {
  * mobile sheet keeps these destinations in its footer. The bottom pair lines
  * up with the two rows of the sidebar dock beside it.
  */
-export const AppRail = memo(function AppRail() {
-  const navigate = useNavigate();
-  const navigateToMainApp = useNavigateToMainApp();
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const pullRequestsSupported = usePullRequestsSupported();
-  const onSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+export const AppRail = memo(function AppRail({ seamless }: { seamless: boolean }) {
+  const { primary, secondary } = useAppNavItems();
 
   return (
     <nav
       aria-label="App"
-      className="relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col items-center gap-1.5 border-r border-(--rail-border) bg-(--rail-surface) pt-(--workspace-topbar-height) shadow-(--rail-shadow) pb-6 md:flex"
+      className={cn(
+        "relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col gap-1 pt-(--workspace-topbar-height) pb-5 md:flex",
+        // Without a visible edge the icons hug the sidebar, so the gap to the
+        // thread cards matches the gap to the window edge.
+        seamless ? "items-end" : "items-center",
+        !seamless &&
+          "bg-(--rail-surface) shadow-(--rail-shadow) after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-(image:--rail-edge)",
+      )}
     >
-      <AppRailItem
-        icon={<ChatsCircleIcon />}
-        label="Chats"
-        active={!isSidebarUtilityPage(pathname)}
-        onClick={() => void navigateToMainApp()}
-      />
-      <AppRailItem icon={<SquaresFourIcon />} label="Dashboard (coming soon)" disabled />
-      {pullRequestsSupported ? (
-        <AppRailItem
-          icon={<GitPullRequestIcon />}
-          label="Pull Requests"
-          active={pathname === "/pull-requests"}
-          onClick={() =>
-            void navigate({ to: "/pull-requests", search: readPullRequestListPreferences() })
-          }
-        />
-      ) : null}
-      <div className="mt-auto flex flex-col items-center gap-3">
-        <AppRailItem
-          icon={<ChartBarIcon />}
-          label="Usage & limits"
-          active={pathname === "/usage"}
-          onClick={() => void navigate({ to: "/usage" })}
-        />
-        <AppRailItem
-          icon={<GearIcon />}
-          label="Settings"
-          active={onSettings}
-          onClick={() => void navigate({ to: "/settings" })}
-        />
+      {primary.map((item) => (
+        <AppRailItem key={item.key} item={item} />
+      ))}
+      <div className="mt-auto flex flex-col items-center gap-2">
+        {secondary.map((item) => (
+          <AppRailItem key={item.key} item={item} />
+        ))}
       </div>
+    </nav>
+  );
+});
+
+function SidebarNavMenuItem({ item }: { item: AppNavItem }) {
+  return (
+    <button
+      type="button"
+      aria-current={item.active ? "page" : undefined}
+      disabled={item.disabled}
+      onClick={item.onClick}
+      className={cn(
+        "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        item.active
+          ? "relative bg-(--panel-surface) text-foreground panel-edge"
+          : "text-muted-foreground hover:bg-(--panel-surface) hover:text-foreground disabled:text-muted-foreground/50",
+      )}
+    >
+      {item.icon}
+      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+      {item.disabled ? <span className="text-2xs text-muted-foreground/60">Soon</span> : null}
+    </button>
+  );
+}
+
+/** The app navigation as a menu under the sidebar brand (the "menu" variant). */
+export const SidebarNavMenu = memo(function SidebarNavMenu() {
+  const { primary, secondary } = useAppNavItems();
+
+  return (
+    <nav aria-label="App" className="mx-3 mt-1 mb-3 hidden shrink-0 flex-col gap-0.5 md:flex">
+      {primary.map((item) => (
+        <SidebarNavMenuItem key={item.key} item={item} />
+      ))}
+      <div className="mx-2.5 my-1.5 h-px bg-(--panel-edge)" />
+      {secondary.map((item) => (
+        <SidebarNavMenuItem key={item.key} item={item} />
+      ))}
     </nav>
   );
 });

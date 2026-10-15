@@ -280,6 +280,7 @@ import {
 } from "./ui/combobox";
 import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
+import { SidebarNavMenu, useAppNavVariant } from "./sidebar/AppRail";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -875,7 +876,7 @@ function SidebarProjectDivider(props: SidebarProjectGroup) {
   return (
     <div
       aria-hidden
-      className="flex h-10 items-center gap-1.5 px-2.5 pt-4 font-mono text-2xs tracking-tight text-muted-foreground"
+      className="flex items-center gap-1.5 px-2.5 pt-6 pb-2 font-mono text-2xs tracking-tight text-muted-foreground"
     >
       {props.project ? (
         <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
@@ -2035,8 +2036,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[3.75rem] content box; the py-1 padding is added on top.
-        "list-none py-1 [content-visibility:auto] [contain-intrinsic-size:auto_68px]",
+        // Matches the h-[3.5rem] content box; the py-1 padding is added on top.
+        "list-none py-1 [content-visibility:auto] [contain-intrinsic-size:auto_64px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -2061,7 +2062,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div className="relative z-10 h-[3.75rem] px-3 py-2.5">
+          <div className="relative z-10 h-[3.5rem] px-3 py-2">
             {/* Two rows: title with status, then branch and providers. The
                 project lives in the group divider above the card. */}
             <div className="flex h-5 min-w-0 items-center gap-1.5">
@@ -5077,10 +5078,12 @@ export default function Sidebar() {
     shortcutLabelForCommand(keybindings, "chat.new") ??
     (projectGroups.length <= 1 ? shortcutLabelForCommand(keybindings, "chat.newLocal") : undefined);
   const newThreadInProjectShortcutLabel = shortcutLabelForCommand(keybindings, "chat.newLocal");
+  const appNavVariant = useAppNavVariant();
   return (
     <>
       <ThreadContextDragGhost />
       <SidebarChromeHeader isElectron={isElectron} />
+      {appNavVariant === "menu" ? <SidebarNavMenu /> : null}
       <SidebarContent className="min-h-full">
         <SidebarGroup className="mx-1 w-auto flex-1" role="presentation">
           {isSearchingThreads ? (
