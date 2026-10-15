@@ -814,7 +814,7 @@ const SIDEBAR_SECTION_FILTER_OPTIONS: ReadonlyArray<{
 }> = [
   { section: "pinned", label: "Pinned", icon: PushPinIcon, hideWhenEmpty: true },
   { section: "active", label: "Active", icon: ChatsCircleIcon, hideWhenEmpty: false },
-  { section: "working", label: "Working", icon: HammerIcon, hideWhenEmpty: true },
+  { section: "working", label: "Working", icon: HammerIcon, hideWhenEmpty: false },
   { section: "snoozed", label: "Snoozed", icon: ClockCountdownIcon, hideWhenEmpty: true },
   { section: "settled", label: "Settled", icon: ArchiveIcon, hideWhenEmpty: false },
 ];

@@ -2105,7 +2105,13 @@ const TimelineRowContent = memo(function TimelineRowContent({ row }: { row: Time
                 row.kind === "html-render" ||
                 row.kind === "mcp-app"
               ? "pb-2"
-              : "pb-4",
+              : // A finished turn ends with its meta row; leave clear air before
+                // the next prompt so turns read as separate blocks.
+                row.kind === "assistant-meta"
+                ? "pb-10"
+                : row.kind === "message" && row.message.role === "user"
+                  ? "pb-6"
+                  : "pb-4",
         (row.kind === "message" && row.message.role === "assistant") ||
           row.kind === "assistant-meta"
           ? "group/assistant"
@@ -2485,7 +2491,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {row.message.inputIntent && row.message.inputIntent !== "turn_start" ? (
         <UserMessageIntentMarker intent={row.message.inputIntent} />
       ) : null}
-      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground squircle">
+      <div className="relative max-w-[80%] rounded-2xl bg-(--panel-surface) px-4 py-3 text-message-foreground panel-edge squircle">
         <MessageAuthorHeading>You</MessageAuthorHeading>
         {(regularImages.length > 0 || userVideos.length > 0) && (
           <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
@@ -2791,7 +2797,7 @@ function TurnFoldTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "turn-
   const ctx = use(TimelineRowCtx);
 
   return (
-    <div className="group/timeline-row relative flex items-center gap-1 border-b border-border/60 pb-2 pe-0.5 pt-1">
+    <div className="group/timeline-row relative flex items-center gap-1 pb-2 pe-0.5 pt-1">
       <button
         type="button"
         aria-expanded={row.expanded}
@@ -3287,7 +3293,7 @@ function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event"
   return (
     <section
       className={cn(
-        "rounded-2xl border px-3 py-2 squircle",
+        "rounded-2xl border px-4 py-3 squircle",
         presentation.tone === "warning" && "border-warning/25 bg-warning/5",
         presentation.tone === "danger" && "border-destructive/25 bg-destructive/5",
         presentation.tone === "success" && "border-success/20 bg-success/5",
@@ -3811,7 +3817,7 @@ function WorkingTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "workin
     "Working..."
   );
   return (
-    <div className="border-b border-border/60 pb-2 pt-1">
+    <div className="pb-2 pt-1">
       <div className="flex h-6 min-w-0 items-baseline gap-2 px-1 text-sm leading-relaxed text-muted-foreground tabular-nums">
         <span
           ref={shimmer ? observeVisibleAnimation : undefined}
@@ -4918,7 +4924,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   );
 
   return (
-    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-3 squircle">
+    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4 squircle">
       <div className="space-y-1">
         <div className="text-xs font-medium text-foreground">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}

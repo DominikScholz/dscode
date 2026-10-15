@@ -7197,8 +7197,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               ref={setComposerMenuAnchor}
               data-chat-composer-body="true"
               className={cn(
-                "relative px-3 pb-2 sm:px-4",
-                "pt-3.5 sm:pt-4",
+                "relative px-4 pb-2 sm:px-5",
+                "pt-4 sm:pt-5",
                 isComposerApprovalState && "pb-3 sm:pb-4",
                 isComposerCollapsedMobile && "hidden",
                 isComposerResting && "py-2 sm:py-2",
@@ -7775,7 +7775,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                 data-chat-composer-footer="true"
                 data-chat-composer-footer-compact={isComposerFooterCompact ? "true" : "false"}
                 className={cn(
-                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-3 pb-3 sm:px-4 sm:pb-4",
+                  "flex min-w-0 flex-nowrap items-center justify-between gap-2 overflow-visible px-4 pb-4 sm:px-5 sm:pb-5",
                   pendingUserInputs.length > 0 && "pt-2",
                   isComposerFooterCompact ? "gap-1.5" : "gap-2 sm:gap-0",
                   showMobilePendingAnswerActions && "hidden sm:flex",

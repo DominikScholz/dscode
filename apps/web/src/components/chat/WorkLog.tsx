@@ -21,14 +21,17 @@ export function WorkLogBlock({
   children: ReactNode;
 }) {
   return (
+    // Work hangs off a thin guide under its turn's header, like a layer tree.
+    // Adjacent blocks touch, so their guides read as one line.
     <div
-      className={
+      className={cn(
+        "ms-2 border-s border-border ps-3",
         continues || layout === "group-header"
           ? "pb-0"
           : layout === "group-content"
             ? "pb-1"
-            : "pb-2"
-      }
+            : "pb-2",
+      )}
     >
       {children}
     </div>
