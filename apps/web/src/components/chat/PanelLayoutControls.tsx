@@ -3,7 +3,7 @@ import {
   CornersOutIcon,
   ListDashesIcon,
   SidebarSimpleIcon,
-  TerminalWindowIcon,
+  TerminalIcon,
 } from "@phosphor-icons/react";
 import { memo, type ReactElement } from "react";
 
@@ -99,7 +99,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               size="sm"
               disabled={!terminalAvailable}
             >
-              <TerminalWindowIcon className="size-4" />
+              <TerminalIcon className="size-4" />
             </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">

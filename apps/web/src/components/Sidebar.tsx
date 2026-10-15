@@ -3931,7 +3931,7 @@ export default function Sidebar() {
     visibleWorkingThreads,
     workingThreads.length,
   ]);
-  // The list stacks bottom-up from the dock, so a new selection
+  // The list stacks bottom-up from the filters, so a new selection
   // starts scrolled to the bottom, where its first rows are, as does the first
   // render with threads.
   const sectionFilterKey = sectionFilter.join(",");
@@ -5083,22 +5083,6 @@ export default function Sidebar() {
     <>
       <ThreadContextDragGhost />
       <SidebarChromeHeader isElectron={isElectron} />
-      {/* Section filters head the list like tabs; search sits in the dock below. */}
-      {!isSearchingThreads ? (
-        <div className="mx-3 mb-1 shrink-0">
-          <SidebarSectionFilterBar
-            selected={sectionFilter}
-            counts={{
-              pinned: pinnedThreads.length,
-              active: activeThreads.length,
-              working: workingThreads.length,
-              snoozed: snoozedThreads.length,
-              settled: settledThreads.length,
-            }}
-            onSelect={selectSidebarSection}
-          />
-        </div>
-      ) : null}
       <SidebarContent className="min-h-full">
         <SidebarGroup className="mx-1 w-auto flex-1" role="presentation">
           {isSearchingThreads ? (
@@ -5199,7 +5183,7 @@ export default function Sidebar() {
                     // presentational while preserving every descendant control.
                     role="presentation"
                     className={cn(
-                      // Bottom-up: the first row sits on the dock.
+                      // Bottom-up: the first row sits on the filters.
                       "relative flex flex-col-reverse justify-start gap-px",
                       sidebarListItems.length > 0 && "flex-1",
                       // An action sweep owns the pointer: rows it passes over
@@ -5505,6 +5489,22 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
+      {/* Section filters sit on their own just above the search dock. */}
+      {!isSearchingThreads ? (
+        <div className="mx-3 mb-2 shrink-0">
+          <SidebarSectionFilterBar
+            selected={sectionFilter}
+            counts={{
+              pinned: pinnedThreads.length,
+              active: activeThreads.length,
+              working: workingThreads.length,
+              snoozed: snoozedThreads.length,
+              settled: settledThreads.length,
+            }}
+            onSelect={selectSidebarSection}
+          />
+        </div>
+      ) : null}
       {/* The dock: search and list actions, one raised row under the list. */}
       <div className="relative mx-3 mb-3 flex shrink-0 flex-col rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge squircle">
         <SidebarThreadHeader
