@@ -188,6 +188,15 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigateToMainApp();
   }, [closeMobileSidebar, navigateToMainApp]);
 
+  // On desktop the app rail carries these destinations.
+  if (!isMobile) {
+    return (
+      <SidebarMenu className="flex-row items-center">
+        <SidebarUpdatePill />
+      </SidebarMenu>
+    );
+  }
+
   return (
     <SidebarMenu className="flex-row items-center">
       {isOnUtilityPage ? (

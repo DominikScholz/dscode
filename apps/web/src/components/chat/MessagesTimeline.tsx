@@ -1125,9 +1125,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   }, [citationAlwaysRender, restoringAlwaysRender, fullscreenAppRowId]);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
-  // Sized to the part of the chat canvas hidden under the sidebar (see
-  // ChatCanvas), so the minimap gutter is measured from the visible edge.
-  const [overlayInsetProbe, setOverlayInsetProbe] = useState<HTMLDivElement | null>(null);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
   const handleAnchorReady = useCallback(
     (info: { anchorIndex: number | undefined }) => {
@@ -1323,11 +1320,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
     }
 
     const measure = () => {
-      const overlayInset = overlayInsetProbe?.getBoundingClientRect().width ?? 0;
-      // The gutter helpers split the free width evenly; dropping the hidden
-      // inset from both sides leaves the visible left gutter.
-      const viewportWidth =
-        timelineViewportElement.getBoundingClientRect().width - 2 * overlayInset;
+      const viewportWidth = timelineViewportElement.getBoundingClientRect().width;
       // Without a mounted row, treat the column as full width so the strip stays inert.
       const contentWidth =
         timelineViewportElement
@@ -1347,14 +1340,12 @@ const ConversationTimeline = memo(function ConversationTimeline({
     const frame = requestAnimationFrame(measure);
 
     const stopObserving = observeResize(timelineViewportElement, measure);
-    const stopObservingInset = overlayInsetProbe ? observeResize(overlayInsetProbe, measure) : null;
 
     return () => {
       cancelAnimationFrame(frame);
       stopObserving();
-      stopObservingInset?.();
     };
-  }, [timelineViewportElement, overlayInsetProbe, rows.length, reportContentOverflow, chatWidth]);
+  }, [timelineViewportElement, rows.length, reportContentOverflow, chatWidth]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -1694,11 +1685,6 @@ const ConversationTimeline = memo(function ConversationTimeline({
               ListHeaderComponent={listHeader}
               ListFooterComponent={timelineListFooter}
             />
-            <div
-              ref={setOverlayInsetProbe}
-              aria-hidden
-              className="pointer-events-none invisible absolute top-0 left-0 h-0 w-(--chat-window-offset,0px)"
-            />
             <TimelineMinimap
               items={minimapItems}
               hasPersistentGutter={minimapHasPersistentGutter}
@@ -1873,8 +1859,8 @@ function TimelineMinimap({
   return (
     <div
       className={cn(
-        // Sticks to the visible edge of the chat canvas, next to the sidebar.
-        "group/minimap pointer-events-none absolute inset-y-0 left-(--chat-window-offset,0px) z-40 hidden w-18 [@media(pointer:fine)]:block",
+        // Sits in the right gutter, clear of the sidebar side of the window.
+        "group/minimap pointer-events-none absolute inset-y-0 right-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
         hasPersistentGutter
           ? "opacity-100"
           : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
@@ -1886,7 +1872,7 @@ function TimelineMinimap({
       <div className="relative h-full w-full select-none">
         <div
           className={cn(
-            "absolute top-1/2 left-3 -translate-y-1/2",
+            "absolute top-1/2 right-3 -translate-y-1/2",
             // The strip is width-capped to the side gutter so it never overlays
             // the centered content column; with no usable gutter it goes inert.
             hitStripWidth > 0 ? "pointer-events-auto" : "pointer-events-none",
@@ -1906,7 +1892,7 @@ function TimelineMinimap({
           />
           <button
             aria-label={`Jump to message: ${activeItem?.userText ?? "User message"}`}
-            className="absolute inset-y-0 left-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
+            className="absolute inset-y-0 right-0 w-full cursor-pointer bg-transparent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring/70"
             onBlur={() => setActiveIndex(null)}
             onClick={(event) => {
               if (timelineMinimapEventTargetsPreview(event.target)) {
@@ -1950,7 +1936,7 @@ function TimelineMinimap({
             }}
             type="button"
           >
-            <div className="absolute top-0 left-3 h-full w-px bg-border/15" />
+            <div className="absolute top-0 right-3 h-full w-px bg-border/15" />
             {items.map((item, index) => {
               const top = `${resolveTimelineMinimapTopPercent(index, items.length)}%`;
               const activeDistance =
@@ -1966,7 +1952,7 @@ function TimelineMinimap({
                 <span
                   aria-hidden="true"
                   className={cn(
-                    "group/strip pointer-events-none absolute left-0 h-0.5 w-6 origin-left -translate-y-1/2 rounded-full transition-transform duration-150",
+                    "group/strip pointer-events-none absolute right-0 h-0.5 w-6 origin-right -translate-y-1/2 rounded-full transition-transform duration-150",
                     activeDistance === 0 ? "bg-muted-foreground/75" : "bg-muted-foreground/35",
                     activeDistance === 0
                       ? "scale-x-100"
@@ -1994,7 +1980,7 @@ function TimelineMinimap({
             })}
             {activeItem ? (
               <span
-                className="pointer-events-auto absolute left-8 w-80 cursor-text select-text"
+                className="pointer-events-auto absolute right-8 w-80 cursor-text select-text"
                 data-minimap-preview
                 onMouseMove={(event) => event.stopPropagation()}
                 style={{
@@ -2057,7 +2043,7 @@ function TimelineMinimapNavigationButton({
         render={
           <span
             className={cn(
-              "absolute left-1 z-10 inline-flex -translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
+              "absolute right-1 z-10 inline-flex translate-x-1/2 opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",
               interactive ? "pointer-events-auto" : "pointer-events-none",
               previous ? "bottom-[calc(100%+2px)]" : "top-[calc(100%+2px)]",
             )}

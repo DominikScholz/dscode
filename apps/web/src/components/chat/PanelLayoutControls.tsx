@@ -1,6 +1,10 @@
-import { PanelBottomIcon, PanelRightIcon, SquareMenuIcon } from "lucide-react";
-import { Maximize2, Minimize2 } from "lucide";
-import { MorphIcon } from "~/components/MorphIcon";
+import {
+  CornersInIcon,
+  CornersOutIcon,
+  ListDashesIcon,
+  SidebarSimpleIcon,
+  TerminalWindowIcon,
+} from "@phosphor-icons/react";
 import { memo, type ReactElement } from "react";
 
 import type { ThreadPanelPresentation } from "../../rightPanelLayout";
@@ -55,7 +59,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
       variant="ghost"
       size="sm"
     >
-      <SquareMenuIcon className="size-4" />
+      <ListDashesIcon className="size-4" />
     </Toggle>
   );
   const threadPanelTooltip = (trigger: ReactElement) => (
@@ -95,7 +99,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               size="sm"
               disabled={!terminalAvailable}
             >
-              <PanelBottomIcon className="size-4" />
+              <TerminalWindowIcon className="size-4" />
             </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
@@ -117,7 +121,7 @@ export const PanelLayoutControls = memo(function PanelLayoutControls({
               size="sm"
               disabled={!rightPanelAvailable}
             >
-              <PanelRightIcon className="size-4" />
+              <SidebarSimpleIcon mirrored className="size-4" />
             </Toggle>
           </TooltipTrigger>
           <TooltipPopup side="bottom">
@@ -151,7 +155,11 @@ export const RightPanelMaximizeControl = memo(function RightPanelMaximizeControl
             variant="ghost"
             size="sm"
           >
-            <MorphIcon className="size-4" icon={maximized ? Minimize2 : Maximize2} />
+            {maximized ? (
+              <CornersInIcon className="size-4" />
+            ) : (
+              <CornersOutIcon className="size-4" />
+            )}
           </Toggle>
         }
       />
