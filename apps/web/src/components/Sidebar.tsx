@@ -285,6 +285,7 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrom
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { observeResize } from "../lib/observeResize";
 import {
   ArchiveIcon,
   ChatsCircleIcon,
@@ -876,7 +877,7 @@ function SidebarProjectDivider(props: SidebarProjectGroup) {
   return (
     <div
       aria-hidden
-      className="flex h-7 items-center gap-1.5 px-2.5 pt-2 font-mono text-2xs tracking-tight text-(--label-accent)"
+      className="flex h-10 items-center gap-1.5 px-2.5 pt-4 font-mono text-2xs tracking-tight text-muted-foreground"
     >
       {props.project ? (
         <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
@@ -1662,11 +1663,11 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // lives in the row content.
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-    // Flat cards: a fill a hair off the canvas, defined by the panel edge.
-    "rounded-md panel-edge",
+    // Rows sit quietly on a tint; only the open thread is raised.
+    "rounded-md",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     props.isActive
-      ? "bg-(--row-surface-active) text-sidebar-foreground"
+      ? "bg-(--row-surface-active) bg-(image:--panel-glow) text-sidebar-foreground shadow-(--panel-drop) panel-edge"
       : isSelected || props.sweepAction !== null
         ? "bg-sidebar-row-selected text-sidebar-foreground"
         : hasUnsentDraft
@@ -2036,8 +2037,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[3.5rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_60px]",
+        // Matches the h-[3.5rem] content box; the py-1 padding is added on top.
+        "list-none py-1 [content-visibility:auto] [contain-intrinsic-size:auto_64px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
@@ -2226,7 +2227,15 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+            {/* Details recede at rest so the list reads as titles; hover, focus,
+                and the open thread bring them back. */}
+            <div
+              className={cn(
+                "mt-1 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs transition-opacity motion-reduce:transition-none",
+                !props.isActive &&
+                  "opacity-50 group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100",
+              )}
+            >
               {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
@@ -3922,7 +3931,7 @@ export default function Sidebar() {
     visibleWorkingThreads,
     workingThreads.length,
   ]);
-  // The list stacks bottom-up from the filter buttons, so a new selection
+  // The list stacks bottom-up from the dock, so a new selection
   // starts scrolled to the bottom, where its first rows are, as does the first
   // render with threads.
   const sectionFilterKey = sectionFilter.join(",");
@@ -3933,6 +3942,26 @@ export default function Sidebar() {
     );
     if (viewport) viewport.scrollTop = viewport.scrollHeight;
   }, [hasSidebarListItems, sectionFilterKey]);
+  // While the list sits at its bottom, keep it there: rows that load or grow
+  // after the first paint must not push the newest rows out of view. Scrolling
+  // up releases it until the user returns to the bottom.
+  useEffect(() => {
+    const list = threadListRef.current;
+    const viewport = list?.closest<HTMLElement>("[data-slot=scroll-area-viewport]");
+    if (!list || !viewport) return;
+    let pinned = true;
+    const updatePinned = () => {
+      pinned = viewport.scrollHeight - viewport.clientHeight - viewport.scrollTop < 2;
+    };
+    viewport.addEventListener("scroll", updatePinned, { passive: true });
+    const stopObserving = observeResize([list, viewport], () => {
+      if (pinned) viewport.scrollTop = viewport.scrollHeight;
+    });
+    return () => {
+      viewport.removeEventListener("scroll", updatePinned);
+      stopObserving();
+    };
+  }, [hasSidebarListItems]);
   useEffect(() => {
     if (
       dragState !== null &&
@@ -5054,8 +5083,24 @@ export default function Sidebar() {
     <>
       <ThreadContextDragGhost />
       <SidebarChromeHeader isElectron={isElectron} />
+      {/* Section filters head the list like tabs; search sits in the dock below. */}
+      {!isSearchingThreads ? (
+        <div className="mx-3 mb-1 shrink-0">
+          <SidebarSectionFilterBar
+            selected={sectionFilter}
+            counts={{
+              pinned: pinnedThreads.length,
+              active: activeThreads.length,
+              working: workingThreads.length,
+              snoozed: snoozedThreads.length,
+              settled: settledThreads.length,
+            }}
+            onSelect={selectSidebarSection}
+          />
+        </div>
+      ) : null}
       <SidebarContent className="min-h-full">
-        <SidebarGroup className="flex-1" role="presentation">
+        <SidebarGroup className="mx-1 w-auto flex-1" role="presentation">
           {isSearchingThreads ? (
             threadSearchResults.length > 0 ? (
               <TooltipProvider
@@ -5154,7 +5199,7 @@ export default function Sidebar() {
                     // presentational while preserving every descendant control.
                     role="presentation"
                     className={cn(
-                      // Bottom-up: the first row sits on the filter buttons.
+                      // Bottom-up: the first row sits on the dock.
                       "relative flex flex-col-reverse justify-start gap-px",
                       sidebarListItems.length > 0 && "flex-1",
                       // An action sweep owns the pointer: rows it passes over
@@ -5460,21 +5505,8 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      {/* The dock: section filters over search, one panel under the list. */}
-      <div className="relative mx-2 mb-2 flex shrink-0 flex-col gap-1 rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge squircle">
-        {!isSearchingThreads ? (
-          <SidebarSectionFilterBar
-            selected={sectionFilter}
-            counts={{
-              pinned: pinnedThreads.length,
-              active: activeThreads.length,
-              working: workingThreads.length,
-              snoozed: snoozedThreads.length,
-              settled: settledThreads.length,
-            }}
-            onSelect={selectSidebarSection}
-          />
-        ) : null}
+      {/* The dock: search and list actions, one raised row under the list. */}
+      <div className="relative mx-3 mb-3 flex shrink-0 flex-col rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge squircle">
         <SidebarThreadHeader
           searchFieldRef={headerSearchRef}
           hasProjects={projectGroups.length > 0}

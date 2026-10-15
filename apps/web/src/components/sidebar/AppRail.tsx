@@ -12,6 +12,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
+import { T3Wordmark } from "../T3Wordmark";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 
@@ -63,8 +64,16 @@ export const AppRail = memo(function AppRail() {
   return (
     <nav
       aria-label="App"
-      className="relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col items-center gap-1.5 border-r border-(--rail-border) bg-(--rail-surface) pt-(--workspace-topbar-height) shadow-(--rail-shadow) pb-5 md:flex"
+      className="relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col items-center gap-1.5 border-r border-(--rail-border) bg-(--rail-surface) pt-(--workspace-topbar-height) shadow-(--rail-shadow) pb-6 md:flex"
     >
+      {/* The app's mark: the black T3 tile, raised like the other ornaments. */}
+      <div
+        role="img"
+        aria-label="T3 Code"
+        className="relative mb-3 flex size-8 shrink-0 items-center justify-center rounded-lg bg-black text-white shadow-(--panel-drop) panel-edge squircle"
+      >
+        <T3Wordmark aria-hidden className="h-2.5 w-auto" />
+      </div>
       <AppRailItem
         icon={<ChatsCircleIcon />}
         label="Chats"

@@ -1553,7 +1553,11 @@ html[data-theme-id] [data-app-sidebar] {
   --panel-well-shadow:
     inset 0 1px 2px rgb(0 0 0 / 0.06),
     inset 0 0 0 1px color-mix(in srgb, var(--foreground) 5%, transparent);
-  --label-accent: oklch(0.52 0.06 105);
+  --panel-glow: radial-gradient(
+    90% 140% at 0% 0%,
+    color-mix(in srgb, var(--primary) 9%, transparent),
+    transparent 70%
+  );
   /* The app rail reads as a recessed channel: inner shadows deepest toward the
      sidebar and a hairline border on that edge (brighter than the canvas in dark). */
   --rail-surface: color-mix(in srgb, var(--foreground) 3%, var(--background));
@@ -1573,7 +1577,6 @@ html[data-theme-id] [data-app-sidebar] {
       0 6px 16px -10px rgb(0 0 0 / 0.5);
     --panel-well: color-mix(in srgb, var(--background) 55%, var(--color-black));
     --panel-well-shadow: inset 0 1px 1px rgb(0 0 0 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.025);
-    --label-accent: oklch(0.74 0.055 105);
     --rail-surface: color-mix(in srgb, var(--background) 97.5%, var(--color-white));
     --rail-shadow: inset -10px 0 14px -10px rgb(0 0 0 / 0.65), inset 0 1px 3px rgb(0 0 0 / 0.35);
     --rail-border: color-mix(in srgb, var(--foreground) 1%, transparent);

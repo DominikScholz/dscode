@@ -513,10 +513,10 @@ describe("sidebar drag projection", () => {
       "a1",
       "p",
       2,
-      // The real card: 3.5rem plus 0.25rem padding.
-      60,
+      // The real card: 3.5rem plus 0.5rem padding.
+      64,
     );
-    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(32 + 121);
+    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(32 + 129);
   });
 
   it("keeps the pinned header above the first arriving pin", () => {
@@ -697,9 +697,9 @@ describe("sidebar drag projection", () => {
       0.75,
     );
     expect(result.get(sidebarMarkerId("pinned-header"))).toEqual(stationary);
-    // A 60px card at 0.75 scale, plus the 1px gap.
-    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(46);
-    expect(result.get(sidebarMarkerId("active-placeholder"))?.y).toBe(46);
+    // A 64px card at 0.75 scale, plus the 1px gap.
+    expect(result.get(sidebarMarkerId("pinned-divider"))?.y).toBe(49);
+    expect(result.get(sidebarMarkerId("active-placeholder"))?.y).toBe(49);
   });
 
   it("updates the projection when the target or measured geometry changes", () => {
