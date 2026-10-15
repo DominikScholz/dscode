@@ -15,7 +15,7 @@ import {
   type VcsStatusResult,
 } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
-import { FolderGit2Icon, TerminalIcon } from "lucide-react";
+import { GitForkIcon, TerminalIcon } from "@phosphor-icons/react";
 import { useCallback, useMemo } from "react";
 import { appAtomRegistry } from "../rpc/atomRegistry";
 import { useEnvironment, usePrimaryEnvironmentId } from "../state/environments";
@@ -864,7 +864,7 @@ export function ThreadWorktreeIndicator({
           />
         }
       >
-        <FolderGit2Icon className="size-3 text-muted-foreground/40" />
+        <GitForkIcon className="size-3 text-muted-foreground/40" />
       </TooltipTrigger>
       <TooltipPopup side="top">{tooltip}</TooltipPopup>
     </Tooltip>

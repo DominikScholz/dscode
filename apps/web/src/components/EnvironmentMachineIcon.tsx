@@ -1,6 +1,6 @@
 import type { EnvironmentMachineKind } from "@t3tools/contracts";
-import { CloudIcon, LaptopIcon, MonitorIcon, ServerIcon, type LucideProps } from "lucide-react";
-import type { FunctionComponent, SVGProps } from "react";
+import { CloudIcon, DesktopIcon, HardDrivesIcon, LaptopIcon } from "@phosphor-icons/react";
+import type { ComponentType, SVGProps } from "react";
 import { LinuxIcon } from "./Icons";
 
 // Lucide has no Apple desktops, so these two are drawn to its grammar (24
@@ -43,11 +43,14 @@ function MacStudioIcon(props: SVGProps<SVGSVGElement>) {
   );
 }
 
-const ICON_BY_KIND: Record<EnvironmentMachineKind, FunctionComponent<LucideProps>> = {
-  server: ServerIcon,
+// What callers pass: a size/color class and an accessibility flag.
+type MachineIconProps = { className?: string; "aria-hidden"?: boolean | "true" | "false" };
+
+const ICON_BY_KIND: Record<EnvironmentMachineKind, ComponentType<MachineIconProps>> = {
+  server: HardDrivesIcon,
   cloud: CloudIcon,
   linux: LinuxIcon,
-  desktop: MonitorIcon,
+  desktop: DesktopIcon,
   laptop: LaptopIcon,
   "mac-mini": MacMiniIcon,
   "mac-studio": MacStudioIcon,
@@ -65,14 +68,14 @@ export const ENVIRONMENT_MACHINE_KIND_LABELS: Record<EnvironmentMachineKind, str
 
 export function environmentMachineIcon(
   kind: EnvironmentMachineKind,
-): FunctionComponent<LucideProps> {
+): ComponentType<MachineIconProps> {
   return ICON_BY_KIND[kind];
 }
 
 export function EnvironmentMachineIcon({
   kind,
   ...props
-}: LucideProps & { readonly kind: EnvironmentMachineKind }) {
+}: MachineIconProps & { readonly kind: EnvironmentMachineKind }) {
   const Icon = ICON_BY_KIND[kind];
   return <Icon {...props} />;
 }

@@ -17,7 +17,9 @@ import {
   useRemoteOpenState,
 } from "../../remoteOpen";
 import { useEnvironment } from "../../state/environments";
-import { ChevronDownIcon, FolderClosedIcon, SquareArrowOutUpRightIcon } from "lucide-react";
+import { ArrowSquareOutIcon, CaretDownIcon } from "@phosphor-icons/react";
+// The editor list types icons as SVG components; Phosphor icons do not fit that slot.
+import { FolderClosedIcon } from "lucide-react";
 
 import { Group, GroupSeparator } from "../ui/group";
 import {
@@ -383,7 +385,7 @@ export const OpenInPicker = memo(function OpenInPicker({
         )}
         <MenuSub>
           <MenuSubTrigger density="touch" disabled={isHostEditorDenied}>
-            <SquareArrowOutUpRightIcon className="size-4" />
+            <ArrowSquareOutIcon className="size-4" />
             <MenuItemLabel>Open in…</MenuItemLabel>
           </MenuSubTrigger>
           <MenuSubPopup>{editorItems}</MenuSubPopup>
@@ -418,10 +420,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             )}
           />
         ) : isPanel ? (
-          <SquareArrowOutUpRightIcon
-            aria-hidden="true"
-            className={THREAD_DETAILS_PANEL_ICON_CLASS}
-          />
+          <ArrowSquareOutIcon aria-hidden="true" className={THREAD_DETAILS_PANEL_ICON_CLASS} />
         ) : null}
         <span
           className={cn(
@@ -452,7 +451,7 @@ export const OpenInPicker = memo(function OpenInPicker({
             />
           }
         >
-          <ChevronDownIcon
+          <CaretDownIcon
             aria-hidden="true"
             className={isPanel ? THREAD_DETAILS_PANEL_CHEVRON_CLASS : "size-4"}
           />

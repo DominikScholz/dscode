@@ -16,7 +16,7 @@ import {
   type VcsRef,
   type ThreadId,
 } from "@t3tools/contracts";
-import { ChevronDownIcon, GitBranchIcon } from "lucide-react";
+import { CaretDownIcon, GitBranchIcon } from "@phosphor-icons/react";
 import {
   useCallback,
   useDeferredValue,
@@ -799,7 +799,7 @@ export function BranchToolbarBranchSelector({
               />
             </ComposerContextLabel>
             {displayMode !== "panel" ? (
-              <ChevronDownIcon className="size-3 shrink-0 opacity-50" />
+              <CaretDownIcon className="size-3 shrink-0 opacity-50" />
             ) : null}
           </ComboboxTrigger>
         </span>

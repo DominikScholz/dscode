@@ -13,7 +13,13 @@ import {
   squashAtomCommandFailure,
 } from "@t3tools/client-runtime/state/runtime";
 import { projectScriptMenuLabel } from "@t3tools/shared/projectScripts";
-import { ChevronDownIcon, DownloadIcon, PlusIcon, SettingsIcon, WrenchIcon } from "lucide-react";
+import {
+  CaretDownIcon,
+  DownloadSimpleIcon,
+  GearIcon,
+  PlusIcon,
+  WrenchIcon,
+} from "@phosphor-icons/react";
 import React, { useCallback, useMemo, useState } from "react";
 
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
@@ -181,7 +187,7 @@ export default function ProjectScriptsControl({
             <ScriptIcon icon={fileScript.icon ?? "play"} className="size-4" />
             <MenuItemLabel>{fileScript.name}</MenuItemLabel>
             <MenuShortcut>
-              <DownloadIcon className="size-3.5" aria-label="Import" />
+              <DownloadSimpleIcon className="size-3.5" aria-label="Import" />
             </MenuShortcut>
           </MenuItem>
         ))}
@@ -235,7 +241,7 @@ export default function ProjectScriptsControl({
                     openEditDialog(script);
                   }}
                 >
-                  <SettingsIcon className="size-3.5" />
+                  <GearIcon className="size-3.5" />
                 </Button>
               </span>
             </span>
@@ -357,9 +363,7 @@ export default function ProjectScriptsControl({
                 />
               }
             >
-              <ChevronDownIcon
-                className={isPanel ? THREAD_DETAILS_PANEL_CHEVRON_CLASS : "size-4"}
-              />
+              <CaretDownIcon className={isPanel ? THREAD_DETAILS_PANEL_CHEVRON_CLASS : "size-4"} />
             </MenuTrigger>
             <MenuPopup
               align="end"
@@ -410,7 +414,7 @@ export default function ProjectScriptsControl({
                   />
                 }
               >
-                <ChevronDownIcon className={THREAD_DETAILS_PANEL_CHEVRON_CLASS} />
+                <CaretDownIcon className={THREAD_DETAILS_PANEL_CHEVRON_CLASS} />
               </MenuTrigger>
               <MenuPopup align="end" anchor={panelAnchorRef} className="w-(--anchor-width)">
                 {scriptItems}
@@ -432,7 +436,7 @@ export default function ProjectScriptsControl({
               <span className="sr-only @3xl/header-actions:not-sr-only @3xl/header-actions:ml-0.5">
                 Actions
               </span>
-              <ChevronDownIcon className="size-3.5" />
+              <CaretDownIcon className="size-3.5" />
             </MenuTrigger>
             <MenuPopup align="end">{scriptItems}</MenuPopup>
           </Menu>

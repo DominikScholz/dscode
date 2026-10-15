@@ -42,28 +42,8 @@ export function useEnvironmentStageLabel(): string {
   });
 }
 
-export function useSidebarStageBackdropVariant(enabled = true): SidebarStageBackdropVariant | null {
-  return resolveSidebarStageBackdropVariant(useEnvironmentStageLabel(), enabled);
-}
-
-/** Stage-channel header art; palettes mirror the per-channel app icons in `assets/`. */
-export function SidebarStageBackdrop({ variant }: { variant: SidebarStageBackdropVariant }) {
-  return (
-    <div
-      aria-hidden
-      className="sidebar-stage-backdrop pointer-events-none absolute inset-x-0 top-0 z-0 h-20 select-none overflow-hidden"
-    >
-      <StageBackdropArt variant={variant} />
-    </div>
-  );
-}
-
 export function StageBackdropArt({ variant }: { variant: SidebarStageBackdropVariant }) {
   return variant === "nightly" ? <NightlySkyArt /> : <DevBlueprintArt />;
-}
-
-export function StageBackdropButtonArt({ variant }: { variant: SidebarStageBackdropVariant }) {
-  return variant === "nightly" ? <NightlySkyArt compact /> : <DevBlueprintArt compact />;
 }
 
 const NIGHTLY_STARS: ReadonlyArray<{

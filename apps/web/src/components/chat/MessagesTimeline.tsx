@@ -1480,6 +1480,8 @@ const ConversationTimeline = memo(function ConversationTimeline({
       );
     return (
       <>
+        {/* Clears the floating chat header at the top of the scroll. */}
+        <div aria-hidden style={{ height: "var(--chat-header-overlay, 0px)" }} />
         {parentThreadLink === null ? leadingContent : null}
         {historyControls ? <TimelineHistoryControl {...historyControls} /> : null}
         {parentThreadLink !== null ? leadingContent : null}
@@ -2483,7 +2485,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       {row.message.inputIntent && row.message.inputIntent !== "turn_start" ? (
         <UserMessageIntentMarker intent={row.message.inputIntent} />
       ) : null}
-      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground">
+      <div className="relative max-w-[80%] rounded-2xl bg-message p-3 text-message-foreground squircle">
         <MessageAuthorHeading>You</MessageAuthorHeading>
         {(regularImages.length > 0 || userVideos.length > 0) && (
           <div className="mb-2 grid max-w-[210px] grid-cols-2 gap-2">
@@ -3285,7 +3287,7 @@ function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "event"
   return (
     <section
       className={cn(
-        "rounded-lg border px-3 py-2",
+        "rounded-2xl border px-3 py-2 squircle",
         presentation.tone === "warning" && "border-warning/25 bg-warning/5",
         presentation.tone === "danger" && "border-destructive/25 bg-destructive/5",
         presentation.tone === "success" && "border-success/20 bg-success/5",
@@ -3488,7 +3490,7 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
         {/* Virtualized rows must settle before disclosure scroll anchoring resumes. */}
         <CollapsiblePanel animate={false}>
           {expanded ? (
-            <div className="mt-1 mb-1 rounded-lg border border-border/60 bg-card/30 p-1">
+            <div className="mt-1 mb-1 rounded-2xl border border-border/60 bg-card/30 p-1 squircle">
               {members.map((item) => (
                 <V2LifecycleRow
                   environmentId={ctx.activeThreadEnvironmentId}
@@ -4417,7 +4419,7 @@ function UserMessagePreviewAnnotationDetails(props: {
   const ctx = use(TimelineRowCtx);
   const visibleElements = props.record.elements ?? [];
   return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
       {props.image?.previewUrl ? (
         <button
           type="button"
@@ -4510,7 +4512,7 @@ function UserMessageElementDetails({
     ? `${record.source.fileName}${record.source.lineNumber === null ? "" : `:${record.source.lineNumber}`}`
     : null;
   return (
-    <div className="max-w-full overflow-hidden rounded-lg border border-border/70 bg-background/70">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
       <div className="border-b border-border/70 px-3 py-2.5">
         <div className="truncate text-message-foreground text-xs font-medium">
           {record.pageTitle?.trim() || record.pageUrl}
@@ -4916,7 +4918,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   );
 
   return (
-    <div className="space-y-2 rounded-lg border border-border/70 bg-background/70 p-3">
+    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-3 squircle">
       <div className="space-y-1">
         <div className="text-xs font-medium text-foreground">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}

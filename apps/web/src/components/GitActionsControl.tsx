@@ -24,17 +24,17 @@ import * as Option from "effect/Option";
 import { type MouseEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
+  CaretDownIcon,
   CheckIcon,
-  ChevronDownIcon,
-  CloudDownloadIcon,
-  CloudUploadIcon,
-  FileDiffIcon,
-  GitBranchPlusIcon,
+  CloudArrowDownIcon,
+  CloudArrowUpIcon,
+  GitBranchIcon,
   GitCommitIcon,
-  InfoIcon,
-  LockIcon,
+  GitDiffIcon,
   GlobeIcon,
-} from "lucide-react";
+  InfoIcon,
+  LockSimpleIcon,
+} from "@phosphor-icons/react";
 import { Radio as RadioPrimitive } from "@base-ui/react/radio";
 import { RadioGroup } from "~/components/ui/radio-group";
 import { Spinner } from "~/components/ui/spinner";
@@ -299,7 +299,7 @@ function GitActionItemIcon({
   SourceControlIcon: ReturnType<typeof getSourceControlPresentation>["Icon"];
 }) {
   if (icon === "commit") return <GitCommitIcon />;
-  if (icon === "push") return <CloudUploadIcon />;
+  if (icon === "push") return <CloudArrowUpIcon />;
   return <SourceControlIcon />;
 }
 
@@ -312,17 +312,17 @@ function GitQuickActionIcon({
   className?: string;
   SourceControlIcon: ReturnType<typeof getSourceControlPresentation>["Icon"];
 }) {
-  if (quickAction.kind === "open_publish") return <CloudUploadIcon className={className} />;
-  if (quickAction.kind === "run_pull") return <CloudDownloadIcon className={className} />;
+  if (quickAction.kind === "open_publish") return <CloudArrowUpIcon className={className} />;
+  if (quickAction.kind === "run_pull") return <CloudArrowDownIcon className={className} />;
   if (quickAction.kind === "run_action") {
     if (quickAction.action === "commit") return <GitCommitIcon className={className} />;
     if (quickAction.action === "push" || quickAction.action === "commit_push") {
-      return <CloudUploadIcon className={className} />;
+      return <CloudArrowUpIcon className={className} />;
     }
     return <SourceControlIcon className={className} />;
   }
   if (quickAction.label === "Commit") return <GitCommitIcon className={className} />;
-  if (quickAction.label === "Push") return <CloudUploadIcon className={className} />;
+  if (quickAction.label === "Push") return <CloudArrowUpIcon className={className} />;
   return <InfoIcon className={className} />;
 }
 
@@ -792,7 +792,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                     value: "private" as const,
                     label: "Private",
                     description: "Only invited people",
-                    Icon: LockIcon,
+                    Icon: LockSimpleIcon,
                   },
                   {
                     value: "public" as const,
@@ -836,7 +836,7 @@ function PublishRepositoryDialog(props: PublishRepositoryDialogProps) {
                 aria-expanded={publishAdvancedOpen}
                 className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
               >
-                <ChevronDownIcon
+                <CaretDownIcon
                   className={cn(
                     "size-3.5 transition-transform",
                     publishAdvancedOpen ? "" : "-rotate-90",
@@ -1681,7 +1681,7 @@ export default function GitActionsControl({
             setIsPublishDialogOpen(true);
           }}
         >
-          <CloudUploadIcon />
+          <CloudArrowUpIcon />
           <MenuItemLabel>Publish repository...</MenuItemLabel>
         </MenuItem>
       ) : null}
@@ -1713,7 +1713,7 @@ export default function GitActionsControl({
             disabled={initAction.isPending}
             onClick={initializeGit}
           >
-            <GitBranchPlusIcon className="size-4" />
+            <GitBranchIcon className="size-4" />
             <MenuItemLabel>
               {initAction.isPending ? "Initializing..." : "Initialize Git"}
             </MenuItemLabel>
@@ -1760,7 +1760,7 @@ export default function GitActionsControl({
           disabled={!canWriteSourceControl || initAction.isPending}
           onClick={initializeGit}
         >
-          <GitBranchPlusIcon className="size-3.5" aria-hidden />
+          <GitBranchIcon className="size-3.5" aria-hidden />
           <span className={cn("ml-0.5", isPanel && THREAD_DETAILS_PANEL_LABEL_CLASS)}>
             {initAction.isPending ? "Initializing..." : "Initialize Git"}
           </span>
@@ -1888,7 +1888,7 @@ export default function GitActionsControl({
                   }
                   disabled={isGitActionRunning}
                 >
-                  <ChevronDownIcon
+                  <CaretDownIcon
                     aria-hidden="true"
                     className={isPanel ? THREAD_DETAILS_PANEL_CHEVRON_CLASS : "size-4"}
                   />
@@ -1915,7 +1915,7 @@ export default function GitActionsControl({
           disabled={!onOpenChanges}
           onClick={onOpenChanges}
         >
-          <FileDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
+          <GitDiffIcon className={THREAD_DETAILS_PANEL_ICON_CLASS} aria-hidden />
           <span className={cn("flex-1 text-left", THREAD_DETAILS_PANEL_LABEL_CLASS)}>Changes</span>
           <span className="flex items-center gap-1 font-mono text-2xs tabular-nums">
             <span className="text-success">+{formatDiffCount(changesTotals?.insertions ?? 0)}</span>
