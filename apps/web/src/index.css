@@ -273,6 +273,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --color-sidebar-row-hover: var(--sidebar-row-hover);
   --color-sidebar-row-active: var(--sidebar-row-active);
   --color-sidebar-row-selected: var(--sidebar-row-selected);
+  --color-sidebar-card: var(--sidebar-card);
+  --color-sidebar-card-hover: var(--sidebar-card-hover);
   --color-sidebar-border: var(--contrast-sidebar-border);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -1088,6 +1090,9 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   color-scheme: light;
   --radius: 0.625rem;
   --background: var(--color-zinc-25);
+  /* Resolved on the root, so subtrees that re-scope --background (the app
+     sidebar) can still paint the exact main-canvas color. */
+  --app-canvas: var(--background);
   --app-chrome-background: var(--background);
   --toolbar-background: var(--app-chrome-background);
   --toolbar-foreground: var(--foreground);
@@ -1138,11 +1143,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --update-surface: color-mix(in srgb, var(--update) 12%, transparent);
   /* Keep every sidebar primitive on the same light surface hierarchy, including
      portaled mobile sheets and settings navigation outside the app sidebar. */
-  --sidebar: var(--color-zinc-50);
+  --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
   --sidebar-muted-foreground: var(--muted-foreground);
   --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-25);
+  --sidebar-row-hover: var(--color-zinc-50);
   --sidebar-row-active: var(--color-white);
   --sidebar-row-selected: var(--color-white);
   --sidebar-border: var(--border);
@@ -1184,20 +1189,19 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
     --update-foreground: var(--color-blue-400);
     --update-surface: color-mix(in srgb, var(--update) 18%, transparent);
-    --sidebar: var(--card);
+    --sidebar: var(--background);
     --sidebar-control-surface: var(--muted);
     --sidebar-row-hover: var(--accent);
     --sidebar-row-active: var(--accent);
     --sidebar-row-selected: var(--muted);
-    --sidebar-stage-fade: var(--card);
+    --sidebar-stage-fade: var(--background);
     --terminal-cursor: rgb(180 203 255);
     --terminal-selection-background: rgb(180 203 255 / 25%);
   }
 }
 
-/* Keep both sidebar implementations (default and legacy) on the same quiet
-   zinc hierarchy: zinc-50 navigation, zinc-25 hover, and white selected/raised
-   surfaces. */
+/* Keep both sidebar implementations (default and legacy) on the canvas color so
+   the sidebar and main panel read as one surface; rows carry the hierarchy. */
 [data-app-sidebar] {
   --background: var(--color-zinc-25);
   --foreground: var(--color-zinc-800);
@@ -1209,11 +1213,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --muted-foreground: var(--color-zinc-500);
   --border: var(--color-zinc-200);
   --input: var(--color-zinc-300);
-  --sidebar: var(--color-zinc-50);
+  --sidebar: var(--app-canvas);
   --sidebar-foreground: var(--color-zinc-800);
   --sidebar-muted-foreground: var(--color-zinc-500);
   --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-25);
+  --sidebar-row-hover: var(--color-zinc-50);
   --sidebar-row-active: var(--color-white);
   --sidebar-row-selected: var(--color-white);
   --sidebar-border: var(--color-zinc-200);
@@ -1230,7 +1234,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --muted-foreground: #a3a3a3;
     --border: rgb(255 255 255 / 8%);
     --input: rgb(255 255 255 / 18%);
-    --sidebar: var(--card);
+    --sidebar: var(--app-canvas);
     --sidebar-foreground: var(--foreground);
     --sidebar-muted-foreground: var(--muted-foreground);
     --sidebar-control-surface: var(--muted);
@@ -1238,7 +1242,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --sidebar-row-active: color-mix(in srgb, var(--contrast-foreground) 11%, transparent);
     --sidebar-row-selected: color-mix(in srgb, var(--contrast-foreground) 7%, transparent);
     --sidebar-border: var(--border);
-    --sidebar-stage-fade: var(--card);
+    --sidebar-stage-fade: var(--sidebar);
   }
 }
 
@@ -1299,7 +1303,7 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --border: var(--app-theme-border);
   --input: var(--app-theme-input);
   --ring: var(--app-theme-focus);
-  --sidebar: var(--app-theme-sidebar);
+  --sidebar: var(--app-theme-canvas);
   --sidebar-foreground: var(--app-theme-sidebar-foreground);
   --sidebar-muted-foreground: var(--app-theme-sidebar-muted-foreground);
   --sidebar-control-surface: var(--app-theme-sidebar-control-surface);
@@ -1307,7 +1311,7 @@ html[data-theme-id]:not([data-theme-id=""]) {
   --sidebar-row-active: var(--app-theme-sidebar-row-active);
   --sidebar-row-selected: var(--app-theme-sidebar-row-selected);
   --sidebar-border: var(--app-theme-sidebar-border);
-  --sidebar-stage-fade: var(--app-theme-sidebar);
+  --sidebar-stage-fade: var(--app-theme-canvas);
   --code-background: var(--app-theme-code-background);
   --code-foreground: var(--app-theme-code-foreground);
   --terminal-background: var(--app-theme-terminal-background);
@@ -1499,7 +1503,7 @@ html[data-theme-id] [data-app-sidebar] {
   --muted-foreground: var(--app-theme-muted-foreground);
   --border: var(--app-theme-border);
   --input: var(--app-theme-input);
-  --sidebar: var(--app-theme-sidebar);
+  --sidebar: var(--app-canvas);
   --sidebar-foreground: var(--app-theme-sidebar-foreground);
   --sidebar-muted-foreground: var(--app-theme-sidebar-muted-foreground);
   --sidebar-control-surface: var(--app-theme-sidebar-control-surface);
@@ -1507,20 +1511,15 @@ html[data-theme-id] [data-app-sidebar] {
   --sidebar-row-active: var(--app-theme-sidebar-row-active);
   --sidebar-row-selected: var(--app-theme-sidebar-row-selected);
   --sidebar-border: var(--app-theme-sidebar-border);
-  --sidebar-stage-fade: var(--app-theme-sidebar);
-  border-color: color-mix(in srgb, var(--contrast-sidebar-foreground) 10%, transparent);
-
-  @variant dark {
-    border-color: color-mix(in srgb, var(--contrast-sidebar-foreground) 8%, transparent);
-  }
+  --sidebar-stage-fade: var(--app-canvas);
 }
 
-/* T3 Chat's panel divider is deliberately pink, and its resize affordance
-   keeps that color while hovered. Do not neutralize this branded edge. */
-html[data-theme-id="t3-chat"] [data-app-sidebar] {
-  @variant dark {
-    border-color: var(--contrast-sidebar-border);
-  }
+/* Thread cards sit one step off the sidebar canvas and lift further on hover.
+   Mixed from the sidebar's own colors so every theme gets a matching tint. */
+:root,
+[data-app-sidebar] {
+  --sidebar-card: color-mix(in srgb, var(--sidebar-foreground) 4%, var(--sidebar));
+  --sidebar-card-hover: color-mix(in srgb, var(--sidebar-foreground) 7%, var(--sidebar));
 }
 
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */

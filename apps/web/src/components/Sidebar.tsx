@@ -1,6 +1,5 @@
 import { type EnvironmentId, type ScopedProjectRef } from "@t3tools/contracts";
 import { ThreadHoverCard, ThreadHoverCardPopup } from "./ThreadHoverCard";
-import { CollapsibleSectionHeader } from "./ui/collapsible-section-header";
 import {
   setThreadChangeRequestSnapshot,
   ThreadTerminalStatusButton,
@@ -286,6 +285,7 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrom
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { Toggle } from "./ui/toggle";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import {
   composerDraftHasUserContent,
@@ -305,10 +305,12 @@ const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
-// Fresh keys deliberately reset both shelves to collapsed for existing users.
-const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
-const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
-const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
+// Which sections the list shows, chosen with the filter buttons under it.
+const SIDEBAR_SECTION_FILTER_KEY = "t3code:sidebar:section-filter";
+const SidebarSectionFilter = Schema.Array(
+  Schema.Literals(["pinned", "active", "working", "snoozed", "settled"]),
+);
+const DEFAULT_SIDEBAR_SECTION_FILTER: readonly SidebarSection[] = ["pinned", "active"];
 
 // Working beta: when this client saw each thread leave the Working shelf.
 // Module scope keeps the inbox order across routes that unmount the sidebar.
@@ -795,41 +797,65 @@ function SidebarDragBoundary(props: {
   );
 }
 
-// Shelf headers stay visible and keep their measured height while dragging.
+const SIDEBAR_SECTION_FILTER_OPTIONS: ReadonlyArray<{
+  section: SidebarSection;
+  label: string;
+  // Sections that are often empty only get a button while they have threads.
+  hideWhenEmpty: boolean;
+}> = [
+  { section: "pinned", label: "Pinned", hideWhenEmpty: true },
+  { section: "active", label: "Active", hideWhenEmpty: false },
+  { section: "working", label: "Working", hideWhenEmpty: true },
+  { section: "snoozed", label: "Snoozed", hideWhenEmpty: true },
+  { section: "settled", label: "Settled", hideWhenEmpty: false },
+];
+
+// Picks which sections the thread list shows. Click shows one section,
+// shift+click adds or removes one.
+function SidebarSectionFilterBar(props: {
+  selected: readonly SidebarSection[];
+  counts: Record<SidebarSection, number>;
+  onSelect: (section: SidebarSection, additive: boolean) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Thread sections (shift-click to show several)"
+      className="flex shrink-0 flex-wrap gap-1 px-2 pt-2 pb-1"
+    >
+      {SIDEBAR_SECTION_FILTER_OPTIONS.map(({ section, label, hideWhenEmpty }) => {
+        const count = props.counts[section];
+        const pressed = props.selected.includes(section);
+        if (hideWhenEmpty && count === 0) return null;
+        return (
+          <Toggle
+            key={section}
+            variant="pill"
+            size="segmented"
+            pressed={pressed}
+            data-testid={`sidebar-section-filter-${section}`}
+            onClick={(event) => props.onSelect(section, event.shiftKey)}
+          >
+            {label}
+            <span className="tabular-nums opacity-60">{count}</span>
+          </Toggle>
+        );
+      })}
+    </div>
+  );
+}
+
+// Shelf boundaries for the drag strategy. The filter buttons under the list
+// replaced the visible headers, so these stay zero height and unlabeled.
 function SidebarSectionHeader(props: {
   marker: "working-header" | "snoozed-header" | "settled-header";
-  label: string;
-  className?: string;
-  // While dragging, the settled header reads at full strength and takes the
-  // accent while the lifted row is over it.
-  dragging?: boolean;
-  isDropTarget?: boolean;
-  toggle: { expanded: boolean; onToggle: () => void };
 }) {
-  const shelf =
-    props.marker === "working-header"
-      ? "working"
-      : props.marker === "snoozed-header"
-        ? "snoozed"
-        : "settled";
-  const snoozed = shelf === "snoozed";
   return (
     <SortableSidebarMarker
       marker={props.marker}
       data-testid={`sidebar-${props.marker}`}
-      className={cn("mx-0.5 h-8", props.className)}
-    >
-      <CollapsibleSectionHeader
-        onClick={props.toggle.onToggle}
-        expanded={props.toggle.expanded}
-        tone={
-          props.isDropTarget ? "accent" : props.dragging ? "emphasized" : snoozed ? "info" : "muted"
-        }
-        data-testid={`sidebar-${shelf}-shelf-toggle`}
-      >
-        {props.label}
-      </CollapsibleSectionHeader>
-    </SortableSidebarMarker>
+      className="pointer-events-none mx-0.5 -mb-px h-0"
+    />
   );
 }
 
@@ -1585,10 +1611,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     ],
   );
 
-  // All sidebar rows share one surface model. Live threads used to look
-  // like elevated cards while settled threads were plain rows, leaving neither
-  // a useful hierarchy nor a reliable hover cue. Status now lives in the row
-  // content; surface is reserved for interaction (hover, multi-select, route).
+  // All sidebar rows share one surface model: a tinted card at rest, lifted on
+  // hover, with stronger fills for multi-select and the open route. Status
+  // lives in the row content.
   const rowSurfaceClassName = cn(
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
@@ -1599,8 +1624,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
         : hasUnsentDraft
           ? cn(draftSurfaceClassName, "text-sidebar-foreground")
           : shouldRecede
-            ? "text-sidebar-muted-foreground/75 hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
-            : "bg-transparent text-sidebar-foreground hover:bg-sidebar-row-hover",
+            ? "bg-sidebar-card text-sidebar-muted-foreground/75 hover:bg-sidebar-card-hover hover:text-sidebar-foreground"
+            : "bg-sidebar-card text-sidebar-foreground hover:bg-sidebar-card-hover",
     // Background work fades as a whole row, status label included, so it
     // takes less attention than rows that need a human (input, approval).
     shouldRecede &&
@@ -3024,84 +3049,72 @@ export default function Sidebar() {
     () => setSettledVisibleCount((count) => count + SETTLED_TAIL_PAGE_COUNT),
     [],
   );
-  const [settledShelfExpanded, setSettledShelfExpanded] = useLocalStorage(
-    SETTLED_SHELF_EXPANDED_KEY,
-    false,
-    Schema.Boolean,
+  const [sectionFilter, setSectionFilter] = useLocalStorage(
+    SIDEBAR_SECTION_FILTER_KEY,
+    DEFAULT_SIDEBAR_SECTION_FILTER,
+    SidebarSectionFilter,
   );
-  const toggleSettledShelf = useCallback(
-    () => setSettledShelfExpanded((value) => !value),
-    [setSettledShelfExpanded],
+  // A click shows only that section; shift+click adds or removes it, never
+  // leaving the list without a section.
+  const selectSidebarSection = useCallback(
+    (section: SidebarSection, additive: boolean) =>
+      setSectionFilter((current) => {
+        if (!additive) return [section];
+        if (!current.includes(section)) return [...current, section];
+        return current.length > 1 ? current.filter((entry) => entry !== section) : current;
+      }),
+    [setSectionFilter],
   );
-  const renderedSettledThreads = useMemo(() => {
-    if (settledShelfExpanded) return visibleSettledThreads;
-    if (routeThreadKey === null) return EMPTY_THREADS;
-    const routeThread = visibleSettledThreads.find(
-      (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-    );
-    return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, settledShelfExpanded, visibleSettledThreads]);
-
-  // The snoozed shelf is collapsed by default: out of the way, never gone.
-  // Collapsed threads don't render (and so don't participate in jump
-  // shortcuts or multi-select), matching the settled tail's paging model.
-  const [snoozedShelfExpanded, setSnoozedShelfExpanded] = useLocalStorage(
-    SNOOZED_SHELF_EXPANDED_KEY,
-    false,
-    Schema.Boolean,
+  const pinnedShown = sectionFilter.includes("pinned");
+  const activeShown = sectionFilter.includes("active");
+  const workingShown = sectionFilter.includes("working");
+  const snoozedShown = sectionFilter.includes("snoozed");
+  const settledShown = sectionFilter.includes("settled");
+  // A hidden section still keeps the open thread's row, so its highlight and
+  // quick actions stay reachable after a deep link, search, or a status change.
+  const keepRouteThread = useCallback(
+    (threads: readonly EnvironmentThreadShell[]) => {
+      if (routeThreadKey === null) return EMPTY_THREADS;
+      const routeThread = threads.find(
+        (thread) =>
+          scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
+      );
+      return routeThread === undefined ? EMPTY_THREADS : [routeThread];
+    },
+    [routeThreadKey],
   );
-  const toggleSnoozedShelf = useCallback(
-    () => setSnoozedShelfExpanded((value) => !value),
-    [setSnoozedShelfExpanded],
+  const visiblePinnedThreads = useMemo(
+    () => (pinnedShown ? pinnedThreads : keepRouteThread(pinnedThreads)),
+    [keepRouteThread, pinnedShown, pinnedThreads],
   );
-  const visibleSnoozedThreads = useMemo(() => {
-    if (snoozedShelfExpanded) return snoozedThreads;
-    // The open thread must never vanish behind the collapsed shelf: a
-    // snoozed thread reached by route (deep link, open before snoozing
-    // elsewhere) keeps its row — with highlight and wake affordance — same
-    // exception the settled tail's "Show more" makes.
-    if (routeThreadKey === null) return EMPTY_THREADS;
-    const routeThread = snoozedThreads.find(
-      (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-    );
-    return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, snoozedShelfExpanded, snoozedThreads]);
-
-  // The Working shelf (beta) collapses the same way, with the same route
-  // exception: sending a message folds the open thread into the shelf, and
-  // its row must stay visible there.
-  const [workingShelfExpanded, setWorkingShelfExpanded] = useLocalStorage(
-    WORKING_SHELF_EXPANDED_KEY,
-    false,
-    Schema.Boolean,
+  const visibleActiveThreads = useMemo(
+    () => (activeShown ? activeThreads : keepRouteThread(activeThreads)),
+    [activeShown, activeThreads, keepRouteThread],
   );
-  const toggleWorkingShelf = useCallback(
-    () => setWorkingShelfExpanded((value) => !value),
-    [setWorkingShelfExpanded],
+  const visibleWorkingThreads = useMemo(
+    () => (workingShown ? workingThreads : keepRouteThread(workingThreads)),
+    [keepRouteThread, workingShown, workingThreads],
   );
-  const visibleWorkingThreads = useMemo(() => {
-    if (workingShelfExpanded) return workingThreads;
-    if (routeThreadKey === null) return EMPTY_THREADS;
-    const routeThread = workingThreads.find(
-      (thread) =>
-        scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)) === routeThreadKey,
-    );
-    return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-  }, [routeThreadKey, workingShelfExpanded, workingThreads]);
+  const visibleSnoozedThreads = useMemo(
+    () => (snoozedShown ? snoozedThreads : keepRouteThread(snoozedThreads)),
+    [keepRouteThread, snoozedShown, snoozedThreads],
+  );
+  const renderedSettledThreads = useMemo(
+    () => (settledShown ? visibleSettledThreads : keepRouteThread(visibleSettledThreads)),
+    [keepRouteThread, settledShown, visibleSettledThreads],
+  );
 
   const orderedThreads = useMemo(
     () => [
-      ...pinnedThreads,
-      ...activeThreads,
+      ...visiblePinnedThreads,
+      ...visibleActiveThreads,
       ...visibleWorkingThreads,
       ...visibleSnoozedThreads,
       ...renderedSettledThreads,
     ],
     [
-      pinnedThreads,
-      activeThreads,
+      visiblePinnedThreads,
+      visibleActiveThreads,
       visibleWorkingThreads,
       visibleSnoozedThreads,
       renderedSettledThreads,
@@ -3836,10 +3849,10 @@ export default function Sidebar() {
       return [];
     }
     const items: SidebarListItem[] = [{ kind: "marker", marker: "pinned-header" }];
-    const pinnedRows = rowsOf(pinnedThreads, "pinned");
+    const pinnedRows = rowsOf(visiblePinnedThreads, "pinned");
     items.push(...pinnedRows);
     items.push({ kind: "marker", marker: "pinned-divider" });
-    const activeRows = rowsOf(activeThreads, "active");
+    const activeRows = rowsOf(visibleActiveThreads, "active");
     items.push({ kind: "marker", marker: "active-placeholder" });
     items.push(...activeRows);
     if (workingThreads.length > 0) {
@@ -3856,11 +3869,13 @@ export default function Sidebar() {
     items.push(...settledRows);
     return items;
   }, [
-    activeThreads,
-    pinnedThreads,
+    activeThreads.length,
+    pinnedThreads.length,
     renderedSettledThreads,
     settledThreads.length,
     snoozedThreads.length,
+    visibleActiveThreads,
+    visiblePinnedThreads,
     visibleSnoozedThreads,
     visibleWorkingThreads,
     workingThreads.length,
@@ -3947,7 +3962,7 @@ export default function Sidebar() {
         boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
         settledOrder: draggedSettledOrder,
         ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
-        settledExpanded: settledShelfExpanded,
+        settledExpanded: settledShown,
         settledVisibleCount,
         routeThreadKey,
         snoozedThreadCount: snoozedThreads.length,
@@ -3957,7 +3972,7 @@ export default function Sidebar() {
       draggedSettledOrder,
       isContextDrag,
       routeThreadKey,
-      settledShelfExpanded,
+      settledShown,
       settledVisibleCount,
       sidebarListItems,
       snoozedThreads.length,
@@ -5456,61 +5471,10 @@ export default function Sidebar() {
                             );
                             break;
                           case "working-header":
-                            items.push(
-                              <SidebarSectionHeader
-                                key="working-shelf-header"
-                                marker="working-header"
-                                className="mt-auto"
-                                label={
-                                  workingShelfExpanded
-                                    ? "Working"
-                                    : `Working (${workingThreads.length})`
-                                }
-                                toggle={{
-                                  expanded: workingShelfExpanded,
-                                  onToggle: toggleWorkingShelf,
-                                }}
-                              />,
-                            );
-                            break;
                           case "snoozed-header":
-                            items.push(
-                              <SidebarSectionHeader
-                                key="snoozed-shelf-header"
-                                marker="snoozed-header"
-                                className={cn(workingThreads.length === 0 && "mt-auto")}
-                                label={
-                                  snoozedShelfExpanded
-                                    ? "Snoozed"
-                                    : `Snoozed (${snoozedThreads.length})`
-                                }
-                                toggle={{
-                                  expanded: snoozedShelfExpanded,
-                                  onToggle: toggleSnoozedShelf,
-                                }}
-                              />,
-                            );
-                            break;
                           case "settled-header":
                             items.push(
-                              <SidebarSectionHeader
-                                key="settled-shelf-header"
-                                marker="settled-header"
-                                className={cn(
-                                  workingThreads.length + snoozedThreads.length === 0 && "mt-auto",
-                                )}
-                                label={
-                                  settledShelfExpanded
-                                    ? "Settled"
-                                    : `Settled (${settledThreads.length})`
-                                }
-                                dragging={from !== null}
-                                isDropTarget={dragTargetSection === "settled"}
-                                toggle={{
-                                  expanded: settledShelfExpanded,
-                                  onToggle: toggleSettledShelf,
-                                }}
-                              />,
+                              <SidebarSectionHeader key={item.marker} marker={item.marker} />,
                             );
                             break;
                           case "settled-placeholder":
@@ -5535,7 +5499,7 @@ export default function Sidebar() {
                       }
                       return items;
                     })()}
-                    {settledShelfExpanded && hiddenSettledCount > 0 ? (
+                    {settledShown && hiddenSettledCount > 0 ? (
                       <li className="list-none">
                         <button
                           type="button"
@@ -5582,6 +5546,19 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
+      {!isSearchingThreads ? (
+        <SidebarSectionFilterBar
+          selected={sectionFilter}
+          counts={{
+            pinned: pinnedThreads.length,
+            active: activeThreads.length,
+            working: workingThreads.length,
+            snoozed: snoozedThreads.length,
+            settled: settledThreads.length,
+          }}
+          onSelect={selectSidebarSection}
+        />
+      ) : null}
       <SidebarChromeFooter />
     </>
   );
