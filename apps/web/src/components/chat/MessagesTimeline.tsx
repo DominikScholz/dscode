@@ -1125,6 +1125,9 @@ const ConversationTimeline = memo(function ConversationTimeline({
     };
   }, [citationAlwaysRender, restoringAlwaysRender, fullscreenAppRowId]);
   const [minimapHitStripWidth, setMinimapHitStripWidth] = useState(0);
+  // Sized to the part of the chat canvas hidden under the sidebar (see
+  // ChatCanvas), so the minimap gutter is measured from the visible edge.
+  const [overlayInsetProbe, setOverlayInsetProbe] = useState<HTMLDivElement | null>(null);
   const [minimapCurrentIndex, setMinimapCurrentIndex] = useState<number | null>(null);
   const handleAnchorReady = useCallback(
     (info: { anchorIndex: number | undefined }) => {
@@ -1320,7 +1323,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
     }
 
     const measure = () => {
-      const viewportWidth = timelineViewportElement.getBoundingClientRect().width;
+      const overlayInset = overlayInsetProbe?.getBoundingClientRect().width ?? 0;
+      // The gutter helpers split the free width evenly; dropping the hidden
+      // inset from both sides leaves the visible left gutter.
+      const viewportWidth =
+        timelineViewportElement.getBoundingClientRect().width - 2 * overlayInset;
       // Without a mounted row, treat the column as full width so the strip stays inert.
       const contentWidth =
         timelineViewportElement
@@ -1340,12 +1347,14 @@ const ConversationTimeline = memo(function ConversationTimeline({
     const frame = requestAnimationFrame(measure);
 
     const stopObserving = observeResize(timelineViewportElement, measure);
+    const stopObservingInset = overlayInsetProbe ? observeResize(overlayInsetProbe, measure) : null;
 
     return () => {
       cancelAnimationFrame(frame);
       stopObserving();
+      stopObservingInset?.();
     };
-  }, [timelineViewportElement, rows.length, reportContentOverflow, chatWidth]);
+  }, [timelineViewportElement, overlayInsetProbe, rows.length, reportContentOverflow, chatWidth]);
 
   const sharedState = useMemo<TimelineRowSharedState>(
     () => ({
@@ -1685,6 +1694,11 @@ const ConversationTimeline = memo(function ConversationTimeline({
               ListHeaderComponent={listHeader}
               ListFooterComponent={timelineListFooter}
             />
+            <div
+              ref={setOverlayInsetProbe}
+              aria-hidden
+              className="pointer-events-none invisible absolute top-0 left-0 h-0 w-(--chat-window-offset,0px)"
+            />
             <TimelineMinimap
               items={minimapItems}
               hasPersistentGutter={minimapHasPersistentGutter}
@@ -1859,7 +1873,8 @@ function TimelineMinimap({
   return (
     <div
       className={cn(
-        "group/minimap pointer-events-none absolute inset-y-0 left-0 z-40 hidden w-18 [@media(pointer:fine)]:block",
+        // Sticks to the visible edge of the chat canvas, next to the sidebar.
+        "group/minimap pointer-events-none absolute inset-y-0 left-(--chat-window-offset,0px) z-40 hidden w-18 [@media(pointer:fine)]:block",
         hasPersistentGutter
           ? "opacity-100"
           : "opacity-0 transition-opacity duration-150 hover:opacity-100 focus-within:opacity-100",

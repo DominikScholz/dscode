@@ -11490,8 +11490,9 @@ export default function ChatView(props: ChatViewProps) {
           />
         </header>
 
-        {/* Main content area with optional plan sidebar */}
-        <div className="relative flex min-h-0 min-w-0 flex-1">
+        {/* Main content area with optional plan sidebar. Clips the chat canvas,
+            which reaches left under the sidebar to center on the window. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip">
           {/* Chat column */}
           <ThreadFindCanvas
             findOptions={{

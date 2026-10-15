@@ -1246,17 +1246,6 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   }
 }
 
-/* The desktop sidebar floats over the main panel so the thread centers on the
-   window. While it is open, page headers start past it. */
-@media (width >= 48rem) {
-  [data-slot="sidebar-wrapper"]:has(> [data-slot="sidebar"][data-state="expanded"])
-    [data-slot="sidebar-inset"] {
-    --workspace-gutter-start: calc(
-      var(--sidebar-width) + env(safe-area-inset-left) + var(--workspace-gutter)
-    );
-  }
-}
-
 /* Theme files are expressed in app color roles and mapped to the existing
    semantic surface tokens here. Keep this block after the sidebar-version
    compatibility overrides so both navigation implementations receive the

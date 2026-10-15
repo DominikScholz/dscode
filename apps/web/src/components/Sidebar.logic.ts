@@ -1456,3 +1456,21 @@ export function sortScopedProjectsForSidebar<
       left.id.localeCompare(right.id),
   );
 }
+
+/**
+ * Gathers threads into runs per project, keeping the incoming order inside a
+ * run and ordering runs by their first thread, so the sidebar can label each
+ * project once.
+ */
+export function groupThreadsByProject<
+  T extends { readonly environmentId: string; readonly projectId: string },
+>(threads: readonly T[]): T[] {
+  const groups = new Map<string, T[]>();
+  for (const thread of threads) {
+    const key = `${thread.environmentId}:${thread.projectId}`;
+    const group = groups.get(key);
+    if (group) group.push(thread);
+    else groups.set(key, [thread]);
+  }
+  return [...groups.values()].flat();
+}

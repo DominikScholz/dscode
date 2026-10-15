@@ -231,6 +231,7 @@ import {
   type SidebarListItem,
   type SidebarListMarker,
   type SidebarSection,
+  groupThreadsByProject,
 } from "./Sidebar.logic";
 import { resolveLocalCheckoutBranchMismatch } from "./BranchToolbar.logic";
 import {
@@ -864,6 +865,24 @@ function SidebarSectionFilterBar(props: {
   );
 }
 
+// Names the project group a run of rows belongs to. Decorative: each row's
+// accessible label already carries its project.
+function SidebarProjectDivider(props: SidebarProjectGroup) {
+  return (
+    <div
+      aria-hidden
+      className="flex h-7 items-center gap-1.5 px-2.5 pt-2 text-xs font-medium text-secondary-label"
+    >
+      {props.project ? (
+        <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+      ) : null}
+      <span className="min-w-0 truncate">{props.label}</span>
+    </div>
+  );
+}
+
+type SidebarProjectGroup = { label: string; project: EnvironmentProject | null };
+
 // Shelf boundaries for the drag strategy. The filter buttons under the list
 // replaced the visible headers, so these stay zero height and unlabeled.
 function SidebarSectionHeader(props: {
@@ -1175,6 +1194,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // the descriptor is not loaded. Pinning itself lives in the context menu.
   pinningSupported: boolean;
   isPinned: boolean;
+  // Project shown as a divider above the row when it tops its project group
+  // (the list stacks bottom-up, so that is the group's last row).
+  group: SidebarProjectGroup | null;
   // Present on rows whose server supports every drop outcome: dnd-kit
   // sortable bag applied to the row root so the whole row drags (the
   // pointer sensor's distance constraint keeps plain clicks working).
@@ -1848,6 +1870,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           sortable?.isDragging && "relative z-20",
         )}
       >
+        {props.group !== null ? <SidebarProjectDivider {...props.group} /> : null}
         <Tooltip disabled={sortable?.isDragging}>
           <TooltipTrigger
             render={
@@ -2008,11 +2031,12 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
       {...sortableRootProps}
       {...(fileDropHandlers ?? {})}
       className={cn(
-        // Matches the h-[4.875rem] content box; the py-0.5 padding is added on top.
-        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_78px]",
+        // Matches the h-[3.5rem] content box; the py-0.5 padding is added on top.
+        "list-none py-0.5 [content-visibility:auto] [contain-intrinsic-size:auto_60px]",
         sortable?.isDragging && "relative z-20",
       )}
     >
+      {props.group !== null ? <SidebarProjectDivider {...props.group} /> : null}
       <Tooltip disabled={snoozeMenuOpen || sortable?.isDragging}>
         <TooltipTrigger
           render={
@@ -2033,29 +2057,22 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
           }
         >
           {accessibleTitle}
-          <div className="relative z-10 h-[4.875rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+          <div className="relative z-10 h-[3.5rem] px-(--sidebar-row-content-inset) py-(--sidebar-content-inset)">
+            {/* Two rows: title with status, then branch and providers. The
+                project lives in the group divider above the card. */}
             <div className="flex h-5 min-w-0 items-center gap-1.5">
               {draftIndicator}
-              {props.project ? (
-                <ProjectFavicon project={props.project} className="size-4 shrink-0" />
-              ) : null}
-              {props.projectDisplayName ? (
-                <span
-                  className={cn(
-                    "min-w-0 flex-1 truncate text-secondary-label text-xs",
-                    shouldRecede ? "font-normal" : "font-medium",
-                  )}
-                >
-                  {props.projectDisplayName}
+              {title}
+              {isRegeneratingTitle ? (
+                <span role="status" className="sr-only">
+                  Regenerating title
                 </span>
-              ) : (
-                <span className="flex-1" />
-              )}
+              ) : null}
               {pinIndicator}
               {/* The visible state owns this slot's width: status at rest,
                   actions on hover/keyboard focus or while the popover is open. Keeping
-                  the hidden state out of flow lets the project label reclaim
-                  space without either state overlapping it. */}
+                  the hidden state out of flow lets the title reclaim space
+                  without either state overlapping it. */}
               {sortable?.isDragging ? (
                 dragDestination
               ) : (
@@ -2204,15 +2221,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
                   release click still fires and is consumed. */}
               {props.sweepAction !== null ? dragDestination : null}
             </div>
-            <div className="mt-1 flex min-w-0">
-              {title}
-              {isRegeneratingTitle ? (
-                <span role="status" className="sr-only">
-                  Regenerating title
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
+            <div className="mt-1 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs">
               {/* Always the branch. The plan step used to take this slot while
                   working, but it truncated to a half-sentence and dropped the
                   branch, so the row lost its most stable identifier. */}
@@ -2928,9 +2937,13 @@ export default function Sidebar() {
     // sort, or mixed-version fleets would render different pinned orders on
     // web and mobile from the same data.
     const sortedPinned = sortPinnedThreadsForSidebar(pinned);
-    const sortedActive = workingShelfEnabled
-      ? sortInboxThreadsByReturn(active, inboxReturns.returnedAt)
-      : sortThreadsForSidebar(active);
+    // Every section below is gathered by project so each gets one divider.
+    // Pins keep their arranged order.
+    const sortedActive = groupThreadsByProject(
+      workingShelfEnabled
+        ? sortInboxThreadsByReturn(active, inboxReturns.returnedAt)
+        : sortThreadsForSidebar(active),
+    );
     return {
       pinnedThreads:
         optimisticDrop?.section !== "pinned" || optimisticDrop.order === null
@@ -2951,14 +2964,16 @@ export default function Sidebar() {
               getId: (thread) => scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
             }),
       // Newest send first; finishing and waking again do not move a row.
-      workingThreads: sortWorkingThreadsBySend(working),
+      workingThreads: groupThreadsByProject(sortWorkingThreadsBySend(working)),
       // Soonest wake first: "what comes back next" is the shelf's question.
-      snoozedThreads: snoozed.toSorted(
-        (left, right) =>
-          firstValidTimestampMs(left.snoozedUntil ?? null) -
-          firstValidTimestampMs(right.snoozedUntil ?? null),
+      snoozedThreads: groupThreadsByProject(
+        snoozed.toSorted(
+          (left, right) =>
+            firstValidTimestampMs(left.snoozedUntil ?? null) -
+            firstValidTimestampMs(right.snoozedUntil ?? null),
+        ),
       ),
-      settledThreads: sortSettledThreads(settled),
+      settledThreads: groupThreadsByProject(sortSettledThreads(settled)),
       snoozeNow: preciseNow,
     };
   }, [
@@ -5308,6 +5323,7 @@ export default function Sidebar() {
                       const renderThreadRowInner = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
+                        group: SidebarProjectGroup | null,
                         sortable?: SortableThreadRowBag,
                       ) => {
                         const threadKey = scopedThreadKey(
@@ -5326,6 +5342,7 @@ export default function Sidebar() {
                             // Fade between card and compact rows while the outer
                             // sortable wrapper keeps its identity during a drag.
                             key={`${threadKey}:${rowVariant}`}
+                            group={group}
                             thread={thread}
                             variant={rowVariant}
                             // Snoozed rows wake, settled rows un-settle, and cards settle.
@@ -5427,6 +5444,7 @@ export default function Sidebar() {
                       const renderThreadRow = (
                         thread: EnvironmentThreadShell,
                         section: SidebarSection,
+                        group: SidebarProjectGroup | null,
                       ) => {
                         const threadKey = scopedThreadKey(
                           scopeThreadRef(thread.environmentId, thread.id),
@@ -5444,7 +5462,7 @@ export default function Sidebar() {
                               optimisticDrop !== null
                             }
                           >
-                            {(bag) => renderThreadRowInner(thread, section, bag)}
+                            {(bag) => renderThreadRowInner(thread, section, group, bag)}
                           </SortableThreadRow>
                         );
                       };
@@ -5460,9 +5478,25 @@ export default function Sidebar() {
                           onDraftContextMenu={handleDraftContextMenu}
                         />,
                       ];
-                      for (const item of sidebarListItems) {
+                      const projectKeyOf = (thread: EnvironmentThreadShell) =>
+                        `${thread.environmentId}:${thread.projectId}` as const;
+                      for (const [index, item] of sidebarListItems.entries()) {
                         if (item.kind === "thread") {
-                          items.push(renderThreadRow(threadByKey.get(item.key)!, item.section));
+                          const thread = threadByKey.get(item.key)!;
+                          // Bottom-up list: a group's divider rides on its last
+                          // row, which renders at the top of the group.
+                          const next = sidebarListItems[index + 1];
+                          const endsGroup =
+                            next?.kind !== "thread" ||
+                            projectKeyOf(threadByKey.get(next.key)!) !== projectKeyOf(thread);
+                          const group = endsGroup
+                            ? {
+                                label:
+                                  projectDisplayNameByKey.get(projectKeyOf(thread)) ?? "No project",
+                                project: projectByKey.get(projectKeyOf(thread)) ?? null,
+                              }
+                            : null;
+                          items.push(renderThreadRow(thread, item.section, group));
                           continue;
                         }
                         switch (item.marker) {
