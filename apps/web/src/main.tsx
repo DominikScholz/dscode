@@ -1,5 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
+import { IconContext } from "@phosphor-icons/react";
 import { createHashHistory, createBrowserHistory } from "@tanstack/react-router";
 
 import "./index.css";
@@ -14,6 +15,8 @@ import {
 } from "./lib/windowControlsOverlay";
 import { AppRoot } from "./AppRoot";
 import { clearChunkReloadGuard, reloadOnceForChunkLoadError } from "./lib/chunkReloadGuard";
+
+const PHOSPHOR_ICON_DEFAULTS = { weight: "bold" } as const;
 
 prepareProviderAuthDelivery();
 
@@ -72,11 +75,14 @@ export const startup = Promise.all([
     if (!chunkLoadFailed) clearChunkReloadGuard();
     ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
       <React.StrictMode>
-        {ManagedAuthShell && clerkPublishableKey ? (
-          <ManagedAuthShell publishableKey={clerkPublishableKey}>{app}</ManagedAuthShell>
-        ) : (
-          app
-        )}
+        {/* Phosphor icons default to the bold weight app-wide. */}
+        <IconContext.Provider value={PHOSPHOR_ICON_DEFAULTS}>
+          {ManagedAuthShell && clerkPublishableKey ? (
+            <ManagedAuthShell publishableKey={clerkPublishableKey}>{app}</ManagedAuthShell>
+          ) : (
+            app
+          )}
+        </IconContext.Provider>
       </React.StrictMode>,
     );
   })

@@ -76,7 +76,6 @@ import {
   EyeIcon,
   FolderIcon,
   GitBranchIcon,
-  ListFilterIcon,
   MessageCircleQuestionIcon,
   PinIcon,
   PinOffIcon,
@@ -286,6 +285,15 @@ import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarT
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Toggle } from "./ui/toggle";
+import {
+  ArchiveIcon,
+  ChatsCircleIcon,
+  ClockCountdownIcon,
+  FunnelSimpleIcon,
+  HammerIcon,
+  PushPinIcon,
+  type Icon,
+} from "@phosphor-icons/react";
 import { MiddleTruncate } from "./ui/middle-truncate";
 import {
   composerDraftHasUserContent,
@@ -741,7 +749,7 @@ function SidebarSectionPlaceholder(props: {
       {props.showHint ? (
         <div
           className={cn(
-            "absolute inset-x-0 top-0 flex h-9 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/25 text-xs text-sidebar-foreground/80",
+            "absolute inset-x-0 bottom-0 flex h-9 items-center justify-center rounded-md border border-dashed border-sidebar-foreground/25 text-xs text-sidebar-foreground/80",
             props.isDropTarget && "border-primary/40 bg-primary/5 text-primary",
           )}
         >
@@ -760,6 +768,7 @@ type SidebarSweepAction = "settle" | "unsettle" | "unsnooze";
 
 // Zero-height markers reserve no label space at rest. During a drag the
 // sorting strategy opens 24px for a 16px label with 4px clearance on each side.
+// The list stacks bottom-up, so labels hang upward from their marker.
 const SIDEBAR_DRAG_LABEL_HEIGHT = 24;
 
 function SidebarDragBoundary(props: {
@@ -775,7 +784,7 @@ function SidebarDragBoundary(props: {
       className="pointer-events-none relative mx-0.5 -mb-px h-0"
     >
       {props.visible ? (
-        <div className="sidebar-drag-boundary-label absolute inset-x-2 top-1 flex h-4 items-center gap-2">
+        <div className="sidebar-drag-boundary-label absolute inset-x-2 bottom-1 flex h-4 items-center gap-2">
           <span
             className={cn(
               "shrink-0 text-xs font-medium",
@@ -800,14 +809,15 @@ function SidebarDragBoundary(props: {
 const SIDEBAR_SECTION_FILTER_OPTIONS: ReadonlyArray<{
   section: SidebarSection;
   label: string;
+  icon: Icon;
   // Sections that are often empty only get a button while they have threads.
   hideWhenEmpty: boolean;
 }> = [
-  { section: "pinned", label: "Pinned", hideWhenEmpty: true },
-  { section: "active", label: "Active", hideWhenEmpty: false },
-  { section: "working", label: "Working", hideWhenEmpty: true },
-  { section: "snoozed", label: "Snoozed", hideWhenEmpty: true },
-  { section: "settled", label: "Settled", hideWhenEmpty: false },
+  { section: "pinned", label: "Pinned", icon: PushPinIcon, hideWhenEmpty: true },
+  { section: "active", label: "Active", icon: ChatsCircleIcon, hideWhenEmpty: false },
+  { section: "working", label: "Working", icon: HammerIcon, hideWhenEmpty: true },
+  { section: "snoozed", label: "Snoozed", icon: ClockCountdownIcon, hideWhenEmpty: true },
+  { section: "settled", label: "Settled", icon: ArchiveIcon, hideWhenEmpty: false },
 ];
 
 // Picks which sections the thread list shows. Click shows one section,
@@ -823,24 +833,33 @@ function SidebarSectionFilterBar(props: {
       aria-label="Thread sections (shift-click to show several)"
       className="flex shrink-0 flex-wrap gap-1 px-2 pt-2 pb-1"
     >
-      {SIDEBAR_SECTION_FILTER_OPTIONS.map(({ section, label, hideWhenEmpty }) => {
-        const count = props.counts[section];
-        const pressed = props.selected.includes(section);
-        if (hideWhenEmpty && count === 0) return null;
-        return (
-          <Toggle
-            key={section}
-            variant="pill"
-            size="segmented"
-            pressed={pressed}
-            data-testid={`sidebar-section-filter-${section}`}
-            onClick={(event) => props.onSelect(section, event.shiftKey)}
-          >
-            {label}
-            <span className="tabular-nums opacity-60">{count}</span>
-          </Toggle>
-        );
-      })}
+      {SIDEBAR_SECTION_FILTER_OPTIONS.map(
+        ({ section, label, icon: SectionIcon, hideWhenEmpty }) => {
+          const count = props.counts[section];
+          const pressed = props.selected.includes(section);
+          if (hideWhenEmpty && count === 0) return null;
+          return (
+            <Tooltip key={section}>
+              <TooltipTrigger
+                render={
+                  <Toggle
+                    variant="pill"
+                    size="segmented"
+                    pressed={pressed}
+                    aria-label={`${label}, ${count}`}
+                    data-testid={`sidebar-section-filter-${section}`}
+                    onClick={(event) => props.onSelect(section, event.shiftKey)}
+                  />
+                }
+              >
+                <SectionIcon />
+                <span className="tabular-nums">{count}</span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">{label}</TooltipPopup>
+            </Tooltip>
+          );
+        },
+      )}
     </div>
   );
 }
@@ -3495,7 +3514,7 @@ export default function Sidebar() {
   const threadListRef = useRef<HTMLUListElement | null>(null);
   const dragLabelOffsetRef = useRef(0);
   const restrictBelowPins = useCallback<Modifier>(
-    (args) => restrictBelowSidebarLabel(args, dragLabelOffsetRef.current),
+    (args) => restrictBelowSidebarLabel(args, dragLabelOffsetRef.current, true),
     [],
   );
   const listMotionRef = useRef<ReturnType<typeof createSidebarListMotion> | null>(null);
@@ -3810,8 +3829,11 @@ export default function Sidebar() {
       if (list && header) {
         const listRect = list.getBoundingClientRect();
         const scale = list.offsetWidth > 0 ? listRect.width / list.offsetWidth : 1;
+        // The list stacks bottom-up, so Pins and their label sit at its bottom.
         dragLabelOffsetRef.current =
-          header.getBoundingClientRect().top - listRect.top + SIDEBAR_DRAG_LABEL_HEIGHT * scale;
+          listRect.bottom -
+          header.getBoundingClientRect().bottom +
+          SIDEBAR_DRAG_LABEL_HEIGHT * scale;
       } else {
         dragLabelOffsetRef.current = 0;
       }
@@ -3880,6 +3902,17 @@ export default function Sidebar() {
     visibleWorkingThreads,
     workingThreads.length,
   ]);
+  // The list stacks bottom-up from the filter buttons, so a new selection
+  // starts scrolled to the bottom, where its first rows are, as does the first
+  // render with threads.
+  const sectionFilterKey = sectionFilter.join(",");
+  const hasSidebarListItems = sidebarListItems.length > 0;
+  useLayoutEffect(() => {
+    const viewport = threadListRef.current?.closest<HTMLElement>(
+      "[data-slot=scroll-area-viewport]",
+    );
+    if (viewport) viewport.scrollTop = viewport.scrollHeight;
+  }, [hasSidebarListItems, sectionFilterKey]);
   useEffect(() => {
     if (
       dragState !== null &&
@@ -3960,6 +3993,7 @@ export default function Sidebar() {
         items: sidebarListItems,
         enabled: !isContextDrag,
         boundaryLabelHeight: SIDEBAR_DRAG_LABEL_HEIGHT,
+        reversed: true,
         settledOrder: draggedSettledOrder,
         ...(draggedActiveOrder === undefined ? {} : { activeOrder: draggedActiveOrder }),
         settledExpanded: settledShown,
@@ -4032,6 +4066,7 @@ export default function Sidebar() {
       {
         items: sidebarListItems,
         activationY: dragActivationY ?? null,
+        reversed: true,
       },
     );
   }, [
@@ -5051,7 +5086,7 @@ export default function Sidebar() {
                         <ProjectFavicon project={scopedProjectGroup} className="size-4" />
                       </span>
                     ) : (
-                      <ListFilterIcon className="size-4" />
+                      <FunnelSimpleIcon className="size-4" />
                     )}
                   </ComboboxTrigger>
                   <ComboboxPopup
@@ -5260,7 +5295,8 @@ export default function Sidebar() {
                     // presentational while preserving every descendant control.
                     role="presentation"
                     className={cn(
-                      "relative flex flex-col gap-px",
+                      // Bottom-up: the first row sits on the filter buttons.
+                      "relative flex flex-col-reverse justify-start gap-px",
                       sidebarListItems.length > 0 && "flex-1",
                       // An action sweep owns the pointer: rows it passes over
                       // neither show hover actions nor open tooltips, even

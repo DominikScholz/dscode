@@ -19,13 +19,20 @@ const isShelfHeader = (item: SidebarListItem | undefined) =>
     item.marker === "snoozed-header" ||
     item.marker === "settled-header");
 
-/** Keep the lifted card below the Pins label, including when Pins is empty.
- * The container rect follows scrolling; the offset is measured once at pickup. */
+/** Keep the lifted card on the list side of the Pins label, including when
+ * Pins is empty. The container rect follows scrolling; the offset is measured
+ * once at pickup, from the list's top edge, or its bottom edge when the list
+ * stacks bottom-up (`reversed`). */
 export function restrictBelowSidebarLabel(
   { transform, containerNodeRect, draggingNodeRect }: Parameters<Modifier>[0],
   offset: number,
+  reversed = false,
 ) {
   if (!containerNodeRect || !draggingNodeRect) return transform;
+  if (reversed) {
+    const maximumY = containerNodeRect.bottom - offset - draggingNodeRect.bottom;
+    return transform.y > maximumY ? { ...transform, y: maximumY } : transform;
+  }
   const minimumY = containerNodeRect.top + offset - draggingNodeRect.top;
   return transform.y < minimumY ? { ...transform, y: minimumY } : transform;
 }
@@ -37,8 +44,11 @@ export function createSidebarCollisionDetection(
   options: {
     items?: readonly SidebarListItem[];
     activationY?: number | null;
+    /** The list stacks bottom-up: Pins sit below the active section. */
+    reversed?: boolean;
   } = {},
 ): CollisionDetection {
+  const reversed = options.reversed === true;
   const validity = new Map<string, boolean>();
   const sections = new Map<string, SidebarSection | null>();
   let previousPointerY = options.activationY;
@@ -60,15 +70,27 @@ export function createSidebarCollisionDetection(
       const previousY = previousPointerY ?? pointer.y;
       previousPointerY = pointer.y;
       if (pointer.x >= boundary.left && pointer.x <= boundary.right) {
-        if (pointer.y < previousY && pointer.y <= boundary.bottom) boundarySection = "pinned";
-        else if (pointer.y > previousY && pointer.y >= boundary.top) boundarySection = "active";
+        // Moving toward the Pins side of the divider selects Pins.
+        const towardPins = reversed ? pointer.y > previousY : pointer.y < previousY;
+        const towardActive = reversed ? pointer.y < previousY : pointer.y > previousY;
+        if (towardPins && (reversed ? pointer.y >= boundary.top : pointer.y <= boundary.bottom))
+          boundarySection = "pinned";
+        else if (
+          towardActive &&
+          (reversed ? pointer.y <= boundary.bottom : pointer.y >= boundary.top)
+        )
+          boundarySection = "active";
         const nextHeader = (["working-header", "snoozed-header", "settled-header"] as const)
           .map((marker) =>
             args.droppableContainers.find((container) => container.id === sidebarMarkerId(marker)),
           )
           .find((container) => container !== undefined);
-        const activeBottom = nextHeader?.node.current?.getBoundingClientRect().top;
-        if (boundarySection === "pinned" || (activeBottom != null && pointer.y < activeBottom)) {
+        // The edge where the active section meets the next shelf.
+        const shelfRect = nextHeader?.node.current?.getBoundingClientRect();
+        const withinActive =
+          shelfRect != null &&
+          (reversed ? pointer.y > shelfRect.bottom : pointer.y < shelfRect.top);
+        if (boundarySection === "pinned" || withinActive) {
           const target = collisions.find((collision) => {
             const id = String(collision.id);
             if (!sections.has(id)) {
@@ -113,6 +135,8 @@ export function createSidebarSortingStrategy(input: {
   /** Space each pinned boundary opens for its label while dragging. The
    * markers stay zero height at rest, so nothing is reserved until pickup. */
   boundaryLabelHeight?: number;
+  /** The list renders bottom-up (column-reverse): stack from the bottom edge. */
+  reversed?: boolean;
 }): SortingStrategy {
   if (input.enabled === false) return () => stationary;
   const { items } = input;
@@ -228,13 +252,30 @@ export function createSidebarSortingStrategy(input: {
     // Consume the shelf's auto margin as drag labels and resized rows need
     // room, keeping the combined shelves at their measured bottom.
     let shelfSpace =
-      shelfRect && beforeShelf && lastRect && shelfRect.top > beforeShelf.bottom + 1
+      !input.reversed &&
+      shelfRect &&
+      beforeShelf &&
+      lastRect &&
+      shelfRect.top > beforeShelf.bottom + 1
         ? Math.max(
             0,
             lastRect.bottom - rects[0].top - heights.reduce((sum, height) => sum + height + 1, -1),
           )
         : 0;
     const result = items.map(() => hidden);
+    if (input.reversed) {
+      // The first item sits at the bottom edge; each next one stacks above it.
+      let bottom = rects[0].bottom;
+      for (const [projectedIndex, item] of projected.entries()) {
+        const height = heights[projectedIndex]!;
+        const index = indices.get(sidebarListItemId(item));
+        const rect = index === undefined ? undefined : rects[index];
+        if (index !== undefined && rect) result[index] = { ...stationary, y: bottom - rect.bottom };
+        bottom -= height + 1;
+      }
+      result[activeIndex] = stationary;
+      return result;
+    }
     let top = rects[0].top;
     for (const [projectedIndex, item] of projected.entries()) {
       if (isShelfHeader(item)) {
