@@ -81,7 +81,7 @@ export function SidebarThreadHeader({
     <div className="flex items-center gap-1">
       <div
         ref={searchFieldRef}
-        className="flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-sidebar-muted-foreground hover:bg-sidebar-row-hover hover:text-sidebar-foreground"
+        className="relative flex h-8 min-w-0 flex-1 items-center gap-2 rounded-xl bg-(--panel-surface) px-2.5 py-1.5 shadow-(--panel-drop) panel-edge text-sm font-medium text-sidebar-muted-foreground squircle hover:bg-(--panel-surface-hover) hover:text-sidebar-foreground"
       >
         <MagnifyingGlassIcon className="size-4 shrink-0 text-(--sidebar-icon-color)" />
         <SidebarInput

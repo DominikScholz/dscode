@@ -118,11 +118,8 @@ function PreviewPanelShellFrame(
       ref={hostRef}
       className={cn(
         "relative flex h-full min-h-0 min-w-0 max-w-full flex-col self-stretch bg-background",
-        isInline
-          ? maximized
-            ? "flex-1 border-l border-border"
-            : "shrink-0 border-l border-border"
-          : "w-full",
+        // Inline, the panel is an inset card on the shared panel surface.
+        isInline ? (maximized ? "flex-1 p-2" : "shrink-0 py-2 pr-2") : "w-full",
         collapsible &&
           "[[data-panel-animations=true]_&]:transition-[width] [[data-panel-animations=true]_&]:duration-(--panel-animation-duration) [[data-panel-animations=true]_&]:ease-out",
         collapsible && open && "[[data-panel-animations=true]_&]:starting:w-0!",
@@ -145,12 +142,22 @@ function PreviewPanelShellFrame(
       data-preview-panel-maximized={maximized ? "true" : "false"}
     >
       {isInline && !maximized ? <RightPanelResizeHandle handlers={handlers} /> : null}
-      <div className={cn("h-full min-h-0 w-full", collapsible && "overflow-clip")}>
+      <div
+        className={cn(
+          "h-full min-h-0 w-full",
+          collapsible && "overflow-clip",
+          isInline &&
+            "relative overflow-clip rounded-3xl bg-(--panel-surface) shadow-(--panel-drop) squircle",
+          // The edge sits above the panel's content, which may paint opaque.
+          isInline && "panel-edge",
+        )}
+      >
         <div
           className="flex h-full min-h-0 min-w-0 flex-col"
           style={
             collapsible && !maximized
-              ? { width: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 1px)` }
+              ? // The card's right inset.
+                { width: `calc(var(${RESIZABLE_WIDTH_PROPERTY}) - 0.5rem)` }
               : undefined
           }
         >

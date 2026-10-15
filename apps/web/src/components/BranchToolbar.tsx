@@ -14,6 +14,7 @@ import {
 import {
   type Ref,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
   memo,
   useImperativeHandle,
   useCallback,
@@ -101,6 +102,8 @@ interface BranchToolbarProps {
   onEnvironmentChange?: (environmentId: EnvironmentId) => void;
   composerControlsHostRef?: (element: HTMLDivElement | null) => void;
   contextStripVisible?: boolean;
+  /** Rendered at the composer strip's end, after the branch selector. */
+  trailing?: ReactNode;
 }
 
 function showWorkspaceContextMenu(event: ReactMouseEvent, workspacePath: string) {
@@ -616,6 +619,7 @@ export const BranchToolbar = memo(function BranchToolbar({
   onEnvironmentChange,
   composerControlsHostRef,
   contextStripVisible = true,
+  trailing,
 }: BranchToolbarProps) {
   const branchSelectorRef = useRef<BranchToolbarBranchSelectorHandle>(null);
   const threadRef = useMemo(
@@ -860,6 +864,7 @@ export const BranchToolbar = memo(function BranchToolbar({
           {...(onComposerFocusRequest ? { onComposerFocusRequest } : {})}
         />
       ) : null}
+      {trailing}
     </ComposerSurface.ContextStrip>
   );
 });

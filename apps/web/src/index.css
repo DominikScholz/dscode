@@ -1514,12 +1514,97 @@ html[data-theme-id] [data-app-sidebar] {
   --sidebar-stage-fade: var(--app-canvas);
 }
 
-/* Thread cards sit one step off the sidebar canvas and lift further on hover.
-   Mixed from the sidebar's own colors so every theme gets a matching tint. */
+/* One surface for thread cards, the composer, the details card, and the right
+   panel: a filled tint one step off the canvas, a top-lit hairline edge that
+   fades out toward the bottom (the panel-edge utility), a soft black drop, and
+   superellipse corners (the squircle utility). Resolved on the root from theme
+   colors, so every theme matches and subtrees that re-scope colors share it. */
+:root {
+  --panel-surface: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --panel-surface-hover: color-mix(in srgb, var(--foreground) 7%, var(--background));
+  --panel-surface-active: color-mix(in srgb, var(--foreground) 10%, var(--background));
+  --panel-edge: color-mix(in srgb, var(--foreground) 3.5%, transparent);
+  --panel-edge-gradient: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--foreground) 8%, transparent),
+    color-mix(in srgb, var(--foreground) 1.5%, transparent) 70%
+  );
+  --panel-drop: 0 1px 2px rgb(0 0 0 / 0.04), 0 4px 14px -6px rgb(0 0 0 / 0.08);
+  --panel-shadow: var(--panel-drop);
+
+  @variant dark {
+    --panel-edge: color-mix(in srgb, var(--foreground) 3%, transparent);
+    --panel-edge-gradient: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 1%, transparent) 70%
+    );
+    --panel-drop: 0 1px 2px rgb(0 0 0 / 0.35), 0 6px 18px -6px rgb(0 0 0 / 0.5);
+  }
+}
+
+/* A 1px ring painted with --panel-edge-gradient, for an absolutely positioned
+   layer that fills its surface (the mask cuts out everything inside 1px). */
+@utility panel-edge-ring {
+  padding: 1px;
+  background: var(--panel-edge-gradient);
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box exclude,
+    linear-gradient(#000 0 0);
+}
+
+/* The shared surface edge as an overlay, so it never changes a surface's size
+   and stays visible over content that paints its own background. The surface
+   must be positioned. */
+@utility panel-edge {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    border-radius: inherit;
+    corner-shape: squircle;
+    pointer-events: none;
+    padding: 1px;
+    background: var(--panel-edge-gradient);
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+  }
+}
+
 :root,
 [data-app-sidebar] {
-  --sidebar-card: color-mix(in srgb, var(--sidebar-foreground) 4%, var(--sidebar));
-  --sidebar-card-hover: color-mix(in srgb, var(--sidebar-foreground) 7%, var(--sidebar));
+  --sidebar-card: var(--panel-surface);
+  --sidebar-card-hover: var(--panel-surface-hover);
+}
+
+/* Superellipse corners where supported; plain rounded corners elsewhere. */
+@utility squircle {
+  corner-shape: squircle;
+}
+
+/* Thread actions in the top bar and composer dock drop the toolbar outline
+   for the shared filled surface. */
+[data-thread-actions] [data-slot="button"] {
+  --thread-action-fill: var(--panel-surface);
+  border-color: transparent;
+  background:
+    linear-gradient(var(--thread-action-fill), var(--thread-action-fill)) padding-box,
+    var(--panel-edge-gradient) border-box;
+  box-shadow: var(--panel-drop);
+  corner-shape: squircle;
+}
+[data-thread-actions] [data-slot="button"]:hover {
+  --thread-action-fill: var(--panel-surface-hover);
 }
 
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */

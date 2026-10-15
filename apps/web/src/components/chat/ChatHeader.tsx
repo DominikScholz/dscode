@@ -19,7 +19,9 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from "react";
+import { CaretRightIcon } from "@phosphor-icons/react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { toastManager } from "../ui/toast";
@@ -52,6 +54,8 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
+  /** Thread actions shown after the title in the top bar arrangement. */
+  actions?: ReactNode;
 }
 
 /**
@@ -83,6 +87,7 @@ export const ChatHeader = memo(function ChatHeader({
   activeProject,
   parentThreadLink,
   onOpenThread,
+  actions,
   rightPanelOpen,
   onNewThreadInProject,
   onOpenProjectSettings,
@@ -323,7 +328,9 @@ export const ChatHeader = memo(function ChatHeader({
                       type="button"
                       aria-label={`New thread in ${activeProjectName}`}
                       onClick={onNewThreadInProject}
-                      className="inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      // The project reads as a filled chip on the shared surface,
+                      // so it needs no separator before the title.
+                      className="relative inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg bg-(--panel-surface) px-2 text-muted-foreground shadow-(--panel-drop) panel-edge squircle transition-colors hover:bg-(--panel-surface-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     />
                   }
                 >
@@ -335,9 +342,6 @@ export const ChatHeader = memo(function ChatHeader({
                 <TooltipPopup side="top">New thread in {activeProjectName}</TooltipPopup>
               </Tooltip>
             </WorkspaceBreadcrumbItem>
-            <WorkspaceBreadcrumbSeparator>
-              <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
-            </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
         {parentThreadLink ? (
@@ -370,7 +374,7 @@ export const ChatHeader = memo(function ChatHeader({
               </Tooltip>
             </WorkspaceBreadcrumbItem>
             <WorkspaceBreadcrumbSeparator>
-              <WorkspaceBreadcrumbText>/</WorkspaceBreadcrumbText>
+              <CaretRightIcon className="size-3" />
             </WorkspaceBreadcrumbSeparator>
           </>
         ) : null}
@@ -436,6 +440,7 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {actions}
     </div>
   );
 });

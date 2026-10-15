@@ -1656,7 +1656,9 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
   // hover, with stronger fills for multi-select and the open route. Status
   // lives in the row content.
   const rowSurfaceClassName = cn(
-    "group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-md text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    variant === "card" ? "rounded-2xl" : "rounded-xl",
+    "shadow-(--panel-drop) panel-edge",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     props.isActive
       ? "bg-sidebar-row-active text-sidebar-foreground"

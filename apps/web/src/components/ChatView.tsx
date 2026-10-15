@@ -469,6 +469,8 @@ import {
 } from "./chat/PanelLayoutControls";
 import { expandedImageKey, type ExpandedImagePreview } from "./chat/ExpandedImagePreview";
 import { ThreadDetailsPanel, type ThreadDetailsPanelProps } from "./chat/ThreadDetailsPanel";
+import { ThreadActionsToolbar } from "./chat/ThreadActionsToolbar";
+import { useThreadArrangement } from "./chat/threadArrangement";
 import { NoActiveThreadState } from "./NoActiveThreadState";
 import {
   type EnvironmentOption,
@@ -4304,9 +4306,14 @@ export default function ChatView(props: ChatViewProps) {
           providerSubagentModels,
           reportedModelSelection,
         );
+  const [threadArrangement] = useThreadArrangement();
+  // Outside the card arrangement, the composer strip carries the workspace and
+  // branch in every thread, not only drafts.
+  const persistComposerContextStrip =
+    settings.persistComposerContextStrip || threadArrangement !== "card";
   const mountComposerContextStrip = shouldShowComposerContextStrip({
     isDraftHeroState,
-    persistInActiveThreads: settings.persistComposerContextStrip,
+    persistInActiveThreads: persistComposerContextStrip,
     hasActiveProject: activeProject !== null && !showProviderSubagentBar,
     isGitRepo,
     showEnvironmentIndicator: showComposerEnvironmentIndicator,
@@ -4314,7 +4321,7 @@ export default function ChatView(props: ChatViewProps) {
   });
   const showComposerContextStrip = shouldShowComposerContextStrip({
     isDraftHeroState,
-    persistInActiveThreads: settings.persistComposerContextStrip,
+    persistInActiveThreads: persistComposerContextStrip,
     hasActiveProject: activeProject !== null && !showProviderSubagentBar,
     isGitRepo,
     showEnvironmentIndicator: showComposerEnvironmentIndicator,
@@ -11356,7 +11363,7 @@ export default function ChatView(props: ChatViewProps) {
   const panelToggleControls = (
     <PanelLayoutControls
       {...panelToggleControlProps}
-      showThreadPanelControl={!inlineRightPanelOwnsTitleBar}
+      showThreadPanelControl={!inlineRightPanelOwnsTitleBar && threadArrangement === "card"}
     />
   );
   const threadPanelHeaderControl = (
@@ -11473,8 +11480,15 @@ export default function ChatView(props: ChatViewProps) {
             />
           ) : null}
           {!rightPanelControlsAtRoot && !rightPanelControlsInPanel ? panelLayoutControls : null}
-          {inlineRightPanelOwnsTitleBar ? threadPanelHeaderControl : null}
+          {inlineRightPanelOwnsTitleBar && threadArrangement === "card"
+            ? threadPanelHeaderControl
+            : null}
           <ChatHeader
+            actions={
+              threadArrangement === "toolbar" ? (
+                <ThreadActionsToolbar {...threadDetailsPanelProps} />
+              ) : undefined
+            }
             activeThreadEnvironmentId={activeThread.environmentId}
             activeThreadId={activeThread.id}
             isServerThread={isServerThread}
@@ -11996,6 +12010,11 @@ export default function ChatView(props: ChatViewProps) {
                                 availableEnvironments={logicalProjectEnvironments}
                                 composerControlsHostRef={setRestingComposerControlsHost}
                                 contextStripVisible={showComposerContextStrip}
+                                trailing={
+                                  threadArrangement === "dock" ? (
+                                    <ThreadActionsToolbar {...threadDetailsPanelProps} />
+                                  ) : undefined
+                                }
                               />
                             </div>
                           )}
@@ -12056,7 +12075,9 @@ export default function ChatView(props: ChatViewProps) {
               </AlertDialogPopup>
             </AlertDialog>
 
-            <ThreadDetailsPanel {...threadDetailsPanelProps} />
+            {threadArrangement === "card" ? (
+              <ThreadDetailsPanel {...threadDetailsPanelProps} />
+            ) : null}
 
             {pullRequestDialogState ? (
               <PullRequestThreadDialog
