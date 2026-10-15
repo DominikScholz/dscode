@@ -16,7 +16,7 @@ function Shell({
         "@container/composer-surface group/composer-surface relative isolate mx-auto w-full max-w-(--chat-content-max-width)",
         // The shared panel surface (see --panel-surface in index.css).
         "[--chat-composer-drawer-inset:1.375rem] [--chat-composer-glass-surface:var(--panel-surface)] [--chat-composer-outline:var(--panel-edge)] [--chat-composer-highlight:transparent]",
-        "before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-3xl before:squircle before:bg-(--chat-composer-glass-surface)/(--glass-opacity) before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
+        "before:pointer-events-none before:absolute before:inset-0 before:z-0 before:rounded-3xl before:squircle before:bg-(--chat-composer-glass-surface)/(--glass-opacity) before:bg-(image:--panel-sheen) before:backdrop-blur-(--glass-blur) before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:before:bg-(--chat-composer-glass-surface)",
         "has-data-[composer-banner-surface=attached]:before:hidden data-model-strip-transition:before:hidden",
         contextStrip && [

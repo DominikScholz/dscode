@@ -19,7 +19,6 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
-  type ReactNode,
 } from "react";
 import { CaretRightIcon } from "@phosphor-icons/react";
 import { isTrailingDoubleClick } from "../Sidebar.logic";
@@ -54,8 +53,6 @@ interface ChatHeaderProps {
   rightPanelOpen: boolean;
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
-  /** Thread actions shown after the title in the top bar arrangement. */
-  actions?: ReactNode;
 }
 
 /**
@@ -87,7 +84,6 @@ export const ChatHeader = memo(function ChatHeader({
   activeProject,
   parentThreadLink,
   onOpenThread,
-  actions,
   rightPanelOpen,
   onNewThreadInProject,
   onOpenProjectSettings,
@@ -330,7 +326,7 @@ export const ChatHeader = memo(function ChatHeader({
                       onClick={onNewThreadInProject}
                       // The project reads as a filled chip on the shared surface,
                       // so it needs no separator before the title.
-                      className="relative inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-lg bg-(--panel-surface) px-2 text-muted-foreground shadow-(--panel-drop) panel-edge squircle transition-colors hover:bg-(--panel-surface-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                      className="relative inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-(--panel-surface) bg-(image:--panel-sheen) ps-1.5 pe-2.5 text-muted-foreground shadow-(--panel-drop) panel-edge squircle transition-colors hover:bg-(--panel-surface-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     />
                   }
                 >
@@ -440,7 +436,6 @@ export const ChatHeader = memo(function ChatHeader({
           )}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
-      {actions}
     </div>
   );
 });

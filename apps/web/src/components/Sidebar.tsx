@@ -285,7 +285,6 @@ import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrom
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuShortcut, MenuTrigger } from "./ui/menu";
 import { Tooltip, TooltipPopup, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
-import { Toggle } from "./ui/toggle";
 import {
   ArchiveIcon,
   ChatsCircleIcon,
@@ -832,7 +831,7 @@ function SidebarSectionFilterBar(props: {
     <div
       role="group"
       aria-label="Thread sections (shift-click to show several)"
-      className="flex shrink-0 flex-wrap gap-1 px-2 pt-2 pb-1"
+      className="flex shrink-0 gap-0.5 rounded-xl p-0.5 panel-well"
     >
       {SIDEBAR_SECTION_FILTER_OPTIONS.map(
         ({ section, label, icon: SectionIcon, hideWhenEmpty }) => {
@@ -843,13 +842,19 @@ function SidebarSectionFilterBar(props: {
             <Tooltip key={section}>
               <TooltipTrigger
                 render={
-                  <Toggle
-                    variant="pill"
-                    size="segmented"
-                    pressed={pressed}
+                  <button
+                    type="button"
+                    aria-pressed={pressed}
                     aria-label={`${label}, ${count}`}
                     data-testid={`sidebar-section-filter-${section}`}
                     onClick={(event) => props.onSelect(section, event.shiftKey)}
+                    className={cn(
+                      "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg text-xs font-medium tabular-nums outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
+                      // The selected section lifts out of the well as a chip.
+                      pressed
+                        ? "relative bg-(--panel-surface-active) bg-(image:--panel-sheen) text-foreground shadow-(--panel-drop) panel-edge"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
                   />
                 }
               >
@@ -871,10 +876,10 @@ function SidebarProjectDivider(props: SidebarProjectGroup) {
   return (
     <div
       aria-hidden
-      className="flex h-7 items-center gap-1.5 px-2.5 pt-2 text-xs font-medium text-secondary-label"
+      className="flex h-7 items-center gap-1.5 px-2.5 pt-2 font-mono text-2xs tracking-tight text-(--label-accent)"
     >
       {props.project ? (
-        <ProjectFavicon project={props.project} className="size-4 shrink-0" />
+        <ProjectFavicon project={props.project} className="size-3.5 shrink-0" />
       ) : null}
       <span className="min-w-0 truncate">{props.label}</span>
     </div>
@@ -1659,6 +1664,8 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: {
     "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     variant === "card" ? "rounded-2xl" : "rounded-xl",
     "shadow-(--panel-drop) panel-edge",
+    // The open thread carries the soft glow; every other row the plain sheen.
+    props.isActive ? "bg-(image:--panel-glow)" : "bg-(image:--panel-sheen)",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
     props.isActive
       ? "bg-sidebar-row-active text-sidebar-foreground"
@@ -5457,21 +5464,21 @@ export default function Sidebar() {
           ) : null}
         </SidebarGroup>
       </SidebarContent>
-      {!isSearchingThreads ? (
-        <SidebarSectionFilterBar
-          selected={sectionFilter}
-          counts={{
-            pinned: pinnedThreads.length,
-            active: activeThreads.length,
-            working: workingThreads.length,
-            snoozed: snoozedThreads.length,
-            settled: settledThreads.length,
-          }}
-          onSelect={selectSidebarSection}
-        />
-      ) : null}
-      {/* Search sits at the bottom, under the list it filters. */}
-      <SidebarGroup>
+      {/* The dock: section filters over search, one panel under the list. */}
+      <div className="relative mx-2 mb-2 flex shrink-0 flex-col gap-1 rounded-2xl bg-(--panel-surface) bg-(image:--panel-sheen) p-1 shadow-(--panel-drop) panel-edge squircle">
+        {!isSearchingThreads ? (
+          <SidebarSectionFilterBar
+            selected={sectionFilter}
+            counts={{
+              pinned: pinnedThreads.length,
+              active: activeThreads.length,
+              working: workingThreads.length,
+              snoozed: snoozedThreads.length,
+              settled: settledThreads.length,
+            }}
+            onSelect={selectSidebarSection}
+          />
+        ) : null}
         <SidebarThreadHeader
           searchFieldRef={headerSearchRef}
           hasProjects={projectGroups.length > 0}
@@ -5625,7 +5632,7 @@ export default function Sidebar() {
           activeSearchResultIndex={activeSearchResultIndex}
           onClearSearch={clearThreadSearch}
         />
-      </SidebarGroup>
+      </div>
       <SidebarChromeFooter />
     </>
   );
