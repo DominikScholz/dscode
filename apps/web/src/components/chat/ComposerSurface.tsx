@@ -2,7 +2,6 @@ import type { ComponentProps } from "react";
 
 import { cn } from "~/lib/utils";
 
-/** One glass backdrop until a top attachment needs the composer to cover its overlap. */
 function Shell({
   contextStrip = false,
   className,
@@ -39,7 +38,6 @@ function Shell({
 const outlineClasses =
   "after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:squircle after:panel-edge-ring dark:after:inset-shadow-2xs dark:after:inset-shadow-(color:--chat-composer-highlight)";
 
-// The bottom strip continues the outline, so leave the seam between its corners open.
 const contextSeamClasses =
   "group-data-with-context/composer-surface:after:[clip-path:polygon(0_0,100%_0,100%_100%,calc(100%-22px)_100%,calc(100%-22px)_calc(100%-2px),22px_calc(100%-2px),22px_100%,0_100%)]";
 
@@ -65,7 +63,6 @@ function Main({ className, ...props }: ComponentProps<"div">) {
       data-chat-composer-main-surface="true"
       className={cn(
         "group relative z-10 rounded-3xl squircle p-px",
-        // The host also wraps shoulder tabs, so its backdrop would extend above the input.
         "group-data-model-strip-transition/composer-surface:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-data-model-strip-transition/composer-surface:backdrop-blur-(--glass-blur) group-data-model-strip-transition/composer-surface:backdrop-saturate-(--glass-saturation)",
         outlineClasses,
         contextSeamClasses,

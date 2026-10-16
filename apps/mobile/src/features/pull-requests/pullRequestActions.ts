@@ -5,7 +5,7 @@ import type {
   PullRequestMergeMethod,
   SourceControlProviderKind,
 } from "@t3tools/contracts";
-import type { AppSymbolName } from "../../components/AppSymbol";
+import type { AppSymbolName } from "../../components/ui/AppSymbol";
 
 type ActionDetail = Pick<
   PullRequestDetail,
@@ -83,7 +83,6 @@ export function allowedUpdateMethods(pr: ActionDetail) {
   );
 }
 
-/** Provider support, account permissions, and the PR's state all narrow the offered actions. */
 export function canPerformPullRequestAction(pr: ActionDetail, action: PullRequestAction) {
   if (!pr.capabilities.actions.includes(action) || !pr.viewerPermissions.actions.includes(action))
     return false;

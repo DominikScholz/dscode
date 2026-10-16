@@ -1,10 +1,10 @@
+import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
 import { LegendList, type LegendListRef } from "@legendapp/list/react-native";
 import { useNavigation } from "@react-navigation/native";
 import { use, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ProjectId } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import {
-  ActivityIndicator,
   Keyboard,
   Platform,
   Pressable,
@@ -16,8 +16,8 @@ import {
 import { ScrollViewMarker } from "react-native-screens";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { AppText as Text } from "../../components/AppText";
-import { EmptyState } from "../../components/EmptyState";
+import { AppText as Text } from "../../components/ui/AppText";
+import { EmptyState } from "../../components/ui/EmptyState";
 import { NativePrimaryColumnContext } from "../../native/v5-workspace-context";
 import { useWorkspaceState } from "../../state/workspace";
 import { useProjects } from "../../state/entities";
@@ -43,7 +43,7 @@ import { useAndroidWorkspaceSelection } from "../workspace/useAndroidWorkspaceSe
 function PullRequestScrollView(props: ScrollViewProps) {
   const insets = useSafeAreaInsets();
   return (
-    <ScrollViewMarker>
+    <ScrollViewMarker style={{ flex: 1 }}>
       <ScrollView
         {...props}
         automaticallyAdjustContentInsets={false}
@@ -73,13 +73,11 @@ export function PullRequestsScreen(
   const maintainVisiblePosition = useMemo(
     () => ({
       data: tab.searchMode === "resting",
-      // At the top, reveal new PRs without pushing the filter strip out of view.
       shouldRestorePosition: () => workspace.getScrollOffset("pullRequests") > 0,
     }),
     [tab.searchMode, workspace],
   );
   const debouncedQuery = useDebouncedValue(tab.query.trim(), 180);
-  // Dismissal must restore the cached unfiltered list before restoring its offset.
   const query = tab.searchMode === "resting" ? "" : debouncedQuery;
   const listControls = usePullRequestListControls();
   const selectedEnvironmentId = listControls.environmentId;
@@ -222,9 +220,7 @@ export function PullRequestsScreen(
         extraData={`${selectedKey}:${busyKey}`}
         keyExtractor={pullRequestKey}
         itemsAreEqual={pullRequestListRowsAreEqual}
-        // Default-size rows measure about 78pt with one title line and 98pt with two.
         estimatedItemSize={88}
-        // Build roughly a screen ahead so a fling reaches already-mounted rows.
         drawDistance={1_000}
         maintainVisibleContentPosition={result.continued ? maintainVisiblePosition : false}
         onEndReached={() => void result.loadMore()}
@@ -234,7 +230,6 @@ export function PullRequestsScreen(
           <RefreshControl
             refreshing={result.refreshing}
             onRefresh={() => void result.onRefresh()}
-            // Place the 60pt native refresh control in the revealed pull-down space.
             // The list already accounts for the navigation header in its content inset.
             progressViewOffset={Platform.OS === "ios" ? 60 : undefined}
           />
@@ -317,7 +312,7 @@ export function PullRequestsScreen(
         ListFooterComponent={
           result.loadingMore ? (
             <View className="items-center py-5">
-              <ActivityIndicator
+              <AppActivityIndicator
                 colorClassName="accent-icon"
                 accessibilityLabel="Loading more pull requests"
               />
@@ -337,7 +332,7 @@ export function PullRequestsScreen(
         ListEmptyComponent={
           result.isPending && connectedTargets.length > 0 ? (
             <View className="items-center py-12">
-              <ActivityIndicator colorClassName="accent-icon" />
+              <AppActivityIndicator colorClassName="accent-icon" />
             </View>
           ) : (
             <View className="px-8 py-12">

@@ -6,7 +6,6 @@ export const THREAD_MAIN_CONTENT_MIN_WIDTH = 40 * 16;
 // plus padding on both sides. Below it, sidebar and chat shrink together.
 const THREAD_MAIN_CONTENT_COMFORT_WIDTH = 52 * 16;
 
-// The brand's measured width can raise the minimum so "T3 Code" never clips.
 export function resolveThreadSidebarMinimumWidth(brandWidth: number): number {
   return Math.max(THREAD_SIDEBAR_MIN_WIDTH, Math.ceil(brandWidth));
 }
