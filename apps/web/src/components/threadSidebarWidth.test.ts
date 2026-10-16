@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vite-plus/test";
 import {
   clampThreadSidebarWidth,
+  resolveThreadSidebarFitWidth,
   resolveThreadSidebarMaximumWidth,
   resolveThreadSidebarMinimumWidth,
+  resolveThreadSidebarPreferredWidth,
   THREAD_SIDEBAR_MIN_WIDTH,
 } from "./threadSidebarWidth";
 
@@ -32,5 +34,26 @@ describe("clampThreadSidebarWidth", () => {
   it("keeps widths inside the range and caps wide ones", () => {
     expect(clampThreadSidebarWidth(300, 238, 560)).toBe(300);
     expect(clampThreadSidebarWidth(900, 238, 560)).toBe(560);
+  });
+});
+
+describe("resolveThreadSidebarFitWidth", () => {
+  it("keeps the preferred width while the main panel has its comfortable width", () => {
+    expect(resolveThreadSidebarFitWidth(300, 300 + 832)).toBe(300);
+    expect(resolveThreadSidebarFitWidth(300, 1600)).toBe(300);
+  });
+
+  it("gives up half of every pixel the window loses below that", () => {
+    expect(resolveThreadSidebarFitWidth(300, 300 + 832 - 100)).toBe(250);
+    expect(resolveThreadSidebarFitWidth(300, 300 + 832 - 101)).toBe(249.5);
+  });
+
+  it("inverts a drag back into the preference that shows it", () => {
+    for (const available of [900, 1000, 1132, 1500]) {
+      for (const width of [208, 260, 300, 420]) {
+        const preferred = resolveThreadSidebarPreferredWidth(width, available);
+        expect(resolveThreadSidebarFitWidth(preferred, available)).toBe(width);
+      }
+    }
   });
 });

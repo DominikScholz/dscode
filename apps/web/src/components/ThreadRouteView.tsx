@@ -191,7 +191,8 @@ export function ThreadRouteView({ target }: { target: ThreadRouteTarget }) {
   }
 
   return (
-    <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none md:h-dvh">
+    // Open on the left: the chat canvas reaches under the transparent sidebar.
+    <SidebarInset className="h-svh min-h-0 overflow-y-clip overscroll-y-none md:h-dvh">
       {view}
     </SidebarInset>
   );

@@ -387,7 +387,11 @@ describe("thread sidebar over the canvas", () => {
     expect(withSidebar(1400).chat).toEqual({ left: 342, width: 736, insetStart: 20, insetEnd: 0 });
   });
   it("narrows chat only after it reaches the right padding", () => {
-    expect(withSidebar(1000).chat).toEqual({ left: 342, width: 610, insetStart: 294, insetEnd: 0 });
+    expect(withSidebar(1050).chat).toEqual({ left: 342, width: 660, insetStart: 294, insetEnd: 0 });
+  });
+  it("slides chat under the sidebar instead of narrowing past a readable width", () => {
+    expect(withSidebar(1000).chat).toEqual({ left: 312, width: 640, insetStart: 264, insetEnd: 0 });
+    expect(withSidebar(800).chat).toEqual({ left: 112, width: 640, insetStart: 64, insetEnd: 0 });
   });
   it("folds the details card when the sidebar leaves no readable lane beside it", () => {
     const container = { width: 1232, height: 900 };

@@ -11419,7 +11419,8 @@ export default function ChatView(props: ChatViewProps) {
   const content = (
     <div
       ref={setWorkspaceLayoutElement}
-      className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
+      // Open on the left: the chat canvas reaches under the transparent sidebar.
+      className="relative flex min-h-0 min-w-0 flex-1 overflow-y-clip bg-background"
     >
       <Dialog
         open={
@@ -11447,8 +11448,8 @@ export default function ChatView(props: ChatViewProps) {
       {rightPanelControlsAtRoot ? panelLayoutControls : null}
       <div
         className={cn(
-          "flex min-h-0 min-w-0 flex-col overflow-x-hidden",
-          rightPanelMaximized ? "w-0 flex-none" : "flex-1",
+          "flex min-h-0 min-w-0 flex-col",
+          rightPanelMaximized ? "w-0 flex-none overflow-hidden" : "flex-1 overflow-y-clip",
         )}
         data-chat-column-maximized-away={rightPanelMaximized ? "true" : "false"}
       >
@@ -11495,9 +11496,9 @@ export default function ChatView(props: ChatViewProps) {
           />
         </header>
 
-        {/* Main content area with optional plan sidebar. Clips the chat canvas,
-            which reaches left under the sidebar to center on the window. */}
-        <div className="relative flex min-h-0 min-w-0 flex-1 overflow-x-clip">
+        {/* Main content area with optional plan sidebar. The chat canvas reaches
+            left past it, under the transparent sidebar, to center on the window. */}
+        <div className="relative flex min-h-0 min-w-0 flex-1">
           {/* Chat column */}
           <ThreadFindCanvas
             findOptions={{
@@ -11521,7 +11522,7 @@ export default function ChatView(props: ChatViewProps) {
             <ThreadFind onClose={focusComposer} />
             {isWorkspaceFileDragActive ? (
               <div
-                className="pointer-events-none absolute inset-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
+                className="pointer-events-none absolute inset-y-2 start-[calc(var(--chat-visible-start,0px)+0.5rem)] end-2 z-40 flex items-center justify-center rounded-2xl border-2 border-dashed border-primary/60 bg-primary/[0.035]"
                 data-chat-workspace-drop-overlay="true"
               >
                 <div

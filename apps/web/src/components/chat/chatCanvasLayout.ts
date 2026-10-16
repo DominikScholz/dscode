@@ -69,9 +69,15 @@ export function resolveChatCanvasLayout({
   const laneRight = detailsCard
     ? detailsCard.left - DETAILS_CARD_CLEARANCE
     : container.width - padding;
-  const normalWidth = Math.max(0, Math.min(centeredWidth, laneRight - laneStart));
+  // Clear of the sidebar, chat narrows only to a readable width. In a smaller
+  // window it slides under the sidebar instead.
+  const clearStart = Math.max(
+    padding,
+    Math.min(laneStart, laneRight - Math.min(centeredWidth, minChatWidth)),
+  );
+  const normalWidth = Math.max(0, Math.min(centeredWidth, laneRight - clearStart));
   const normalLeft = Math.max(
-    laneStart,
+    clearStart,
     Math.min((container.width - normalWidth) / 2, laneRight - normalWidth),
   );
   let chat = placeChat(normalLeft, normalWidth);
