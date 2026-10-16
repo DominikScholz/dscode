@@ -43,6 +43,7 @@ export function ChatCanvas({
     width: 0,
     height: 0,
     padding: 48,
+    visibleStart: 0,
     maxChatWidth: 768,
     minChatWidth: 640,
     composerHeight: 0,
@@ -71,10 +72,17 @@ export function ChatCanvas({
   useLayoutEffect(() => {
     const element = elementRef.current;
     const probe = widthProbeRef.current;
-    if (!element || !probe) return;
+    const panel = element?.parentElement;
+    if (!element || !probe || !panel) return;
     const findBar =
       detailsCardTopInset > 0 ? element.querySelector<HTMLElement>("[data-thread-find-bar]") : null;
     const measure = () => {
+      // The main panel is a window onto a chat canvas centered on the window
+      // right of the app rail: the canvas reaches left past the panel's edge to
+      // the rail, and the panel clips it. Tracked per resize frame so the chat
+      // holds still while the sidebar is dragged, until the sidebar reaches it.
+      const panelLeft = Math.max(0, panel.getBoundingClientRect().left);
+      element.style.setProperty("--chat-window-offset", `${panelLeft}px`);
       const canvasBounds = element.getBoundingClientRect();
       const findBarBounds = findBar?.getBoundingClientRect();
       const styles = getComputedStyle(probe);
@@ -85,6 +93,7 @@ export function ChatCanvas({
         width: element.clientWidth,
         height: element.clientHeight,
         padding: Number.parseFloat(styles.paddingLeft),
+        visibleStart: Math.max(0, panelLeft - canvasBounds.left),
         maxChatWidth: Number.parseFloat(styles.width),
         minChatWidth: Number.parseFloat(styles.minWidth),
         composerHeight: composerOverlayElement?.getBoundingClientRect().height ?? 0,
@@ -101,7 +110,7 @@ export function ChatCanvas({
       );
     };
     measure();
-    const observed: Element[] = [element, probe];
+    const observed: Element[] = [element, probe, panel];
     if (findBar) observed.push(findBar);
     if (composerOverlayElement) observed.push(composerOverlayElement);
     if (timelineElement) observed.push(timelineElement);
@@ -117,11 +126,13 @@ export function ChatCanvas({
             bottom: measurements.findBarBottom,
           }
         : null;
+    const laneStart = measurements.padding + measurements.visibleStart;
     return {
       container,
-      lane: { padding: measurements.padding, minChatWidth: measurements.minChatWidth },
+      lane: { start: laneStart, minChatWidth: measurements.minChatWidth },
       layout: resolveChatCanvasLayout({
         ...measurements,
+        laneStart,
         container,
         preview,
         detailsCard,
@@ -143,22 +154,6 @@ export function ChatCanvas({
     reportDetailsCard,
     detailsCardTopInset,
   ]);
-  // The main panel is a window onto a chat canvas centered on the window right
-  // of the app rail: the canvas reaches left past the panel's edge to the rail,
-  // and the panel clips it. Tracked per resize frame so the chat holds still
-  // while the sidebar is dragged wider or narrower.
-  useLayoutEffect(() => {
-    const element = elementRef.current;
-    const panel = element?.parentElement;
-    if (!element || !panel) return;
-    const update = () =>
-      element.style.setProperty(
-        "--chat-window-offset",
-        `${Math.max(0, panel.getBoundingClientRect().left)}px`,
-      );
-    update();
-    return observeResize(panel, update);
-  }, []);
   const { layout } = context;
   return (
     <ChatCanvasContext value={context}>

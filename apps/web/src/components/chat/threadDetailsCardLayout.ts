@@ -27,7 +27,8 @@ export function resolveThreadDetailsCardLayout({
   topInset = 0,
 }: {
   container: { width: number; height: number };
-  lane: { padding: number; minChatWidth: number };
+  /** Where the readable chat lane starts, past the thread sidebar. */
+  lane: { start: number; minChatWidth: number };
   frame: PreviewMiniPlayerFrame | null;
   overlapsDetailsCard?: boolean;
   /** Space taken above the card, such as the open find bar. */
@@ -36,7 +37,7 @@ export function resolveThreadDetailsCardLayout({
   const gap = THREAD_DETAILS_CARD_GAP;
   const width = THREAD_DETAILS_CARD_WIDTH;
   const x = container.width - width - gap;
-  if (x - DETAILS_CARD_CLEARANCE - lane.padding < lane.minChatWidth) return null;
+  if (x - DETAILS_CARD_CLEARANCE - lane.start < lane.minChatWidth) return null;
   const y = gap + topInset;
   // Resizing consumes the height above the player. Dragging first tries to
   // clear the full card and folds it only when there is no readable placement.

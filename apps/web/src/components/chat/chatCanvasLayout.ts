@@ -28,6 +28,7 @@ export function resolveChatCanvasLayout({
   container,
   preview,
   padding = 48,
+  laneStart = padding,
   maxChatWidth = 768,
   minChatWidth = 640,
   composerHeight = 0,
@@ -37,6 +38,8 @@ export function resolveChatCanvasLayout({
   container: PreviewMiniPlayerSize;
   preview: ChatCanvasPreview | null;
   padding?: number;
+  /** Where chat may start: the padding past the thread sidebar, which covers the canvas's left edge. */
+  laneStart?: number;
   maxChatWidth?: number;
   minChatWidth?: number;
   composerHeight?: number;
@@ -44,24 +47,34 @@ export function resolveChatCanvasLayout({
   /** The open find bar. It only keeps the floating preview clear; chat stays put. */
   findBar?: PreviewMiniPlayerObstacles["detailsCard"];
 }) {
+  // The lane pads both sides and centers chat in what remains. A full-width
+  // chat leaves one side open and lets its max width do the narrowing; a
+  // narrower one is pinned on both sides.
+  const placeChat = (left: number, width: number) => {
+    if (width >= maxChatWidth) {
+      const shift = left * 2 + width - container.width;
+      return { left, width, insetStart: Math.max(0, shift), insetEnd: Math.max(0, -shift) };
+    }
+    return {
+      left,
+      width,
+      insetStart: Math.max(0, left - padding),
+      insetEnd: Math.max(0, container.width - padding - left - width),
+    };
+  };
   const centeredWidth = Math.max(0, Math.min(maxChatWidth, container.width - padding * 2));
-  // A workspace card that does not fit beside the centered chat first moves
-  // chat left, only as far as it needs. Chat narrows only after it reaches the
-  // left padding.
+  // The sidebar and a workspace card that do not fit beside the centered chat
+  // first move chat aside, only as far as they need. Chat narrows only after
+  // it reaches the other side.
   const laneRight = detailsCard
     ? detailsCard.left - DETAILS_CARD_CLEARANCE
     : container.width - padding;
-  const normalWidth = Math.max(0, Math.min(centeredWidth, laneRight - padding));
+  const normalWidth = Math.max(0, Math.min(centeredWidth, laneRight - laneStart));
   const normalLeft = Math.max(
-    padding,
+    laneStart,
     Math.min((container.width - normalWidth) / 2, laneRight - normalWidth),
   );
-  let chat = {
-    left: normalLeft,
-    width: normalWidth,
-    insetStart: 0,
-    insetEnd: Math.max(0, container.width - normalLeft * 2 - normalWidth),
-  };
+  let chat = placeChat(normalLeft, normalWidth);
   let frame: PreviewMiniPlayerFrame | null = null;
   let overlapsChat = false;
   if (preview && container.width > 0 && container.height > 0) {
@@ -70,9 +83,9 @@ export function resolveChatCanvasLayout({
     // the container's right edge would pin the preview at every pointer position.
     const minimumPreviewX =
       preview.lastInteraction === "resize" ||
-      container.width <= padding + minChatWidth + frame.width + GAP * 2
+      container.width <= laneStart + minChatWidth + frame.width + GAP * 2
         ? GAP
-        : padding + minChatWidth + GAP;
+        : laneStart + minChatWidth + GAP;
     // New players start beside the composer, with the workspace card above them.
     if (preview.position === null) frame = { ...frame, y: container.height - frame.height - GAP };
     if (preview.lastInteraction === "resize" && composerHeight > 0) {
@@ -82,7 +95,7 @@ export function resolveChatCanvasLayout({
       const transitionWidth = Math.max(GAP, normalWidth - laneWidth);
       const lift = Math.min(
         1,
-        Math.max(0, (padding + normalWidth + GAP - frame.x) / transitionWidth),
+        Math.max(0, (laneStart + normalWidth + GAP - frame.x) / transitionWidth),
       );
       if (lift > 0) {
         frame = resolvePreviewMiniPlayerFrame({
@@ -126,15 +139,9 @@ export function resolveChatCanvasLayout({
     const chatBeside = (player: PreviewMiniPlayerFrame) => {
       const normalRight = normalLeft + normalWidth;
       if (player.x >= normalRight + GAP) return chat;
-      const width = Math.min(maxChatWidth, player.x - GAP - padding);
+      const width = Math.min(maxChatWidth, player.x - GAP - laneStart);
       if (width < minChatWidth) return null;
-      const left = Math.min(normalLeft, player.x - GAP - width);
-      return {
-        left,
-        width,
-        insetStart: 0,
-        insetEnd: Math.max(0, container.width - left * 2 - width),
-      };
+      return placeChat(Math.min(normalLeft, player.x - GAP - width), width);
     };
     let nextChat = chatBeside(frame);
     // Clearing the full card must also leave a readable chat. If only the
@@ -146,13 +153,7 @@ export function resolveChatCanvasLayout({
     if (nextChat) chat = nextChat;
     else overlapsChat = true;
     if (overlapsChat && preview.lastInteraction === "resize") {
-      const width = Math.min(normalWidth, minChatWidth);
-      chat = {
-        left: padding,
-        width,
-        insetStart: 0,
-        insetEnd: Math.max(0, container.width - padding * 2 - width),
-      };
+      chat = placeChat(laneStart, Math.min(normalWidth, minChatWidth));
     } else if (overlapsChat) {
       const obstacles = {
         detailsCard: cardObstacle,

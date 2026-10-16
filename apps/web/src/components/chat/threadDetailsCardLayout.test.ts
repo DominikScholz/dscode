@@ -4,7 +4,7 @@ import {
   resolveThreadDetailsCardLayout,
 } from "./threadDetailsCardLayout";
 
-const lane = { padding: 48, minChatWidth: 640 };
+const lane = { start: 48, minChatWidth: 640 };
 const resolve = (width: number, height: number, previewY: number | null = null) =>
   resolveThreadDetailsCardLayout({
     container: { width, height },

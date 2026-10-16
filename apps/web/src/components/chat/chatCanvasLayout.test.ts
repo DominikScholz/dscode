@@ -275,7 +275,7 @@ describe("chat canvas layout", () => {
       const density = (result: ReturnType<typeof layout>) => {
         const card = resolveThreadDetailsCardLayout({
           container,
-          lane: { padding: 48, minChatWidth: 640 },
+          lane: { start: 48, minChatWidth: 640 },
           frame: result.frame,
           overlapsDetailsCard: result.overlapsDetailsCard,
         });
@@ -344,7 +344,7 @@ describe("workspace card beside chat", () => {
       const container = { width, height: 900 };
       const card = resolveThreadDetailsCardLayout({
         container,
-        lane: { padding: 48, minChatWidth: 640 },
+        lane: { start: 48, minChatWidth: 640 },
         frame: null,
       })!;
       const chat = withCard(width).chat;
@@ -368,5 +368,42 @@ describe("workspace card beside chat", () => {
       overlapsChat: false,
       overlapsDetailsCard: false,
     });
+  });
+});
+
+describe("thread sidebar over the canvas", () => {
+  // The canvas starts at the app rail; a 294px sidebar covers its left edge.
+  const withSidebar = (width: number) =>
+    resolveChatCanvasLayout({
+      container: { width, height: 900 },
+      laneStart: 294 + 48,
+      maxChatWidth: 736,
+      preview: null,
+    });
+  it("keeps chat centered on the window while it clears the sidebar", () => {
+    expect(withSidebar(1554).chat).toEqual({ left: 409, width: 736, insetStart: 0, insetEnd: 0 });
+  });
+  it("moves chat right only as far as the sidebar requires", () => {
+    expect(withSidebar(1400).chat).toEqual({ left: 342, width: 736, insetStart: 20, insetEnd: 0 });
+  });
+  it("narrows chat only after it reaches the right padding", () => {
+    expect(withSidebar(1000).chat).toEqual({ left: 342, width: 610, insetStart: 294, insetEnd: 0 });
+  });
+  it("folds the details card when the sidebar leaves no readable lane beside it", () => {
+    const container = { width: 1232, height: 900 };
+    expect(
+      resolveThreadDetailsCardLayout({
+        container,
+        lane: { start: 48, minChatWidth: 640 },
+        frame: null,
+      }),
+    ).not.toBeNull();
+    expect(
+      resolveThreadDetailsCardLayout({
+        container,
+        lane: { start: 342, minChatWidth: 640 },
+        frame: null,
+      }),
+    ).toBeNull();
   });
 });

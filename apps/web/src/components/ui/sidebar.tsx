@@ -332,8 +332,9 @@ function Sidebar({
           data-slot="sidebar-container"
           {...props}
         >
+          {/* Docked, the sidebar has no surface of its own: its cards sit on the canvas. */}
           <div
-            className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5"
+            className="flex h-full w-full flex-col group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:bg-sidebar group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow-sm/5"
             data-sidebar="sidebar"
             data-slot="sidebar-inner"
           >
