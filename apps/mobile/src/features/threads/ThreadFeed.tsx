@@ -19,6 +19,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { HandoffEndpoints } from "@t3tools/client-runtime/handoff";
 import { resolveUserMessagePresentation } from "@t3tools/client-runtime/user-message";
 import { canForkProjectedAssistantItem } from "@t3tools/client-runtime/state/thread-workflows";
+import type { WorkflowOpening } from "@t3tools/client-runtime/state/subagentRuntime";
 import {
   type OrchestrationMessageContext,
   ThreadId,
@@ -66,6 +67,8 @@ import { SymbolView, type AppSymbolName } from "../../components/ui/AppSymbol";
 import { HeaderHeightContext } from "@react-navigation/elements";
 import { useFocusEffect, useNavigation } from "@react-navigation/native";
 import { useNativeWorkspaceColumnsSupported } from "../../native/NativeWorkspaceColumns";
+import { useDeviceType } from "../../native/native-layout-metrics";
+import { isDuoDevice } from "../../lib/device-type";
 import {
   createContext,
   memo,
@@ -215,6 +218,7 @@ import { composerDocumentAttachmentRecord } from "../../lib/composerContext";
 import * as Option from "effect/Option";
 import { appAtomRegistry } from "../../state/atom-registry";
 import { environmentThreadShells, threadEnvironment } from "../../state/threads";
+import { ThreadWorkflowOpening, useWorkflowOpening } from "./thread-workflow-opening";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { useV2ItemSupport } from "../../state/v2-item-support";
 import {
@@ -998,11 +1002,12 @@ function renderFeedEntry(
     readonly reviewCommentColors: ReviewCommentColors;
     readonly reviewCommentBubbleWidth: number;
     readonly themeAppearance: "light" | "dark";
-    readonly usesNativeWorkspaceColumns: boolean;
+    readonly duoColumns: boolean;
     readonly userBubbleMaxWidth: number;
     readonly markdownContentWidth: number;
     readonly contentWidth: number;
     readonly threadTitle: string;
+    readonly workflowOpening: WorkflowOpening | null;
   },
 ) {
   const entry = info.item;
@@ -1150,6 +1155,15 @@ function renderFeedEntry(
       !assistantTurnStillInProgress &&
       !message.streaming;
 
+    if (isUser && props.workflowOpening?.messageId === message.id) {
+      return (
+        <ThreadWorkflowOpening
+          environmentId={props.environmentId}
+          threadId={props.threadId}
+          opening={props.workflowOpening}
+        />
+      );
+    }
     if (isUser) {
       const enterAnimated = isFreshTimestamp(message.createdAt);
       const intentBadge = resolveUserMessageIntentBadge(message.inputIntent);
@@ -1189,19 +1203,11 @@ function renderFeedEntry(
             className="min-w-0 gap-2 rounded-[20px] px-3.5 py-2.5"
             style={{
               backgroundColor: userBubbleColor,
-              maxWidth:
-                props.usesNativeWorkspaceColumns && Platform.OS === "ios" && !Platform.isPad
-                  ? "85%"
-                  : props.userBubbleMaxWidth,
+              maxWidth: props.duoColumns ? "85%" : props.userBubbleMaxWidth,
               ...(hasReviewCommentContext
                 ? { width: props.reviewCommentBubbleWidth }
                 : hasWideBlock
-                  ? {
-                      width:
-                        props.usesNativeWorkspaceColumns && Platform.OS === "ios" && !Platform.isPad
-                          ? "85%"
-                          : props.userBubbleMaxWidth,
-                    }
+                  ? { width: props.duoColumns ? "85%" : props.userBubbleMaxWidth }
                   : null),
             }}
           >
@@ -1667,7 +1673,9 @@ function ThreadFeedPlaceholder(props: {
 }
 
 export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
-  const usesNativeWorkspaceColumns = useNativeWorkspaceColumnsSupported();
+  const workflowOpening = useWorkflowOpening(props.environmentId, props.threadId);
+  const deviceType = useDeviceType();
+  const duoColumns = useNativeWorkspaceColumnsSupported() && isDuoDevice(deviceType);
   const openPullRequest = useOpenPullRequest();
   const navigation = useNavigation();
   const { themeAppearance } = useAppearancePreferences();
@@ -2015,6 +2023,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       themeAppearance,
       userBubbleColor,
       viewportWidth,
+      workflowOpening,
     }),
     [
       props.worktreeSetup,
@@ -2031,6 +2040,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       themeAppearance,
       userBubbleColor,
       viewportWidth,
+      workflowOpening,
     ],
   );
   const reportHeaderMaterialVisibility = useCallback(
@@ -2474,13 +2484,14 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
               reviewCommentColors,
               reviewCommentBubbleWidth,
               themeAppearance,
-              usesNativeWorkspaceColumns,
+              duoColumns,
               userBubbleMaxWidth,
               markdownContentWidth,
               contentWidth,
               threadTitle: props.threadTitle,
               skills: props.skills,
               workspaceRoot: props.workspaceRoot,
+              workflowOpening,
             })}
             {props.worktreeSetup && info.index === setupAnchorIndex ? (
               <WorktreeSetupCard key={props.threadId} {...props.worktreeSetup} />
@@ -2513,7 +2524,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       reviewCommentColors,
       reviewCommentBubbleWidth,
       themeAppearance,
-      usesNativeWorkspaceColumns,
+      duoColumns,
       userBubbleMaxWidth,
       markdownContentWidth,
       contentWidth,
@@ -2530,6 +2541,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
       props.threadTitle,
       props.skills,
       props.workspaceRoot,
+      workflowOpening,
       renderMarkdownImage,
       renderViewedImage,
       renderReasoning,
@@ -2568,10 +2580,7 @@ export const ThreadFeed = memo(function ThreadFeed(props: ThreadFeedProps) {
             // Horizontal Duo reservations are already included in the row padding.
             contentInsetAdjustmentBehavior={
               usesNativeAutomaticInsets
-                ? usesNativeWorkspaceColumns &&
-                  Platform.OS === "ios" &&
-                  !Platform.isPad &&
-                  props.layoutVariant === "split"
+                ? duoColumns && props.layoutVariant === "split"
                   ? "scrollableAxes"
                   : "automatic"
                 : "never"

@@ -506,6 +506,8 @@ const makeFaviconWebContents = (options?: {
     send: webviewSend,
     session: { fetch },
     navigationHistory: { canGoBack: () => false, canGoForward: () => false },
+    isFocused: vi.fn(() => true),
+    focusedFrame: {} as object | null,
     setIgnoreMenuShortcuts: vi.fn(),
     setWindowOpenHandler: vi.fn(),
     executeJavaScriptInIsolatedWorld,
@@ -643,7 +645,6 @@ describe("PreviewManager", () => {
         const hostWebContents = { sendInputEvent, isDestroyed: () => false };
         Object.assign(preview.webContents, { hostWebContents });
         fromId.mockReturnValue(preview.webContents);
-        getFocusedWebContents.mockReturnValue(preview.webContents as never);
         yield* manager.setMainWindow({
           isDestroyed: () => false,
           once: vi.fn(),
@@ -708,7 +709,6 @@ describe("PreviewManager", () => {
             hostWebContents: { isDestroyed: () => false, send },
           });
           fromId.mockReturnValue(preview.webContents);
-          getFocusedWebContents.mockReturnValue(preview.webContents as never);
           yield* manager.createTab("tab_reopen");
           yield* manager.registerWebview("tab_reopen", 42);
           const shortcut = parseKeybindingShortcut(chord)!;
@@ -737,12 +737,12 @@ describe("PreviewManager", () => {
             expect(preventDefault).toHaveBeenCalledTimes("isAutoRepeat" in overrides ? 1 : 0);
             expect(send).toHaveBeenCalledOnce();
           }
-          getFocusedWebContents.mockReturnValue(null);
+          vi.mocked((preview.webContents as Electron.WebContents).isFocused).mockReturnValue(false);
           preventDefault.mockClear();
           beforeInput({ preventDefault } as never, input as never);
           expect(preventDefault).not.toHaveBeenCalled();
           expect(send).toHaveBeenCalledOnce();
-          getFocusedWebContents.mockReturnValue(preview.webContents as never);
+          vi.mocked((preview.webContents as Electron.WebContents).isFocused).mockReturnValue(true);
           yield* manager.setForwardedShortcuts([]);
           beforeInput({ preventDefault } as never, input as never);
           expect(preventDefault).not.toHaveBeenCalled();
@@ -770,7 +770,6 @@ describe("PreviewManager", () => {
               hostWebContents: { isDestroyed: () => false, send },
             });
             fromId.mockReturnValue(preview.webContents);
-            getFocusedWebContents.mockReturnValue(preview.webContents as never);
             yield* manager.createTab("tab_alt_graph");
             yield* manager.registerWebview("tab_alt_graph", 42);
             yield* manager.setForwardedShortcuts([
@@ -812,7 +811,6 @@ describe("PreviewManager", () => {
 
         for (const browser of [preview, popup]) {
           const contents = browser.webContents as Electron.WebContents;
-          getFocusedWebContents.mockReturnValue(browser.webContents as never);
           const beforeInput = browser.listeners.get("before-input-event")!;
           const preventDefault = vi.fn();
           const input = {
@@ -834,11 +832,66 @@ describe("PreviewManager", () => {
           beforeInput({ preventDefault } as never, { ...input, key: "w" } as never);
           expect(contents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(true);
 
-          getFocusedWebContents.mockReturnValue(null);
+          vi.mocked(contents.isFocused).mockReturnValue(false);
           beforeInput({ preventDefault } as never, input as never);
           expect(contents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(true);
           expect(preventDefault).not.toHaveBeenCalled();
         }
+      }),
+    ),
+  );
+
+  effectIt.effect("keeps editing and forwarded shortcuts in whichever tab holds focus", () =>
+    withManager((manager) =>
+      Effect.gen(function* () {
+        const send = vi.fn();
+        const host = { isDestroyed: () => false, send };
+        const older = makeFaviconWebContents({ id: 42 });
+        const newer = makeFaviconWebContents({ id: 43 });
+        for (const tab of [older, newer]) Object.assign(tab.webContents, { hostWebContents: host });
+        // Electron names one arbitrary guest here when several share a focused window.
+        getFocusedWebContents.mockReturnValue(newer.webContents as never);
+        fromId.mockReturnValue(older.webContents);
+        yield* manager.createTab("tab_older");
+        yield* manager.registerWebview("tab_older", 42);
+        fromId.mockReturnValue(newer.webContents);
+        yield* manager.createTab("tab_newer");
+        yield* manager.registerWebview("tab_newer", 43);
+        const shortcut = parseKeybindingShortcut("mod+shift+t")!;
+        yield* manager.setForwardedShortcuts([{ command: "view.reopenClosed", shortcut }]);
+
+        const beforeInput = older.listeners.get("before-input-event")!;
+        const key = { type: "keyDown", meta: true, control: false, alt: false };
+        beforeInput(
+          { preventDefault: vi.fn() } as never,
+          { ...key, key: "v", shift: false } as never,
+        );
+        expect(
+          (older.webContents as Electron.WebContents).setIgnoreMenuShortcuts,
+        ).toHaveBeenLastCalledWith(false);
+
+        const preventDefault = vi.fn();
+        beforeInput({ preventDefault } as never, { ...key, key: "T", shift: true } as never);
+        expect(preventDefault).toHaveBeenCalledOnce();
+        expect(send).toHaveBeenCalledExactlyOnceWith("desktop:menu-action", "view.reopenClosed");
+
+        // The person types in the older tab, so keys reaching the newer one are an agent's.
+        Object.assign(newer.webContents, { focusedFrame: null });
+        const agentInput = newer.listeners.get("before-input-event")!;
+        const agentPreventDefault = vi.fn();
+        agentInput(
+          { preventDefault: agentPreventDefault } as never,
+          { ...key, key: "v", shift: false } as never,
+        );
+        expect(
+          (newer.webContents as Electron.WebContents).setIgnoreMenuShortcuts,
+        ).toHaveBeenLastCalledWith(true);
+        agentInput(
+          { preventDefault: agentPreventDefault } as never,
+          { ...key, key: "T", shift: true } as never,
+        );
+        expect(agentPreventDefault).not.toHaveBeenCalled();
+        expect(send).toHaveBeenCalledOnce();
       }),
     ),
   );
@@ -3320,6 +3373,85 @@ describe("PreviewManager", () => {
         expect(received).toHaveLength(2);
       }),
     ),
+  );
+
+  effectIt.effect(
+    "releases queued STOP after stalled recording warmups and ignores late completion",
+    () =>
+      withManager((manager) =>
+        Effect.gen(function* () {
+          const warmupStarted = Promise.withResolvers<void>();
+          const firstWarmup = Promise.withResolvers<TestCapturedPreviewImage>();
+          const lateWarmup = Promise.withResolvers<TestCapturedPreviewImage>();
+          const capturePage = vi
+            .fn<() => Promise<TestCapturedPreviewImage>>()
+            .mockImplementationOnce(() => {
+              warmupStarted.resolve();
+              return firstWarmup.promise;
+            })
+            .mockImplementation(() => lateWarmup.promise);
+          const host = makeTestHostWebContents();
+          const webContents = makeTestPreviewWebContents(capturePage, 42, host);
+          const windowThrottling = vi.fn();
+          fromId.mockReturnValue(webContents);
+          yield* manager.createTab("tab_recording_stalled_warmup");
+          yield* manager.registerWebview("tab_recording_stalled_warmup", 42);
+          yield* manager.setMainWindow({
+            isDestroyed: () => false,
+            once: vi.fn(),
+            webContents: { setBackgroundThrottling: windowThrottling },
+          } as never);
+
+          const image = {
+            toJPEG: () => Buffer.from("late-recording-frame"),
+            getSize: () => ({ width: 1280, height: 720 }),
+          };
+          try {
+            const start = yield* manager
+              .startRecording("tab_recording_stalled_warmup")
+              .pipe(Effect.forkChild({ startImmediately: true }));
+            yield* Effect.promise(() => warmupStarted.promise);
+            let stopped = false;
+            const stop = yield* manager.stopRecording("tab_recording_stalled_warmup").pipe(
+              Effect.andThen(
+                Effect.sync(() => {
+                  stopped = true;
+                }),
+              ),
+              Effect.forkChild({ startImmediately: true }),
+            );
+            expect(webContents.setBackgroundThrottling.mock.calls).toEqual([[false]]);
+            expect(windowThrottling.mock.calls).toEqual([[false]]);
+            yield* TestClock.adjust(1_000);
+            expect(stopped).toBe(false);
+            expect(host.executeJavaScript).not.toHaveBeenCalled();
+            yield* TestClock.adjust(1_000);
+            expect(stopped).toBe(true);
+            yield* Fiber.join(start);
+            yield* Fiber.join(stop);
+            expect(capturePage).toHaveBeenCalledTimes(2);
+            expect(host.executeJavaScript).toHaveBeenCalledOnce();
+            expect(webContents.setBackgroundThrottling.mock.calls).toEqual([[false], [true]]);
+            expect(windowThrottling.mock.calls).toEqual([[false], [true]]);
+            expect(webviewSend).toHaveBeenLastCalledWith("preview:recording-cursor", false);
+
+            lateWarmup.resolve(image);
+            yield* TestClock.adjust(0);
+            const streams: Array<{ video?: unknown }> = [];
+            host.displayMediaHandler()?.({ frame: host.mainFrame }, (value) => streams.push(value));
+            expect(streams).toEqual([{}]);
+            expect(capturePage).toHaveBeenCalledTimes(2);
+            expect(host.executeJavaScript).toHaveBeenCalledOnce();
+            expect(webContents.setBackgroundThrottling.mock.calls).toEqual([[false], [true]]);
+            expect(windowThrottling.mock.calls).toEqual([[false], [true]]);
+            expect(webviewSend).toHaveBeenLastCalledWith("preview:recording-cursor", false);
+          } finally {
+            // Release stalled native calls after a failing assertion against unchanged base.
+            firstWarmup.resolve(image);
+            lateWarmup.resolve(image);
+          }
+        }),
+      ),
   );
 
   effectIt.effect("continues native recording when the source warmup fails", () =>

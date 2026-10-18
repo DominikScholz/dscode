@@ -6,7 +6,7 @@ import type {
   ScopedThreadRef,
 } from "@t3tools/contracts";
 import { Smartphone, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { usePreviewMiniPlayerStore } from "~/previewMiniPlayerStore";
 import { useRightPanelStore, type RightPanelSurface } from "~/rightPanelStore";
@@ -54,10 +54,7 @@ export function DevicePanel(props: {
     void list({ environmentId, input: {} });
   }, [environmentId, list, loaded, props.visible, hostDisabled]);
 
-  const sessions = useMemo(
-    () => state.sessions.filter((session) => session.threadId === threadId),
-    [state.sessions, threadId],
-  );
+  const sessions = state.sessions.filter((session) => session.threadId === threadId);
   const activeSession = props.surface.target
     ? sessions.find(
         (session) =>
@@ -71,34 +68,31 @@ export function DevicePanel(props: {
       )
     : undefined;
 
-  const grouped = useMemo(() => groupDevices(state), [state]);
+  const grouped = groupDevices(state);
 
   const selectDevice = async (value: string) => {
     const device = state.devices.find((candidate) => deviceKey(candidate) === value);
     if (!device) return;
     setOperationError(null);
     setPendingDevice(device);
-    try {
-      const result = await open({
-        environmentId,
-        input: {
-          threadId,
-          hostId: device.hostId,
-          deviceId: device.id,
-          platform: device.platform,
-        },
+    const result = await open({
+      environmentId,
+      input: {
+        threadId,
+        hostId: device.hostId,
+        deviceId: device.id,
+        platform: device.platform,
+      },
+    });
+    if (result._tag === "Failure") setOperationError(formatEnvironmentQueryError(result.cause));
+    else
+      useRightPanelStore.getState().openDevice(props.threadRef, {
+        hostId: result.value.hostId,
+        deviceId: result.value.deviceId,
+        platform: device.platform,
+        name: device.name,
       });
-      if (result._tag === "Failure") setOperationError(formatEnvironmentQueryError(result.cause));
-      else
-        useRightPanelStore.getState().openDevice(props.threadRef, {
-          hostId: result.value.hostId,
-          deviceId: result.value.deviceId,
-          platform: device.platform,
-          name: device.name,
-        });
-    } finally {
-      setPendingDevice(null);
-    }
+    setPendingDevice(null);
   };
 
   const floatActive = () => {
@@ -163,7 +157,9 @@ export function DevicePanel(props: {
       {hostReady && !activeDevice && state.hostStatusDetail ? (
         <div
           role="status"
-          className="whitespace-pre-line border-b px-3 py-2 text-xs text-muted-foreground"
+          aria-label="Device host diagnostics"
+          tabIndex={0}
+          className="max-h-32 shrink-0 overflow-y-auto whitespace-pre-line break-words border-b px-3 py-2 text-xs text-muted-foreground"
         >
           {state.hostStatusDetail}
         </div>
@@ -235,7 +231,10 @@ export function DevicePanel(props: {
               {grouped.length === 0 ? (
                 <>
                   <Smartphone className="size-6 opacity-60" />
-                  <p className="max-w-sm">
+                  <p
+                    className="max-h-32 w-full max-w-sm overflow-y-auto whitespace-pre-line break-words"
+                    tabIndex={state.hostStatus === "failed" ? 0 : undefined}
+                  >
                     {state.hostStatus === "failed"
                       ? (state.hostStatusDetail ?? "The device hub failed to start.")
                       : "No simulators or emulators were found on this environment."}

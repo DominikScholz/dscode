@@ -97,7 +97,11 @@ import type { ComposerEditorHandle } from "../../components/ComposerEditor";
 import type { StatusTone } from "../../components/StatusPill";
 import type { DraftComposerAttachment } from "../../lib/composerImages";
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
-import { CHAT_CONTENT_MAX_WIDTH, type LayoutVariant } from "../../lib/layout";
+import {
+  ANDROID_READING_MAX_WIDTH,
+  CHAT_CONTENT_MAX_WIDTH,
+  type LayoutVariant,
+} from "../../lib/layout";
 import { editPendingThreadMessage } from "../../state/edit-pending-thread-message";
 import { deviceEnvironment } from "../../state/device";
 import { useEnvironmentQuery } from "../../state/query";
@@ -363,15 +367,19 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   // Android can swallow the IME hide callbacks when the app is backgrounded mid keyboard-hide
   // (the reported repro: send — which blurs and starts the hide — then Home within a second). The
   // keyboard library's height AND visibility then stay frozen open, so gating the sticky
-  // translation on visibility alone still strands the composer after resume.
+  // translation on visibility alone still strands the composer after resume. An input that kept
+  // focus through the switch is exempt: Android restores its keyboard unchanged, so no keyboard
+  // or focus event would ever lift the quarantine. Hiding the keyboard with Back keeps focus, so
+  // Back then Home mid-hide takes the exemption and can still strand the composer.
   const [keyboardStateSuspect, setKeyboardStateSuspect] = useState(false);
+  const ownedInputFocusedRef = useRef(false);
   useEffect(() => {
     if (Platform.OS !== "android") {
       return;
     }
     const subscription = AppState.addEventListener("change", (state) => {
       if (state === "active") {
-        setKeyboardStateSuspect(true);
+        setKeyboardStateSuspect(!ownedInputFocusedRef.current);
       }
     });
     return () => {
@@ -382,6 +390,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
     setKeyboardStateSuspect(false);
   }, [isKeyboardVisible, liveKeyboardHeight]);
   const handleOwnedInputFocusChange = useCallback((focused: boolean) => {
+    ownedInputFocusedRef.current = focused;
     if (focused) {
       setKeyboardStateSuspect(false);
     }
@@ -763,7 +772,12 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
   const showContent = props.showContent ?? true;
   const layoutVariant = props.layoutVariant ?? "compact";
   const isSplitLayout = layoutVariant === "split";
-  const contentMaxWidth = isSplitLayout ? CHAT_CONTENT_MAX_WIDTH : undefined;
+  const contentMaxWidth =
+    Platform.OS === "android"
+      ? ANDROID_READING_MAX_WIDTH
+      : isSplitLayout
+        ? CHAT_CONTENT_MAX_WIDTH
+        : undefined;
   const providerSubagentProvider = props.serverConfig?.providers.find(
     (provider) => provider.instanceId === props.selectedThread.modelSelection.instanceId,
   );
@@ -788,7 +802,7 @@ export const ThreadDetailScreen = memo(function ThreadDetailScreen(props: Thread
           ),
           right: undefined,
         }
-      : { width: undefined, right: controlInsets.right },
+      : { width: "auto", right: controlInsets.right },
   );
   const selectedInstanceId = props.selectedThread.modelSelection.instanceId;
   useStreamingHaptics(props.selectedThread.id, props.selectedThreadFeed);

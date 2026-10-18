@@ -4,7 +4,6 @@ import {
   type EnvironmentId,
   type ProjectScript,
   type T3ProjectFileScript,
-  type ResolvedKeybindingsConfig,
 } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { DEFAULT_RESOLVED_KEYBINDINGS } from "@t3tools/shared/keybindings";
@@ -20,7 +19,7 @@ import {
   PlusIcon,
   WrenchIcon,
 } from "@phosphor-icons/react";
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useState } from "react";
 
 import { commandForProjectScript, primaryProjectScript } from "~/projectScripts";
 import { shortcutLabelForCommand } from "~/keybindings";
@@ -111,24 +110,16 @@ export default function ProjectScriptsControl({
   }
   const [editorRequest, setEditorRequest] = useState<ProjectScriptEditorRequest | null>(null);
 
-  const primaryScript = useMemo(() => {
-    if (preferredScriptId) {
-      const preferred = scripts.find((script) => script.id === preferredScriptId);
-      if (preferred) return preferred;
-    }
-    return primaryProjectScript(scripts);
-  }, [preferredScriptId, scripts]);
-  const importableScripts = useMemo(
-    () =>
-      fileScripts.filter(
-        (fileScript) =>
-          !scripts.some(
-            (script) =>
-              script.command === fileScript.command ||
-              script.name.toLowerCase() === fileScript.name.toLowerCase(),
-          ),
+  const primaryScript =
+    (preferredScriptId ? scripts.find((script) => script.id === preferredScriptId) : undefined) ??
+    primaryProjectScript(scripts);
+  const importableScripts = fileScripts.filter(
+    (fileScript) =>
+      !scripts.some(
+        (script) =>
+          script.command === fileScript.command ||
+          script.name.toLowerCase() === fileScript.name.toLowerCase(),
       ),
-    [fileScripts, scripts],
   );
 
   const openAddDialog = () => {
@@ -141,11 +132,8 @@ export default function ProjectScriptsControl({
     setEditorRequest(editorRequestForScript(script, keybindings));
   };
 
-  const submitScript = useCallback(
-    (scriptId: string | null, input: NewProjectScriptInput) =>
-      scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input),
-    [onAddScript, onUpdateScript],
-  );
+  const submitScript = (scriptId: string | null, input: NewProjectScriptInput) =>
+    scriptId === null ? onAddScript(input) : onUpdateScript(scriptId, input);
 
   const importFileScript = async (fileScript: T3ProjectFileScript) => {
     const payload: NewProjectScriptInput = {

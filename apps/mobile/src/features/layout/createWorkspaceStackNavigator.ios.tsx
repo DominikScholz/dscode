@@ -20,7 +20,7 @@ import {
   type NativeStackTypeBag,
 } from "@react-navigation/native-stack";
 import { use, useCallback, useEffect, useMemo, useRef, useState, type ComponentProps } from "react";
-import { Platform, View } from "react-native";
+import { View } from "react-native";
 import { Split, type SplitHostCommands } from "react-native-screens";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -42,7 +42,6 @@ import {
 } from "../../native/NativeWorkspaceColumns";
 import { V5StackHeader } from "../../native/V5StackHeader.ios";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
-import { dispatchHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import {
   nativeWorkspacePopAction,
   projectWorkspaceStack,
@@ -183,7 +182,9 @@ function WorkspaceColumns(
       preferredSplitBehavior="tile"
       topColumnForCollapsing={compactColumn}
       preferredDisplayMode={
-        panes.primarySidebarVisible || !activeDetailKey ? "oneBesideSecondary" : "secondaryOnly"
+        panes.primarySidebarVisible || (!layout.usesSplitView && !activeDetailKey)
+          ? "oneBesideSecondary"
+          : "secondaryOnly"
       }
       displayModeButtonVisibility="never"
       presentsWithGesture
@@ -220,24 +221,6 @@ function WorkspaceColumns(
               options={{
                 headerShown: true,
                 title: "",
-                unstable_headerRightItems: () =>
-                  Platform.OS === "ios" &&
-                  !Platform.isPad &&
-                  layout.usesSplitView &&
-                  !panes.primarySidebarVisible
-                    ? [
-                        {
-                          type: "button",
-                          axisBehavior: "verticalPreferred",
-                          accessibilityLabel: "Search threads",
-                          label: "Search threads",
-                          icon: { type: "sfSymbol", name: "magnifyingglass" },
-                          onPress: () => {
-                            dispatchHardwareKeyboardCommand("focusSearch");
-                          },
-                        },
-                      ]
-                    : [],
                 unstable_headerLeftItems: () => [
                   {
                     type: "button",

@@ -50,6 +50,7 @@ import {
   type OrchestratorMcpThreadWaitInput,
   type OrchestratorMcpThreadWaitResult,
   type ProviderInteractionMode,
+  type ProviderInstanceId,
   type ProviderOptionDescriptor,
   type ProviderOptionSelection,
   type RuntimeMode,
@@ -199,6 +200,29 @@ const isThreadManagementError = Schema.is(ThreadManagementService.ThreadManageme
 function failure(code: OrchestratorMcpFailure["code"], message: string): OrchestratorMcpFailure {
   return new OrchestratorMcpFailure({ code, message });
 }
+
+/**
+ * A caller's thread is live while it is not archived, runs on the caller's
+ * provider instance, and has an active run or a background subagent that
+ * instance started. A background subagent outlives its run and calls tools
+ * with its thread's credential, which is revoked when the provider process
+ * goes away.
+ */
+export const isLiveCallerShell = (
+  shell: Pick<
+    OrchestrationV2ThreadShell,
+    "archivedAt" | "activeRunId" | "providerInstanceId" | "pendingBackgroundTasks"
+  > | null,
+  providerInstanceId: ProviderInstanceId | undefined,
+) =>
+  shell !== null &&
+  shell.archivedAt === null &&
+  shell.providerInstanceId === providerInstanceId &&
+  (shell.activeRunId !== null ||
+    (shell.pendingBackgroundTasks?.some(
+      (task) => task.kind === "subagent" && task.providerInstanceId === providerInstanceId,
+    ) ??
+      false));
 
 function threadManagementFailure(error: unknown): OrchestratorMcpFailure {
   if (!isThreadManagementError(error)) return failure("orchestration_error", errorMessage(error));
@@ -1060,13 +1084,26 @@ const make = Effect.gen(function* () {
     scope: McpInvocationScope,
     parent: Pick<OrchestrationV2ThreadProjection, "thread" | "runs">,
   ) => {
+    const notActive = failure(
+      "parent_not_active",
+      "The calling provider no longer owns an active thread run.",
+    );
     const activeRun = ThreadManagementService.latestActiveRun(parent);
+    if (parent.thread.archivedAt === null && activeRun === undefined) {
+      // Decide from this one fresh snapshot: a run may have started since `parent` was read.
+      return threadManagement.getThreadShell(parent.thread.id).pipe(
+        Effect.mapError(threadManagementFailure),
+        Effect.flatMap((shell) =>
+          isLiveCallerShell(shell, scope.thread?.providerInstanceId)
+            ? Effect.void
+            : Effect.fail(notActive),
+        ),
+      );
+    }
     return parent.thread.archivedAt !== null ||
       activeRun === undefined ||
       activeRun.providerInstanceId !== scope.thread?.providerInstanceId
-      ? Effect.fail(
-          failure("parent_not_active", "The calling provider no longer owns an active thread run."),
-        )
+      ? Effect.fail(notActive)
       : Effect.void;
   };
 
@@ -1951,6 +1988,21 @@ const make = Effect.gen(function* () {
                 failure("invalid_request", "Unable to resolve the parent checkout commit."),
               ),
             );
+          // Launch preparation creates the worktree from the project root, so a
+          // parent checkout in another repository (such as a Git folder inside
+          // Scratch) would hand it a commit it cannot find.
+          if (parent.thread.worktreePath !== null) {
+            yield* gitDriver
+              .resolveCommit({ cwd: project.workspaceRoot, revision: base.commitSha })
+              .pipe(
+                Effect.mapError(() =>
+                  failure(
+                    "invalid_request",
+                    `Isolation "worktree" creates the child checkout in project "${project.title}" (${project.workspaceRoot}), which does not contain the parent checkout's commit. Use isolation "shared" to work in the parent's checkout.`,
+                  ),
+                ),
+              );
+          }
           workspaceStrategy = { type: "worktree", baseRef: base.commitSha, startFromOrigin: false };
         }
         // ThreadManagementService.dispatch is the chokepoint for this command

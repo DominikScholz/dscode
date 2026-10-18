@@ -84,11 +84,19 @@ import {
   SHARED_WORKSPACE_RESTORE_MESSAGE,
 } from "./CheckpointRestoreSafety.ts";
 import { CheckpointServiceV2 } from "./CheckpointService.ts";
-import { CommandPolicyV2, resolveMessageDispatchIntent } from "./CommandPolicy.ts";
+import {
+  CommandPolicyV2,
+  isNativeMaintenanceCommand,
+  resolveMessageDispatchIntent,
+} from "./CommandPolicy.ts";
 import { CommandReceiptStoreV2 } from "./CommandReceiptStore.ts";
 import { ContextHandoffServiceV2 } from "./ContextHandoffService.ts";
 import { notificationTurnItem } from "@t3tools/provider-core/server/notification";
-import { isRestartContinuationSource, runOutcome } from "./RestartBackgroundNote.ts";
+import {
+  cancelledBeforeStart,
+  isRestartContinuationSource,
+  runOutcome,
+} from "./RestartBackgroundNote.ts";
 import {
   isBufferedProviderNotification,
   isUndeliveredMailboxSteer,
@@ -372,8 +380,9 @@ export class OrchestratorV2 extends Context.Service<OrchestratorV2, Orchestrator
   "t3/orchestration-v2/Orchestrator/OrchestratorV2",
 ) {}
 
+/** Run ordinals can skip values: a queued run moves past newer runs when it starts. */
 function nextRunOrdinal(projection: Pick<OrchestrationV2ThreadProjection, "runs">): number {
-  return projection.runs.length + 1;
+  return projection.runs.reduce((max, run) => Math.max(max, run.ordinal), 0) + 1;
 }
 
 /**
@@ -402,17 +411,6 @@ function wakeWorkStartedAt(
         DateTime.Order(right.startedAt, left.startedAt) || right.run.ordinal - left.run.ordinal,
     )[0]?.run;
   return previous === undefined ? {} : { workStartedAt: orchestrationV2RunWorkStartedAt(previous) };
-}
-
-export function isNativeMaintenanceCommand(message: {
-  readonly text: string;
-  readonly attachments: ReadonlyArray<ChatAttachment>;
-  readonly context?: import("@t3tools/contracts").OrchestrationMessageContext | undefined;
-}): boolean {
-  return (
-    message.attachments.length === 0 &&
-    ["/compact", "/logout"].includes(message.text.trim().toLowerCase())
-  );
 }
 
 function isGoalCommand(message: {
@@ -1344,6 +1342,21 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         );
         return;
       }
+      // Run ordinals order the transcript, checkpoints, and the latest run. A
+      // run that started while this one waited (a resume of a held queue, a
+      // reorder, a delivery that jumps the queue) has a newer ordinal, so this
+      // run moves after it. A started run has its prompt in the transcript (a
+      // wake's prompt is a notification); a message cancelled from the queue has none.
+      const newerRunIds = projection.runs
+        .filter((run) => run.status !== "queued" && run.ordinal > queuedRun.ordinal)
+        .map((run) => run.id);
+      const startedAhead =
+        newerRunIds.length > 0 &&
+        (yield* projectionStore.getThreadRecords(threadId, ["turnItems"], {
+          turnItemTypes: ["user_message", "notification"],
+          turnItemRunIds: newerRunIds,
+        })).turnItems.length > 0;
+      const ordinal = startedAhead ? nextRunOrdinal(projection) : queuedRun.ordinal;
       const rootNodeId = queuedRun.rootNodeId;
       const attemptId = queuedRun.activeAttemptId;
       const providerThreadId = queuedRun.providerThreadId;
@@ -1617,8 +1630,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         ...deliveryProviderThread,
         providerSessionId,
         status: "not_loaded",
-        firstRunOrdinal: queuedProviderThread.firstRunOrdinal ?? queuedRun.ordinal,
-        lastRunOrdinal: queuedRun.ordinal,
+        firstRunOrdinal: queuedProviderThread.firstRunOrdinal ?? ordinal,
+        lastRunOrdinal: ordinal,
         handoffIds: appendContextHandoffId(
           appendContextHandoffId(queuedProviderThread.handoffIds, handoff?.id ?? null),
           legacyImportRecoveryHandoff?.id ?? null,
@@ -1627,6 +1640,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       };
       const startingRun: OrchestrationV2Run = {
         ...queuedRun,
+        ordinal,
         status: "starting",
         queuePosition: null,
         startedAt: null,
@@ -1647,7 +1661,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           providerTurnId: null,
           nativeItemRef: null,
           parentItemId: null,
-          ordinal: queuedRun.ordinal * 100,
+          ordinal: ordinal * 100,
           status: "completed",
           title: null,
           type: "user_message",
@@ -1684,7 +1698,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
               providerTurnId: null,
               nativeItemRef: null,
               parentItemId: null,
-              ordinal: queuedRun.ordinal * 100 - 1,
+              ordinal: ordinal * 100 - 1,
               status: "completed",
               title: handoff === null ? "Imported context" : "Provider handoff",
               startedAt: now,
@@ -4576,7 +4590,11 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           projection.thread.deletedAt !== null ||
           projection.thread.providerInstanceId !== source.providerInstanceId ||
           projection.runs.some(
-            (run) => run.id !== source.id && run.status !== "queued" && runRanAfter(run, source),
+            (run) =>
+              run.id !== source.id &&
+              run.status !== "queued" &&
+              !cancelledBeforeStart(run) &&
+              runRanAfter(run, source),
           ) ||
           (yield* stopReachedRun(command, command.threadId, source.id))
         ) {
@@ -6820,6 +6838,15 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       )
       .at(-1);
     if (message?.runId == null) return;
+    // Only a message that starts a run or a new attempt can own a task. A
+    // steer joins the running attempt, which finalizes its run from the
+    // snapshot taken when it started, so a task bound to it would never settle.
+    const startsAttempt = pending.some(
+      (event) =>
+        (event.type === "run.created" && event.payload.id === message.runId) ||
+        (event.type === "run-attempt.created" && event.payload.runId === message.runId),
+    );
+    if (!startsAttempt) return;
     const child = yield* projectionStore.getThread(command.threadId);
     const parentThreadId = child.lineage.parentThreadId;
     if (

@@ -41,6 +41,7 @@ import { mergePathEntries } from "@t3tools/shared/shell";
 import { acpRegistryManagedBinaryDirectories } from "@t3tools/provider-acp-registry/server";
 import { getTerminalLabel } from "@t3tools/shared/terminalLabels";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Base64Url from "effect/encoding/Base64Url";
@@ -1060,6 +1061,7 @@ function findEscapeSequenceEndIndex(input: string, start: number): number | null
 
 // eslint-disable-next-line no-control-regex -- Terminal sequence introducers must reach the parser.
 const HISTORY_SEQUENCE_START = /[\u001b\u0090\u009b\u009d\u009e\u009f]/;
+const NEXT_HISTORY_SEQUENCE_START = new RegExp(HISTORY_SEQUENCE_START.source, "g");
 
 function sanitizeTerminalHistoryChunk(
   pendingControlSequence: string,
@@ -1174,8 +1176,11 @@ function sanitizeTerminalHistoryChunk(
       continue;
     }
 
-    append(input[index] ?? "");
-    index += 1;
+    // One slice per printable run: every chunk of coloured output reaches this loop.
+    NEXT_HISTORY_SEQUENCE_START.lastIndex = index + 1;
+    const nextSequenceStart = NEXT_HISTORY_SEQUENCE_START.exec(input)?.index ?? input.length;
+    append(input.slice(index, nextSequenceStart));
+    index = nextSequenceStart;
   }
 
   return { visibleText, pendingControlSequence: "" };
@@ -1566,6 +1571,11 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     fiber: Fiber.Fiber<void, never>,
   ) {
     yield* modifyManagerState((state) => {
+      // The child may finish (and run its finalizer) before this registration.
+      // Check inside the synchronized update so completed fibers are not retained.
+      if (fiber.pollUnsafe() !== undefined) {
+        return [undefined, state] as const;
+      }
       const killFibers = new Map(state.killFibers);
       killFibers.set(process, fiber);
       return [undefined, { ...state, killFibers }] as const;
@@ -1577,49 +1587,66 @@ export const makeWithOptions = Effect.fn("TerminalManager.makeWithOptions")(func
     threadId: string,
     terminalId: string,
   ) {
-    const terminated = yield* Effect.try({
-      try: () => process.kill("SIGTERM"),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: "SIGTERM",
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.as(true),
-      Effect.catch((error) =>
-        Effect.logWarning("failed to kill terminal process", {
-          threadId,
-          terminalId,
-          signal: "SIGTERM",
-          cause: error,
-        }).pipe(Effect.as(false)),
-      ),
-    );
-    if (!terminated) {
-      return;
-    }
+    // Subscribe before SIGTERM so an immediate exit is not missed. Released with
+    // Effect.ensuring because a JS `finally` does not run when the fiber is interrupted.
+    const exited = Deferred.makeUnsafe<void>();
+    const unsubscribeExit = process.onExit(() => {
+      Deferred.doneUnsafe(exited, Effect.void);
+    });
+    yield* Effect.gen(function* () {
+      const terminated = yield* Effect.try({
+        try: () => process.kill("SIGTERM"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGTERM",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.as(true),
+        Effect.catch((error) =>
+          Effect.logWarning("failed to kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGTERM",
+            cause: error,
+          }).pipe(Effect.as(false)),
+        ),
+      );
+      if (!terminated) {
+        return;
+      }
 
-    yield* Effect.sleep(processKillGraceMs);
+      const exitedBeforeGrace = yield* Deferred.await(exited).pipe(
+        Effect.as(true),
+        Effect.timeoutOrElse({
+          duration: processKillGraceMs,
+          orElse: () => Effect.succeed(false),
+        }),
+      );
+      if (exitedBeforeGrace) {
+        return;
+      }
 
-    yield* Effect.try({
-      try: () => process.kill("SIGKILL"),
-      catch: (cause) =>
-        new TerminalProcessSignalError({
-          cause,
-          signal: "SIGKILL",
-          terminalPid: process.pid,
-        }),
-    }).pipe(
-      Effect.catch((error) =>
-        Effect.logWarning("failed to force-kill terminal process", {
-          threadId,
-          terminalId,
-          signal: "SIGKILL",
-          cause: error,
-        }),
-      ),
-    );
+      yield* Effect.try({
+        try: () => process.kill("SIGKILL"),
+        catch: (cause) =>
+          new TerminalProcessSignalError({
+            cause,
+            signal: "SIGKILL",
+            terminalPid: process.pid,
+          }),
+      }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning("failed to force-kill terminal process", {
+            threadId,
+            terminalId,
+            signal: "SIGKILL",
+            cause: error,
+          }),
+        ),
+      );
+    }).pipe(Effect.ensuring(Effect.sync(unsubscribeExit)));
   });
 
   const startKillEscalation = Effect.fn("terminal.startKillEscalation")(function* (

@@ -2,6 +2,7 @@ import * as Option from "effect/Option";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
 import {
   ANTIGRAVITY_DEFAULT_MODEL,
+  PROVIDER_SEND_TURN_MAX_ATTACHMENTS,
   type AssetCreateUrlInput,
   type AssetCreateUrlResult,
   type ChatFileAttachment,
@@ -785,11 +786,6 @@ export function collectUserMessageBlobPreviewUrls(message: ChatMessage): string[
   return previewUrls;
 }
 
-export interface PullRequestDialogState {
-  initialReference: string | null;
-  key: number;
-}
-
 export { readFileAsDataUrl } from "../lib/imageCompression";
 
 export function resolveSendEnvMode(input: {
@@ -1290,4 +1286,70 @@ export function restorePlanFollowUpComposer(input: {
     prompt: input.snapshot.prompt,
     detectTrigger: true,
   });
+}
+
+/**
+ * Adds a directly sent preview annotation to the composer's images and
+ * annotations. Its screenshot rides along only while the turn has room for
+ * another attachment; over the cap the server rejects the whole turn.
+ */
+export function mergeDirectPreviewAnnotation(input: {
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly fileCount: number;
+  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+  readonly direct:
+    | {
+        readonly annotation: PreviewAnnotationPayload;
+        readonly image: ComposerImageAttachment | null;
+      }
+    | undefined;
+}): {
+  readonly images: ReadonlyArray<ComposerImageAttachment>;
+  readonly previewAnnotations: ReadonlyArray<PreviewAnnotationPayload>;
+} {
+  const { direct } = input;
+  if (!direct) return { images: input.images, previewAnnotations: input.previewAnnotations };
+  const imageAlreadyAttached =
+    direct.image !== null && input.images.some((image) => image.id === direct.image?.id);
+  const imageAppended =
+    direct.image !== null &&
+    !imageAlreadyAttached &&
+    input.images.length + input.fileCount < PROVIDER_SEND_TURN_MAX_ATTACHMENTS;
+  const images = direct.image && imageAppended ? [...input.images, direct.image] : input.images;
+  const previewAnnotations = input.previewAnnotations.some(
+    (annotation) => annotation.id === direct.annotation.id,
+  )
+    ? input.previewAnnotations
+    : [
+        ...input.previewAnnotations,
+        {
+          ...direct.annotation,
+          // Claim an attached crop only when the screenshot really rides
+          // along; a cap-dropped image must not produce a lying prompt.
+          screenshot:
+            direct.annotation.screenshot && (imageAppended || imageAlreadyAttached)
+              ? { ...direct.annotation.screenshot, dataUrl: "" }
+              : null,
+        },
+      ];
+  return { images, previewAnnotations };
+}
+
+/**
+ * Whether a woken thread woke after the user last saw it. A run that completed
+ * after the last visit counts as seeing it, since the user watched it finish.
+ */
+export function isThreadWokeUnseen(input: {
+  readonly wokeAt: string | null;
+  readonly settled: boolean;
+  readonly lastVisitedAt: string | null | undefined;
+  readonly latestRunCompletedAt: string | null;
+}): boolean {
+  if (input.wokeAt === null || input.settled) return false;
+  const wokeAtMs = Date.parse(input.wokeAt);
+  if (Number.isNaN(wokeAtMs)) return false;
+  const seenAt = [input.lastVisitedAt, input.latestRunCompletedAt]
+    .map((value) => (value ? Date.parse(value) : NaN))
+    .filter((ms) => !Number.isNaN(ms));
+  return seenAt.every((ms) => ms < wokeAtMs);
 }

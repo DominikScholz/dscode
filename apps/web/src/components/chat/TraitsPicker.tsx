@@ -16,7 +16,7 @@ import {
   isClaudeUltrathinkPrompt,
   normalizeModelSlug,
 } from "@t3tools/shared/model";
-import { memo, useCallback } from "react";
+import { memo } from "react";
 import { BrainIcon } from "lucide-react";
 import {
   Menu,
@@ -90,6 +90,14 @@ type TraitsPersistence =
     };
 
 const ULTRATHINK_PROMPT_PREFIX = "Ultrathink:\n";
+
+const REASONING_SELECT_DESCRIPTOR_IDS: ReadonlySet<string> = new Set([
+  "reasoningEffort",
+  "reasoning",
+  "effort",
+  "variant",
+  "thinking",
+]);
 
 function DefaultBadge() {
   return (
@@ -253,6 +261,97 @@ function getTraitsSectionVisibility(input: {
   };
 }
 
+function getTraitSelectChange(
+  selected: ReturnType<typeof getSelectedTraits>,
+  descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
+  prompt: string,
+  value: string,
+) {
+  if (!value) return null;
+  if (descriptor.promptInjectedValues?.includes(value)) {
+    return {
+      prompt:
+        prompt.trim().length === 0
+          ? ULTRATHINK_PROMPT_PREFIX
+          : applyClaudePromptEffortPrefix(prompt, "ultrathink"),
+    };
+  }
+  const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
+  if (isPrimary && selected.ultrathinkInBodyText) return null;
+  return {
+    prompt:
+      isPrimary && selected.ultrathinkPromptControlled
+        ? prompt.replace(/^Ultrathink:\s*/i, "")
+        : prompt,
+    modelOptions: buildProviderOptionSelectionsFromDescriptors(
+      replaceDescriptorCurrentValue(selected.descriptors, descriptor.id, value),
+    ),
+  };
+}
+
+/**
+ * `modelOptions` must already carry the composer's implicit defaults (see
+ * `withImplicitFastModeDefault`) so the persisted selection matches what the
+ * picker would write.
+ */
+export function getReasoningTraitStep(input: {
+  provider: ProviderDriverKind;
+  instanceId: ProviderInstanceId;
+  model: string;
+  models: ReadonlyArray<ServerProviderModel>;
+  modelOptions: ProviderOptions | undefined;
+  reportedModelSelection: ModelSelection | null | undefined;
+  prompt: string;
+  planModeEnabled: boolean;
+  direction: 1 | -1;
+}) {
+  const selected = getSelectedTraits(
+    input.provider,
+    input.models,
+    input.model,
+    input.prompt,
+    input.modelOptions,
+    true,
+    input.planModeEnabled,
+  );
+  if (selected.modelIsUnavailable || selected.ultrathinkInBodyText) return null;
+  const descriptor = selected.selectDescriptors.find((entry) =>
+    REASONING_SELECT_DESCRIPTOR_IDS.has(entry.id),
+  );
+  if (!descriptor || descriptor.options.length < 2) return null;
+  const isPrimary = descriptor.id === selected.primarySelectDescriptor?.id;
+  const current =
+    isPrimary && selected.ultrathinkPromptControlled
+      ? "ultrathink"
+      : getDescriptorStringValue(
+          descriptor,
+          { instanceId: input.instanceId, model: input.model, options: input.modelOptions ?? [] },
+          input.reportedModelSelection,
+        );
+  const ordered = input.direction > 0 ? descriptor.options : descriptor.options.toReversed();
+  // A reported value outside the catalog, such as OpenCode's "default", steps
+  // from the catalog default, or from the end when there is none.
+  const position =
+    [current, getDescriptorStringValue(descriptor)]
+      .map((value) => ordered.findIndex((option) => option.id === value))
+      .find((index) => index >= 0) ?? -1;
+  for (const option of [
+    ...ordered.slice(position + 1),
+    ...ordered.slice(0, Math.max(position, 0)),
+  ]) {
+    const change = getTraitSelectChange(selected, descriptor, input.prompt, option.id);
+    if (!change) return null;
+    if ("modelOptions" in change) {
+      return change.modelOptions
+        ? { prompt: change.prompt, modelOptions: change.modelOptions }
+        : null;
+    }
+    // A slash command refuses the Ultrathink prefix, so skip that level.
+    if (change.prompt.startsWith(ULTRATHINK_PROMPT_PREFIX)) return change;
+  }
+  return null;
+}
+
 export function shouldRenderTraitsControls(input: {
   provider: ProviderDriverKind;
   models: ReadonlyArray<ServerProviderModel>;
@@ -296,24 +395,30 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
   const modelSelection =
     instanceId && model ? { instanceId, model, options: modelOptions ?? [] } : null;
   const setProviderModelOptions = useComposerDraftStore((store) => store.setProviderModelOptions);
-  const updateModelOptions = useCallback(
-    (nextOptions: ProviderOptions | undefined) => {
-      if ("onModelOptionsChange" in persistence) {
-        persistence.onModelOptionsChange(nextOptions);
-        return;
-      }
-      const threadTarget = persistence.threadRef ?? persistence.draftId;
-      if (!threadTarget) {
-        return;
-      }
-      setProviderModelOptions(threadTarget, provider, nextOptions, {
-        ...(instanceId ? { instanceId } : {}),
-        model,
-        persistSticky: true,
-      });
-    },
-    [instanceId, model, persistence, provider, setProviderModelOptions],
-  );
+  const updateModelOptions = (nextOptions: ProviderOptions | undefined) => {
+    if ("onModelOptionsChange" in persistence) {
+      persistence.onModelOptionsChange(nextOptions);
+      return;
+    }
+    const threadTarget = persistence.threadRef ?? persistence.draftId;
+    if (!threadTarget) {
+      return;
+    }
+    setProviderModelOptions(threadTarget, provider, nextOptions, {
+      ...(instanceId ? { instanceId } : {}),
+      model,
+      persistSticky: true,
+    });
+  };
+  const selected = getTraitsSectionVisibility({
+    provider,
+    models,
+    model,
+    prompt,
+    modelOptions,
+    allowPromptInjectedEffort,
+    planModeEnabled,
+  });
   const {
     descriptors,
     selectDescriptors,
@@ -323,15 +428,7 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     ultrathinkInBodyText,
     hasAnyControls,
     modelIsUnavailable,
-  } = getTraitsSectionVisibility({
-    provider,
-    models,
-    model,
-    prompt,
-    modelOptions,
-    allowPromptInjectedEffort,
-    planModeEnabled,
-  });
+  } = selected;
   const updateDescriptors = (nextDescriptors: ReadonlyArray<ProviderOptionDescriptor>) => {
     updateModelOptions(buildProviderOptionSelectionsFromDescriptors(nextDescriptors));
   };
@@ -340,21 +437,10 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
     descriptor: Extract<ProviderOptionDescriptor, { type: "select" }>,
     value: string,
   ) => {
-    if (!value) return;
-    if (descriptor.promptInjectedValues?.includes(value)) {
-      const nextPrompt =
-        prompt.trim().length === 0
-          ? ULTRATHINK_PROMPT_PREFIX
-          : applyClaudePromptEffortPrefix(prompt, "ultrathink");
-      onPromptChange(nextPrompt);
-      return;
-    }
-    if (ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id) return;
-    if (ultrathinkPromptControlled && descriptor.id === primarySelectDescriptor?.id) {
-      const stripped = prompt.replace(/^Ultrathink:\s*/i, "");
-      onPromptChange(stripped);
-    }
-    updateDescriptors(replaceDescriptorCurrentValue(descriptors, descriptor.id, value));
+    const change = getTraitSelectChange(selected, descriptor, prompt, value);
+    if (!change) return;
+    if (change.prompt !== prompt) onPromptChange(change.prompt);
+    if ("modelOptions" in change) updateModelOptions(change.modelOptions);
   };
 
   if (!hasAnyControls) {
@@ -423,16 +509,9 @@ export const TraitsMenuContent = memo(function TraitsMenuContentImpl({
                     disabled={ultrathinkInBodyText && descriptor.id === primarySelectDescriptor?.id}
                   >
                     <span className="flex w-full min-w-0 flex-col">
-                      <span className="flex w-full min-w-0 items-center justify-between gap-3">
-                        <span className="min-w-0 truncate">
-                          {option.label}
-                          {option.isDefault ? (
-                            <>
-                              {" "}
-                              <DefaultBadge />
-                            </>
-                          ) : null}
-                        </span>
+                      <span className="flex min-w-0 items-center gap-1">
+                        <span className="min-w-0 truncate">{option.label}</span>
+                        {option.isDefault ? <DefaultBadge /> : null}
                       </span>
                       {option.description ? (
                         <span className="max-w-56 text-pretty text-muted-foreground/80 text-xs">
@@ -537,7 +616,7 @@ export function buildTraitsTriggerDisplay(input: {
       if (
         reasoningLabelIndex === -1 &&
         descriptor.type === "select" &&
-        ["reasoningEffort", "reasoning", "effort", "variant", "thinking"].includes(descriptor.id)
+        REASONING_SELECT_DESCRIPTOR_IDS.has(descriptor.id)
       ) {
         reasoningLabelIndex = labels.length;
       }

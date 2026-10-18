@@ -80,7 +80,15 @@ function makeSession(frame?: ReturnType<typeof makeFrame>) {
       if (method === "Page.getLayoutMetrics") return { cssVisualViewport: { pageX: 0, pageY: 0 } };
       if (method === "Page.captureScreenshot") return { data: "ZnJhbWU=" };
       if (method === "Page.getFrameTree") return { frameTree: { frame: { id: "main" } } };
-      if (method === "Page.createIsolatedWorld") return { executionContextId: 7 };
+      // Snapshots read password fields from their own isolated world in each frame.
+      if (method === "Page.createIsolatedWorld") {
+        return {
+          executionContextId: (input as { worldName?: string }).worldName === "t3-preview" ? 1 : 7,
+        };
+      }
+      if (method === "Runtime.evaluate" && (input as { contextId?: number }).contextId === 1) {
+        return { result: { value: [] } };
+      }
       if (method === "Page.addScriptToEvaluateOnNewDocument") frame?.recording.resolve();
       if (method === "Input.dispatchKeyEvent" && (input as { commands?: unknown }).commands) {
         if (focusedFrame) focusedFrame.copy = keyCopy || focusedFrame.copy;
@@ -297,6 +305,114 @@ beforeEach(() => {
   releasedDesktopTabs.length = 0;
   desktopConnections.length = 0;
 });
+
+it.live.each(["desktop" as const, undefined])(
+  "explicit desktop targets ($0 runtime) fail without creating a server tab",
+  (runtime) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { broker, tabId } = yield* ready;
+        const manager = yield* Manager.PreviewManager;
+        const desktop = yield* manager.open({
+          threadId: scope.thread.threadId,
+          url: "https://example.com/original",
+          ...(runtime === undefined ? {} : { runtime }),
+        });
+        const before = yield* manager.list({ threadId: scope.thread.threadId });
+        const error = yield* broker
+          .invoke<PreviewAutomationStatus>({
+            scope,
+            tabId: PreviewTabId.make(desktop.tabId),
+            operation: "open",
+            input: { url: "https://example.com/replacement", open: true },
+          })
+          .pipe(Effect.flip);
+        expect(error).toMatchObject({ _tag: "PreviewAutomationExecutionError" });
+        expect(error.message).toContain("desktop runtime");
+        expect(error.message).toContain("cannot control");
+        expect(yield* manager.list({ threadId: scope.thread.threadId })).toEqual(before);
+        expect(contexts).toHaveLength(1);
+        // A rejected explicit target must not replace this session's working tab.
+        const reused = yield* broker.invoke<PreviewAutomationStatus>({
+          scope,
+          operation: "open",
+          input: { open: false },
+        });
+        expect(reused.tabId).toBe(tabId);
+      }),
+    ).pipe(Effect.provide(layer)),
+);
+
+it.live("an unknown explicit target fails without creating a server tab", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker } = yield* ready;
+      const manager = yield* Manager.PreviewManager;
+      const before = yield* manager.list({ threadId: scope.thread.threadId });
+      const error = yield* broker
+        .invoke<PreviewAutomationStatus>({
+          scope,
+          tabId: PreviewTabId.make("missing-tab"),
+          operation: "open",
+          input: { url: "https://example.com/replacement", open: true },
+        })
+        .pipe(Effect.flip);
+      expect(error).toMatchObject({
+        _tag: "PreviewAutomationTabNotFoundError",
+        tabId: "missing-tab",
+      });
+      expect(yield* manager.list({ threadId: scope.thread.threadId })).toEqual(before);
+      expect(contexts).toHaveLength(1);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.live("an explicit server target reuses its ID and navigates without creating a tab", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const manager = yield* Manager.PreviewManager;
+      const before = yield* manager.list({ threadId: scope.thread.threadId });
+      const opened = yield* broker.invoke<PreviewAutomationStatus>({
+        scope,
+        tabId,
+        operation: "open",
+        input: { url: "https://example.com/reused", open: false },
+      });
+      expect(opened).toMatchObject({ tabId, url: "https://example.com/reused" });
+      const { sessions } = yield* manager.list({ threadId: scope.thread.threadId });
+      expect(sessions.map((session) => session.tabId)).toEqual(
+        before.sessions.map((session) => session.tabId),
+      );
+      expect(contexts).toHaveLength(1);
+      expect(contexts[0]!.page.goto).toHaveBeenCalledWith(
+        "https://example.com/reused",
+        expect.anything(),
+      );
+    }),
+  ).pipe(Effect.provide(layer)),
+);
+
+it.live("an unresolved implicit target still falls back to a new server tab", () =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const { broker, tabId } = yield* ready;
+      const manager = yield* Manager.PreviewManager;
+      yield* manager.close({ threadId: scope.thread.threadId, tabId });
+      const opened = yield* broker.invoke<PreviewAutomationStatus>({
+        scope,
+        operation: "open",
+        input: { url: "https://example.com/fallback", open: false },
+      });
+      expect(opened.tabId).not.toBe(tabId);
+      expect(opened).toMatchObject({ available: true, url: "https://example.com/fallback" });
+      const { sessions } = yield* manager.list({ threadId: scope.thread.threadId });
+      expect(sessions).toEqual([
+        expect.objectContaining({ tabId: opened.tabId, runtime: "server" }),
+      ]);
+    }),
+  ).pipe(Effect.provide(layer)),
+);
 
 it.live("readiness none responds immediately but takeover input waits for navigation commit", () =>
   Effect.scoped(

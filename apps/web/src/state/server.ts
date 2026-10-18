@@ -1,6 +1,7 @@
 import {
   DEFAULT_SERVER_SETTINGS,
   type EditorId,
+  type EnvironmentId,
   type EnvironmentTheme,
   type ServerConfig,
   type ServerConfigStreamEvent,
@@ -18,8 +19,10 @@ import { AsyncResult, Atom } from "effect/reactivity";
 
 import { environmentCatalog } from "../connection/catalog";
 import { connectionAtomRuntime } from "../connection/runtime";
+import { environmentAtomList } from "./environmentAtomList";
 import { primaryEnvironmentIdAtom } from "./primaryEnvironment";
 import { environmentSession } from "./session";
+import { reuseProvidersIgnoringCheckedAt } from "./serverProviders.logic";
 
 // Only the primary environment's themes are rendered, but which environment is primary changes
 // at runtime and the subscription payload is fixed when it is established -- gating on "primary
@@ -30,6 +33,10 @@ export const serverEnvironment = createServerEnvironmentAtoms(connectionAtomRunt
   usageLimitSources: true,
   usageLimitsCommand: true,
 });
+export const environmentUpdateStatesAtom = environmentAtomList(
+  "web-environment-update-states",
+  serverEnvironment.updateStateAtom,
+);
 export const updateOutdatedServer = createOutdatedServerUpdateCommand(connectionAtomRuntime);
 export const environmentServerConfigsAtom = createEnvironmentServerConfigsAtom({
   catalogValueAtom: environmentCatalog.catalogValueAtom,
@@ -117,3 +124,13 @@ export const primaryServerEnvironmentThemesAtom = Atom.make(
   (get): ReadonlyArray<EnvironmentTheme> =>
     get(primaryServerConfigAtom)?.environmentThemes ?? EMPTY_ENVIRONMENT_THEMES,
 ).pipe(Atom.withLabel("web-primary-server-environment-themes"));
+
+/** Providers for views that do not show `checkedAt`; see {@link reuseProvidersIgnoringCheckedAt}. */
+export const providersIgnoringCheckedAtAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get): ReadonlyArray<ServerProvider> =>
+    reuseProvidersIgnoringCheckedAt(
+      Option.getOrNull(get.self<ReadonlyArray<ServerProvider>>()),
+      get(serverEnvironment.providersValueAtom(environmentId)) ?? EMPTY_SERVER_PROVIDERS,
+    ),
+  ).pipe(Atom.withLabel(`web-providers-ignoring-checked-at:${environmentId}`)),
+);
