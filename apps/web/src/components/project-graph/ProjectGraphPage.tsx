@@ -19,18 +19,10 @@ import {
   UnlinkIcon,
   HistoryIcon,
 } from "lucide-react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type MouseEvent,
-  type ReactNode,
-} from "react";
+import { memo, useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { buildThreadRouteParams } from "../../threadRoutes";
 import { useNowMinute } from "../../hooks/useNowMinute";
+import { observeResize } from "../../lib/observeResize";
 import { formatRelativeTime } from "../../timestampFormat";
 import { readLocalApi } from "../../localApi";
 import type { SidebarProjectGroupMember } from "../../sidebarProjectGrouping";
@@ -42,7 +34,7 @@ import { vcsEnvironment } from "../../state/vcs";
 import { useSettingsProjectGroups } from "../settings/useSettingsProjectGroups";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { Button } from "../ui/button";
-import { Input } from "../ui/input";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "../ui/input-group";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { resolveGraphAvatar } from "./graphAvatar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -97,13 +89,13 @@ export function ProjectGraphPage({
       <Popover>
         <PopoverTrigger
           aria-label="Graph options"
-          render={<Button variant="ghost" size="compact" className="size-7 p-0" />}
+          render={<Button variant="ghost" size="icon-sm" />}
         >
           <SettingsIcon className="size-3.5" />
         </PopoverTrigger>
         <PopoverPopup align="start" className="w-80">
           <div className="flex flex-col gap-3 text-xs">
-            <p className="break-all font-mono text-[10px] text-muted-foreground">
+            <p className="break-all font-mono text-3xs text-muted-foreground">
               {member.workspaceRoot}
             </p>
             {group.memberProjects.length > 1 && (
@@ -167,7 +159,7 @@ export function ProjectGraphPage({
               </label>
             )}
             {gitEnvironment && gitEnvironment !== member.environmentId && (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-2xs text-muted-foreground">
                 Threads stay live on {member.environmentLabel ?? "their environment"}. The Git
                 source must have access to the same checkout path.
               </p>
@@ -243,102 +235,97 @@ function ProjectGraph({
     query.data?.graph ??
     (loadedGraph?.environmentId === gitEnvironmentId ? loadedGraph.graph : undefined);
   const projects = useProjects();
-  const projectRefs = useMemo(() => {
-    const roots = new Set(
-      graph?.worktrees.map((tree) => normalizeProjectPathForComparison(tree.path)) ?? [],
-    );
-    return projects
-      .filter(
-        (project) =>
-          project.environmentId === member.environmentId &&
-          (project.id === member.id ||
-            roots.has(normalizeProjectPathForComparison(project.workspaceRoot))),
-      )
-      .map((project) => scopeProjectRef(project.environmentId, project.id));
-  }, [graph?.worktrees, member.environmentId, member.id, projects]);
+  const worktreeRoots = new Set(
+    graph?.worktrees.map((tree) => normalizeProjectPathForComparison(tree.path)) ?? [],
+  );
+  const projectRefs = projects
+    .filter(
+      (project) =>
+        project.environmentId === member.environmentId &&
+        (project.id === member.id ||
+          worktreeRoots.has(normalizeProjectPathForComparison(project.workspaceRoot))),
+    )
+    .map((project) => scopeProjectRef(project.environmentId, project.id));
   const threads = useThreadShellsForProjectRefs(projectRefs);
   const refresh = query.refresh;
-  const openThread = useCallback(
-    (thread: EnvironmentThreadShell) => {
-      void navigate({
-        to: "/$environmentId/$threadId",
-        params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
-      });
-    },
-    [navigate],
-  );
-  const worktreeMenu = useCallback(
-    async (tree: VcsProjectGraph["worktrees"][number], position: { x: number; y: number }) => {
-      const api = readLocalApi();
-      if (!api) return;
-      let startedRemoval = false;
-      try {
-        const canClose = canCloseGraphWorktree(tree, threads) && closing === null;
-        const choice = await api.contextMenu.show(
-          [
-            { id: "copy", label: "Copy worktree path" },
-            {
-              id: "close",
-              label: tree.isMain
-                ? "Main checkout cannot be closed"
-                : tree.locked
-                  ? "Worktree is locked"
-                  : tree.prunable
-                    ? "Worktree is missing"
-                    : !canClose
-                      ? "Worktree is in use"
-                      : "Close worktree…",
-              destructive: true,
-              disabled: !canClose,
-              separatorBefore: true,
-            },
-          ],
-          position,
-        );
-        if (choice === "copy") {
-          await navigator.clipboard.writeText(tree.path);
-          return;
-        }
-        if (choice !== "close" || !canClose) return;
-        const count = threads.filter((thread) => thread.worktreePath === tree.path).length;
-        if (
-          !(await api.dialogs.confirm(
-            `Close worktree ${tree.path}?\n\nThe branch and ${count} thread${count === 1 ? "" : "s"} will be kept. Threads using this checkout will need another workspace to continue. Git will refuse removal if there are uncommitted or untracked files.`,
-            { variant: "destructive" },
-          ))
-        )
-          return;
-        const currentThreads = threads.map(
-          (thread) => readThreadShell(scopeThreadRef(thread.environmentId, thread.id)) ?? thread,
-        );
-        if (!canCloseGraphWorktree(tree, currentThreads)) {
-          setError("This worktree is now in use. Stop its running sessions before closing it.");
-          return;
-        }
-        if (closingRef.current) return;
-        closingRef.current = true;
-        startedRemoval = true;
-        setClosing(tree.path);
-        setError(null);
-        const result = await removeWorktree({
-          environmentId: member.environmentId,
-          input: { cwd: member.workspaceRoot, path: tree.path, force: false },
-        });
-        if (result._tag === "Failure") {
-          const cause = squashAtomCommandFailure(result);
-          setError(cause instanceof Error ? cause.message : "Could not close worktree.");
-        } else refresh();
-      } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Worktree action failed.");
-      } finally {
-        if (startedRemoval) {
-          closingRef.current = false;
-          setClosing(null);
-        }
+  const openThread = (thread: EnvironmentThreadShell) => {
+    void navigate({
+      to: "/$environmentId/$threadId",
+      params: buildThreadRouteParams(scopeThreadRef(thread.environmentId, thread.id)),
+    });
+  };
+  const worktreeMenu = async (
+    tree: VcsProjectGraph["worktrees"][number],
+    position: { x: number; y: number },
+  ) => {
+    const api = readLocalApi();
+    if (!api) return;
+    let startedRemoval = false;
+    try {
+      const canClose = canCloseGraphWorktree(tree, threads) && closing === null;
+      const choice = await api.contextMenu.show(
+        [
+          { id: "copy", label: "Copy worktree path" },
+          {
+            id: "close",
+            label: tree.isMain
+              ? "Main checkout cannot be closed"
+              : tree.locked
+                ? "Worktree is locked"
+                : tree.prunable
+                  ? "Worktree is missing"
+                  : !canClose
+                    ? "Worktree is in use"
+                    : "Close worktree…",
+            destructive: true,
+            disabled: !canClose,
+            separatorBefore: true,
+          },
+        ],
+        position,
+      );
+      if (choice === "copy") {
+        await navigator.clipboard.writeText(tree.path);
+        return;
       }
-    },
-    [closing, member.environmentId, member.workspaceRoot, refresh, removeWorktree, threads],
-  );
+      if (choice !== "close" || !canClose) return;
+      const count = threads.filter((thread) => thread.worktreePath === tree.path).length;
+      if (
+        !(await api.dialogs.confirm(
+          `Close worktree ${tree.path}?\n\nThe branch and ${count} thread${count === 1 ? "" : "s"} will be kept. Threads using this checkout will need another workspace to continue. Git will refuse removal if there are uncommitted or untracked files.`,
+          { variant: "destructive" },
+        ))
+      )
+        return;
+      const currentThreads = threads.map(
+        (thread) => readThreadShell(scopeThreadRef(thread.environmentId, thread.id)) ?? thread,
+      );
+      if (!canCloseGraphWorktree(tree, currentThreads)) {
+        setError("This worktree is now in use. Stop its running sessions before closing it.");
+        return;
+      }
+      if (closingRef.current) return;
+      closingRef.current = true;
+      startedRemoval = true;
+      setClosing(tree.path);
+      setError(null);
+      const result = await removeWorktree({
+        environmentId: member.environmentId,
+        input: { cwd: member.workspaceRoot, path: tree.path, force: false },
+      });
+      if (result._tag === "Failure") {
+        const cause = squashAtomCommandFailure(result);
+        setError(cause instanceof Error ? cause.message : "Could not close worktree.");
+      } else refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Worktree action failed.");
+    } finally {
+      if (startedRemoval) {
+        closingRef.current = false;
+        setClosing(null);
+      }
+    }
+  };
   return (
     <>
       {(error || query.error) && (
@@ -429,63 +416,53 @@ function GraphLog({
   const [compactLanes, setCompactLanes] = useState(true);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const [expandedSettled, setExpandedSettled] = useState<ReadonlySet<string>>(() => new Set());
-  const layout = useMemo(
-    () =>
-      layoutProjectGraph(graph, threads, {
-        collapse: collapse && !search.trim() && !unsettledOnly,
-        expanded,
-        compactLanes,
-        expandedSettled,
-        threadSearch: search,
-      }),
-    [graph, threads, collapse, expanded, compactLanes, expandedSettled, search, unsettledOnly],
-  );
-  const branchCards = useMemo(() => {
-    const cards = new Map<
-      string,
-      {
-        node: GraphNode;
-        labelIndex: number;
-        labelCount: number;
-        details: ReturnType<typeof layoutProjectGraph>["rows"];
-      }
-    >();
-    for (const row of layout.rows) {
-      if (row.thread || row.settledThreads) {
-        if (row.ref) cards.get(row.ref.id)?.details.push(row);
-        continue;
-      }
-      const refs = row.refs ?? (row.ref ? [row.ref] : []);
-      refs.forEach((node, labelIndex) => {
-        cards.set(node.id, { node, labelIndex, labelCount: refs.length, details: [] });
-      });
+  const layout = layoutProjectGraph(graph, threads, {
+    collapse: collapse && !search.trim() && !unsettledOnly,
+    expanded,
+    compactLanes,
+    expandedSettled,
+    threadSearch: search,
+  });
+  const branchCardsById = new Map<
+    string,
+    {
+      node: GraphNode;
+      labelIndex: number;
+      labelCount: number;
+      details: ReturnType<typeof layoutProjectGraph>["rows"];
     }
-    return [...cards.values()];
-  }, [layout.rows]);
+  >();
+  for (const row of layout.rows) {
+    if (row.thread || row.settledThreads) {
+      if (row.ref) branchCardsById.get(row.ref.id)?.details.push(row);
+      continue;
+    }
+    const refs = row.refs ?? (row.ref ? [row.ref] : []);
+    refs.forEach((node, labelIndex) => {
+      branchCardsById.set(node.id, { node, labelIndex, labelCount: refs.length, details: [] });
+    });
+  }
+  const branchCards = [...branchCardsById.values()];
   const scroller = useRef<HTMLDivElement>(null);
   const selected = layout.nodes.find((node) => node.id === selectedId);
   const selectedY = selected && selected.kind !== "orphan" ? selected.y : undefined;
   const query = search.trim().toLowerCase();
-  const matches = useMemo(
-    () =>
-      new Set(
-        layout.nodes
-          .filter(
-            (node) =>
-              (!unsettledOnly || node.threads.some((thread) => thread.settledAt === null)) &&
-              (!query ||
-                [
-                  ...node.branches.map((branch) => branch.name),
-                  ...node.threads.map((thread) => thread.title),
-                  ...node.worktrees.map((tree) => tree.path),
-                  node.id,
-                  node.commitId ?? "",
-                  node.subject,
-                ].some((text) => text.toLowerCase().includes(query))),
-          )
-          .map((node) => node.id),
-      ),
-    [layout.nodes, query, unsettledOnly],
+  const matches = new Set(
+    layout.nodes
+      .filter(
+        (node) =>
+          (!unsettledOnly || node.threads.some((thread) => thread.settledAt === null)) &&
+          (!query ||
+            [
+              ...node.branches.map((branch) => branch.name),
+              ...node.threads.map((thread) => thread.title),
+              ...node.worktrees.map((tree) => tree.path),
+              node.id,
+              node.commitId ?? "",
+              node.subject,
+            ].some((text) => text.toLowerCase().includes(query))),
+      )
+      .map((node) => node.id),
   );
   const filtering = query.length > 0 || unsettledOnly;
   const unsettledCount = threads.filter(
@@ -493,11 +470,10 @@ function GraphLog({
   ).length;
   useEffect(() => {
     if (!scroller.current) return;
-    const observer = new ResizeObserver(([entry]) => {
+    return observeResize(scroller.current, (entries) => {
+      const entry = entries.at(-1);
       if (entry) setSize({ width: entry.contentRect.width, height: entry.contentRect.height });
     });
-    observer.observe(scroller.current);
-    return () => observer.disconnect();
   }, []);
   const focus = (node: GraphNode) => {
     setSelectedId(node.id);
@@ -513,21 +489,21 @@ function GraphLog({
       <div className="flex h-10 shrink-0 items-center gap-3 overflow-x-auto border-b border-border px-3">
         {controls}
         <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
-        <div className="relative w-48 min-w-36 shrink">
-          <SearchIcon className="pointer-events-none absolute left-2 top-1/2 z-10 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
+        <InputGroup className="w-48 min-w-36 shrink">
+          <InputGroupAddon>
+            <SearchIcon aria-hidden className="size-3.5" />
+          </InputGroupAddon>
+          <InputGroupInput
             aria-label="Find branch, thread or worktree"
             placeholder="Find in graph…"
             size="compact"
-            className="h-7 [&_input]:h-full [&_input]:pl-7 [&_input]:leading-normal"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
           />
-        </div>
+        </InputGroup>
         <div className="flex shrink-0 items-center gap-1">
           <Button
             size="compact"
-            className="gap-1.5 text-xs sm:text-xs [&_svg]:mx-0"
             variant={unsettledOnly ? "secondary" : "ghost"}
             aria-pressed={unsettledOnly}
             onClick={() => setUnsettledOnly((value) => !value)}
@@ -537,23 +513,15 @@ function GraphLog({
           </Button>
           {layout.unlinkedNodes.length > 0 && (
             <Popover>
-              <PopoverTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="compact"
-                    className="gap-1.5 text-xs sm:text-xs [&_svg]:mx-0"
-                  />
-                }
-              >
+              <PopoverTrigger render={<Button variant="ghost" size="compact" />}>
                 <UnlinkIcon aria-hidden className="size-3.5" />
                 {layout.unlinkedNodes.reduce((count, node) => count + node.threads.length, 0)}{" "}
                 unlinked
               </PopoverTrigger>
-              <PopoverPopup align="start" className="max-h-80 w-80 overflow-auto p-2">
+              <PopoverPopup align="start" padding="compact" className="max-h-80 w-80 overflow-auto">
                 {layout.unlinkedNodes.map((node) => (
                   <div key={node.id}>
-                    <p className="px-2 py-1 text-[10px] text-muted-foreground">{node.subject}</p>
+                    <p className="px-2 py-1 text-3xs text-muted-foreground">{node.subject}</p>
                     {node.threads.map((thread) => (
                       <button
                         key={`${thread.environmentId}:${thread.id}`}
@@ -577,7 +545,6 @@ function GraphLog({
           <Button
             variant={compactLanes ? "secondary" : "ghost"}
             size="compact"
-            className="gap-1.5 text-xs sm:text-xs [&_svg]:mx-0"
             aria-pressed={compactLanes}
             onClick={() => setCompactLanes((value) => !value)}
           >
@@ -587,7 +554,6 @@ function GraphLog({
           <Button
             variant="ghost"
             size="compact"
-            className="gap-1.5 text-xs sm:text-xs [&_svg]:mx-0"
             onClick={() => {
               setCollapse((value) => !value);
               setExpanded(new Set());
@@ -601,25 +567,13 @@ function GraphLog({
             {collapse ? "Expand all" : "Collapse all"}
           </Button>
           {graph.truncated && (
-            <Button
-              variant="ghost"
-              size="compact"
-              className="gap-1.5 text-xs sm:text-xs [&_svg]:mx-0"
-              onClick={loadOlder}
-              disabled={loadingOlder}
-            >
+            <Button variant="ghost" size="compact" onClick={loadOlder} disabled={loadingOlder}>
               <HistoryIcon aria-hidden className="size-3.5" />
               {loadingOlder ? "Loading…" : "Load older"}
             </Button>
           )}
           <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
-          <Button
-            variant="ghost"
-            size="compact"
-            className="size-7 p-0"
-            aria-label="Refresh graph"
-            onClick={refresh}
-          >
+          <Button variant="ghost" size="icon-sm" aria-label="Refresh graph" onClick={refresh}>
             <RefreshCwIcon className="size-3.5" />
           </Button>
         </div>
@@ -747,7 +701,7 @@ function GraphLog({
             row.collapsed ? (
               <button
                 key={row.id}
-                className="absolute flex items-center gap-2 text-left text-[11px] text-muted-foreground/50 hover:text-muted-foreground"
+                className="absolute flex items-center gap-2 text-left text-2xs text-muted-foreground/50 hover:text-muted-foreground"
                 style={{
                   left: layout.labelX + 8,
                   top: row.y,
@@ -791,7 +745,7 @@ function GraphLog({
                   row.ref && (
                     <>
                       <button
-                        className="absolute flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        className="absolute flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                         style={{
                           left: row.ref.x - 14,
                           top: row.y + ROW_HEIGHT / 2 - 14,
@@ -800,12 +754,12 @@ function GraphLog({
                         onClick={() => setSelectedId(row.ref!.id)}
                       >
                         <span
-                          className="size-2.5 rounded-full ring-[3px] ring-background"
+                          className="size-2.5 rounded-full ring-3 ring-background"
                           style={{ backgroundColor: row.ref.color }}
                         />
                       </button>
                       <button
-                        className="absolute flex items-center text-[11px] text-muted-foreground hover:text-foreground"
+                        className="absolute flex items-center text-2xs text-muted-foreground hover:text-foreground"
                         style={{ left: layout.labelX + 8, top: row.y, height: ROW_HEIGHT }}
                         onClick={() => setSelectedId(row.ref!.id)}
                       >
@@ -826,9 +780,7 @@ function GraphLog({
       </div>
       {filtering && (
         <div className="absolute left-4 top-11 z-10 max-h-64 w-72 overflow-auto rounded-lg border border-border bg-popover p-2 shadow-lg">
-          <p className="px-2 py-1 text-[11px] text-muted-foreground">
-            {matches.size} matching nodes
-          </p>
+          <p className="px-2 py-1 text-2xs text-muted-foreground">{matches.size} matching nodes</p>
           {layout.nodes
             .filter((node) => matches.has(node.id))
             .slice(0, 30)
@@ -913,7 +865,12 @@ const GraphBranchLabel = memo(function GraphBranchLabel({
       >
         <Tooltip>
           <TooltipTrigger
-            className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-mono text-[11px]"
+            render={
+              <button
+                type="button"
+                className="flex min-w-0 flex-1 items-center gap-1.5 text-left font-mono text-2xs"
+              />
+            }
             aria-label={`Branch lane ${name}`}
             onClick={() => onSelect(node.id)}
             onContextMenu={(event) => {
@@ -947,7 +904,12 @@ const GraphBranchLabel = memo(function GraphBranchLabel({
         {node.worktrees.map((tree) => (
           <Tooltip key={tree.path}>
             <TooltipTrigger
-              className="flex size-5 shrink-0 items-center justify-center rounded text-foreground hover:bg-foreground/5"
+              render={
+                <button
+                  type="button"
+                  className="flex size-5 shrink-0 items-center justify-center rounded text-foreground hover:bg-foreground/5"
+                />
+              }
               aria-label={`${tree.isMain ? "Local checkout" : "Worktree"} ${tree.path}: ${tree.branch ?? "Detached HEAD"}`}
               disabled={closing === tree.path}
               onClick={(event) => onWorktreeMenu(tree, { x: event.clientX, y: event.clientY })}
@@ -979,7 +941,7 @@ const GraphBranchLabel = memo(function GraphBranchLabel({
           return (
             <button
               key={row.id}
-              className="flex shrink-0 items-center gap-2 px-2 text-left text-[11px] text-muted-foreground/50 hover:text-muted-foreground"
+              className="flex shrink-0 items-center gap-2 px-2 text-left text-2xs text-muted-foreground/50 hover:text-muted-foreground"
               style={{ height: ROW_HEIGHT }}
               aria-expanded={row.expanded}
               aria-label={`${row.settledThreads.length} settled threads for ${name}`}
@@ -998,8 +960,13 @@ const GraphBranchLabel = memo(function GraphBranchLabel({
           return (
             <Tooltip key={row.id}>
               <TooltipTrigger
-                className="flex min-w-0 shrink-0 items-center gap-2 px-2 text-left text-[11px] text-foreground/75 hover:bg-accent"
-                style={{ height: ROW_HEIGHT }}
+                render={
+                  <button
+                    type="button"
+                    className="flex min-w-0 shrink-0 items-center gap-2 px-2 text-left text-2xs text-foreground/75 hover:bg-accent"
+                    style={{ height: ROW_HEIGHT }}
+                  />
+                }
                 aria-label={`Open ${thread.settledAt === null ? "unsettled" : "settled"} thread: ${thread.title}`}
                 onClick={() => onOpenThread(thread)}
               >
@@ -1032,7 +999,7 @@ function GraphTime({ timestamp }: { timestamp: string | number | undefined }) {
         render={
           <time
             dateTime={iso}
-            className="shrink-0 text-[10px] tabular-nums text-muted-foreground/70"
+            className="shrink-0 text-3xs tabular-nums text-muted-foreground/70"
           />
         }
       >
@@ -1056,7 +1023,7 @@ const GraphRow = memo(function GraphRow({
   dimmed: boolean;
   onSelect: (id: string) => void;
 }) {
-  const author = useMemo(() => graphAuthorIdentity(node.author), [node.author]);
+  const author = graphAuthorIdentity(node.author);
   const [failedAvatars, setFailedAvatars] = useState<readonly string[]>([]);
   const directAvatar = [author.avatarUrl, author.gravatarUrl].find(
     (url) => url && !failedAvatars.includes(url),
@@ -1081,8 +1048,13 @@ const GraphRow = memo(function GraphRow({
       {node.historyLabel && (
         <Tooltip>
           <TooltipTrigger
-            className="absolute left-3 flex h-6 items-center gap-2 rounded px-2 text-left text-[11px] text-muted-foreground hover:bg-accent"
-            style={{ top: node.y + 4, width: BRANCH_LABEL_WIDTH }}
+            render={
+              <button
+                type="button"
+                className="absolute left-3 flex h-6 items-center gap-2 rounded px-2 text-left text-2xs text-muted-foreground hover:bg-accent"
+                style={{ top: node.y + 4, width: BRANCH_LABEL_WIDTH }}
+              />
+            }
             onClick={() => onSelect(node.id)}
           >
             <span
@@ -1096,13 +1068,18 @@ const GraphRow = memo(function GraphRow({
       )}
       <Tooltip>
         <TooltipTrigger
-          className="absolute flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          style={{ left: node.x - 14, top: node.y + ROW_HEIGHT / 2 - 14 }}
+          render={
+            <button
+              type="button"
+              className="absolute flex size-7 items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              style={{ left: node.x - 14, top: node.y + ROW_HEIGHT / 2 - 14 }}
+            />
+          }
           aria-label={`Inspect ${node.subject}, by ${author.name}`}
           onClick={() => onSelect(node.id)}
         >
           <span
-            className={`flex size-[22px] items-center justify-center overflow-hidden rounded-full border-2 text-[8px] font-semibold ${selected ? "ring-2 ring-primary/15" : ""}`}
+            className={`flex size-[22px] items-center justify-center overflow-hidden rounded-full border-2 text-4xs font-semibold ${selected ? "ring-2 ring-primary/15" : ""}`}
             style={{ borderColor: node.color, backgroundColor: node.color, color: "#101018" }}
           >
             {avatarUrl ? (
@@ -1132,7 +1109,12 @@ const GraphRow = memo(function GraphRow({
       >
         <Tooltip>
           <TooltipTrigger
-            className={`min-w-0 flex-1 truncate text-left text-xs ${selected ? "text-foreground" : "text-foreground/80"}`}
+            render={
+              <button
+                type="button"
+                className={`min-w-0 flex-1 truncate text-left text-xs ${selected ? "text-foreground" : "text-foreground/80"}`}
+              />
+            }
             onClick={() => onSelect(node.id)}
           >
             {node.subject}
@@ -1141,7 +1123,7 @@ const GraphRow = memo(function GraphRow({
         </Tooltip>
         <button
           onClick={() => onSelect(node.id)}
-          className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground/70"
+          className="ml-auto shrink-0 font-mono text-3xs text-muted-foreground/70"
         >
           {node.commitId?.slice(0, 8)}
         </button>
