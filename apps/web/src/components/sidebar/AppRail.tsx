@@ -4,12 +4,14 @@ import {
   GearIcon,
   GitPullRequestIcon,
   SquaresFourIcon,
+  TextAaIcon,
 } from "@phosphor-icons/react";
 import * as Schema from "effect/Schema";
 import type { ReactNode } from "react";
 import { memo, useEffect } from "react";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 
+import { useFontSet } from "../../fontSet";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
@@ -47,7 +49,11 @@ interface AppNavItem {
   key: string;
   icon: ReactNode;
   label: string;
+  /** Tooltip text when it should say more than the label. */
+  hint?: string;
   active?: boolean;
+  /** Set on toggles, which are never the current page. */
+  pressed?: boolean;
   disabled?: boolean;
   onClick?: () => void;
 }
@@ -57,6 +63,7 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
   const navigateToMainApp = useNavigateToMainApp();
   const pathname = useLocation({ select: (location) => location.pathname });
   const pullRequestsSupported = usePullRequestsSupported();
+  const [fontSet, setFontSet] = useFontSet();
 
   const primary: AppNavItem[] = [
     {
@@ -79,6 +86,17 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
     });
   }
   const secondary: AppNavItem[] = [
+    {
+      key: "fonts",
+      icon: <TextAaIcon />,
+      label: "Website fonts",
+      hint:
+        fontSet === "website"
+          ? "Website fonts on (debug). Click to compare with system fonts."
+          : "System fonts on (debug). Click for the website fonts.",
+      pressed: fontSet === "website",
+      onClick: () => setFontSet(fontSet === "website" ? "system" : "website"),
+    },
     {
       key: "usage",
       icon: <ChartBarIcon />,
@@ -106,6 +124,7 @@ function AppRailItem({ item }: { item: AppNavItem }) {
             type="button"
             aria-label={item.disabled ? `${item.label} (coming soon)` : item.label}
             aria-current={item.active ? "page" : undefined}
+            aria-pressed={item.pressed}
             disabled={item.disabled}
             onClick={item.onClick}
             className={cn(
@@ -120,7 +139,7 @@ function AppRailItem({ item }: { item: AppNavItem }) {
         {item.icon}
       </TooltipTrigger>
       <TooltipPopup side="right">
-        {item.disabled ? `${item.label} (coming soon)` : item.label}
+        {item.disabled ? `${item.label} (coming soon)` : (item.hint ?? item.label)}
       </TooltipPopup>
     </Tooltip>
   );
@@ -164,6 +183,7 @@ function SidebarNavMenuItem({ item }: { item: AppNavItem }) {
     <button
       type="button"
       aria-current={item.active ? "page" : undefined}
+      aria-pressed={item.pressed}
       disabled={item.disabled}
       onClick={item.onClick}
       className={cn(
@@ -176,6 +196,9 @@ function SidebarNavMenuItem({ item }: { item: AppNavItem }) {
       {item.icon}
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
       {item.disabled ? <span className="text-2xs text-muted-foreground/60">Soon</span> : null}
+      {item.pressed !== undefined ? (
+        <span className="text-2xs text-muted-foreground/60">{item.pressed ? "On" : "Off"}</span>
+      ) : null}
     </button>
   );
 }

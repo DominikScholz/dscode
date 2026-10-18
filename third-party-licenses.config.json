@@ -107,6 +107,34 @@
       "sourceUrl": "https://github.com/ryanoasis/nerd-fonts"
     },
     {
+      "bundles": ["assets", "desktop", "web"],
+      "license": "OFL-1.1",
+      "name": "Aspekta",
+      "sourceUrl": "https://github.com/ivodolenc/aspekta",
+      "generatedNotices": [
+        {
+          "licenseId": "OFL-1.1",
+          "copyrights": [
+            "Copyright (c) 2025 Ivo Dolenc <https://github.com/ivodolenc>, with Reserved Font Name \"Aspekta\"."
+          ]
+        }
+      ]
+    },
+    {
+      "bundles": ["assets", "desktop", "web"],
+      "license": "OFL-1.1",
+      "name": "Azeret Mono",
+      "sourceUrl": "https://github.com/displaay/azeret",
+      "generatedNotices": [
+        {
+          "licenseId": "OFL-1.1",
+          "copyrights": [
+            "Copyright 2021 The Azeret Project Authors (https://github.com/displaay/azeret)"
+          ]
+        }
+      ]
+    },
+    {
       "bundles": ["ios", "mobile"],
       "license": "MIT",
       "name": "GhosttyKit",
