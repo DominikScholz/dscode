@@ -129,7 +129,6 @@ import {
   resolveTerminalFontSizePreference,
   TYPOGRAPHY_ADVANCED_STORAGE_KEY,
 } from "../../appearanceFonts";
-import { useFontSet, WEBSITE_CODE_FAMILY, WEBSITE_SANS_FAMILY } from "../../fontSet";
 import { CodeFontPreview, PromptFontPreview, TerminalFontPreview } from "./SettingsFontPreviews";
 import { discoverInstalledFonts, FontFamilyPicker, useFontEnumeration } from "./FontFamilyPicker";
 import {
@@ -1435,15 +1434,10 @@ export function AppearanceSettingsPanel() {
 
 function useFontDefaultFamilies() {
   const settings = useScopedSettings();
-  const [fontSet] = useFontSet();
-  const [systemDefaults] = useState(() => ({
+  const [defaults] = useState(() => ({
     sans: resolveDefaultFamilyLabel(DEFAULT_SANS_FONT_STACK) ?? "System default",
     code: resolveDefaultFamilyLabel(DEFAULT_CODE_FONT_STACK) ?? "System monospace",
   }));
-  const defaults =
-    fontSet === "website"
-      ? { sans: WEBSITE_SANS_FAMILY, code: WEBSITE_CODE_FAMILY }
-      : systemDefaults;
   return {
     sans: defaults.sans,
     code: defaults.code,

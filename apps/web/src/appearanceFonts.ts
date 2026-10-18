@@ -10,13 +10,17 @@ import {
   MIN_PROMPT_FONT_SIZE,
 } from "@t3tools/contracts";
 
+// Aspekta and Azeret Mono are bundled (see index.css); the platform fonts
+// behind them cover glyphs they lack.
+const BUNDLED_FONT_FAMILIES: ReadonlySet<string> = new Set(["Aspekta", "Azeret Mono"]);
+
 export const DEFAULT_SANS_FONT_STACK =
-  '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
+  'Aspekta, -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif';
 
 // Concrete names first: some engines alias `ui-monospace` to the
 // proportional system UI font, which would break every code surface.
 export const DEFAULT_CODE_FONT_STACK =
-  '"SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
+  '"Azeret Mono", "SF Mono", "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace';
 
 export const TYPOGRAPHY_ADVANCED_STORAGE_KEY = "t3code:typography-advanced";
 
@@ -287,7 +291,8 @@ export function resolveDefaultFamilyLabel(stack: string): string | null {
       if (resolved !== null) return resolved;
       continue;
     }
-    if (isFontFamilyAvailable(family)) return family;
+    // A bundled font measures as missing until something renders with it.
+    if (BUNDLED_FONT_FAMILIES.has(family) || isFontFamilyAvailable(family)) return family;
   }
   return null;
 }

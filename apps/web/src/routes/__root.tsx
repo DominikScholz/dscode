@@ -55,7 +55,6 @@ import {
 import { isElectron } from "../env";
 import { cn } from "../lib/utils";
 import { applyAppearanceFontVariables } from "~/appearanceFonts";
-import { useFontSet } from "~/fontSet";
 import { applyAppearanceContrast } from "~/appearanceContrast";
 import { useClientSettings } from "../hooks/useSettings";
 import {
@@ -315,13 +314,6 @@ function FontAppearanceSync() {
   const fontSizePrompt = useClientSettings((settings) => settings.fontSizePrompt);
   const fontSizeCode = useClientSettings((settings) => settings.fontSizeCode);
   const fontSmoothing = useClientSettings((settings) => settings.fontSmoothing);
-  const [fontSet] = useFontSet();
-
-  useEffect(() => {
-    const root = document.documentElement;
-    if (fontSet === "system") root.dataset.fontSet = "system";
-    else delete root.dataset.fontSet;
-  }, [fontSet]);
 
   useEffect(() => {
     applyAppearanceFontVariables(document.documentElement, {
