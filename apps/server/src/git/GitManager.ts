@@ -2037,12 +2037,14 @@ export const make = Effect.gen(function* () {
       filePaths?: readonly string[];
       settings: SourceControlTextGenerationSettings;
     }) {
-      const context = yield* gitCore.prepareCommitContext(input.cwd, input.filePaths);
+      const customCommit = parseCustomCommitMessage(input.commitMessage ?? "");
+      const context = yield* gitCore.prepareCommitContext(input.cwd, input.filePaths, {
+        includePatch: customCommit === null,
+      });
       if (!context) {
         return null;
       }
 
-      const customCommit = parseCustomCommitMessage(input.commitMessage ?? "");
       if (customCommit) {
         return {
           subject: customCommit.subject,
@@ -2729,7 +2731,6 @@ export const make = Effect.gen(function* () {
           // findLocalHeadBranch also accepts a branch that merely shares the head's bare name —
           // a fork PR opened from "main" matches the user's own local main. That checkout is
           // somebody else's work, so it keeps its tracking config and nothing else.
-          yield* ensureExistingWorktreeUpstream(worktreePath);
           return {
             pullRequest,
             branch: localPullRequestBranch,
@@ -2813,26 +2814,34 @@ export const make = Effect.gen(function* () {
       });
 
       const findLocalHeadBranch = Effect.fn("findLocalHeadBranch")(function* (cwd: string) {
-        const result = yield* gitCore.listRefs({ cwd, refresh: true });
-        const localBranch = result.refs.find(
-          (branch) => !branch.isRemote && branch.name === localPullRequestBranch,
-        );
-        if (localBranch) {
-          return localBranch;
-        }
-        if (localPullRequestBranch === pullRequest.headBranch) {
-          return null;
-        }
-
-        for (const branch of result.refs) {
-          if (branch.isRemote || branch.name !== pullRequest.headBranch || !branch.worktreePath) {
-            continue;
-          }
-
-          const worktreePath = yield* canonicalizeExistingPath(branch.worktreePath);
-          if (worktreePath !== rootWorktreePath) {
-            return branch;
-          }
+        for (const [index, name] of [
+          ...new Set([localPullRequestBranch, pullRequest.headBranch]),
+        ].entries()) {
+          let cursor: number | undefined;
+          do {
+            const result = yield* gitCore.listRefs({
+              cwd,
+              refKind: "local",
+              query: name,
+              cursor,
+              refresh: index === 0 && cursor === undefined,
+            });
+            for (const branch of result.refs) {
+              if (branch.name !== name) {
+                continue;
+              }
+              if (name === localPullRequestBranch) {
+                return branch;
+              }
+              if (branch.worktreePath) {
+                const worktreePath = yield* canonicalizeExistingPath(branch.worktreePath);
+                if (worktreePath !== rootWorktreePath) {
+                  return branch;
+                }
+              }
+            }
+            cursor = result.nextCursor ?? undefined;
+          } while (cursor !== undefined);
         }
 
         return null;

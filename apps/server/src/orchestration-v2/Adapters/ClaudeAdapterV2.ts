@@ -200,6 +200,18 @@ function claudePromptCacheTtlMs(
   return undefined;
 }
 
+function claudeMessageInputTokens(usage: {
+  readonly input_tokens: number;
+  readonly cache_creation_input_tokens?: number | null;
+  readonly cache_read_input_tokens?: number | null;
+}): number {
+  return (
+    usage.input_tokens +
+    (usage.cache_creation_input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0)
+  );
+}
+
 export function claudeProviderTurnTokenUsage(
   usage: {
     readonly input_tokens: number;
@@ -211,10 +223,7 @@ export function claudeProviderTurnTokenUsage(
   modelSelection: ModelSelection,
   updatedAt: string,
 ) {
-  const inputTokens =
-    usage.input_tokens +
-    (usage.cache_creation_input_tokens ?? 0) +
-    (usage.cache_read_input_tokens ?? 0);
+  const inputTokens = claudeMessageInputTokens(usage);
   const outputTokens = usage.output_tokens;
   const promptCacheTtlMs = claudePromptCacheTtlMs(usage.cache_creation);
   return {
@@ -226,6 +235,30 @@ export function claudeProviderTurnTokenUsage(
     reasoningOutputTokens: 0,
     ...(promptCacheTtlMs === undefined ? {} : { promptCacheTtlMs }),
     updatedAt,
+  };
+}
+
+type ClaudeMessageUsage = Parameters<typeof claudeProviderTurnTokenUsage>[0];
+
+// message_delta usage is cumulative for its message. Fields it leaves null or
+// absent keep their message_start value; explicit zeros replace it.
+function mergeClaudeStreamUsage(
+  current: ClaudeMessageUsage,
+  delta: {
+    readonly input_tokens?: number | null;
+    readonly cache_creation_input_tokens?: number | null;
+    readonly cache_read_input_tokens?: number | null;
+    readonly output_tokens: number;
+  },
+): ClaudeMessageUsage {
+  return {
+    ...current,
+    input_tokens: delta.input_tokens ?? current.input_tokens,
+    cache_creation_input_tokens:
+      delta.cache_creation_input_tokens ?? current.cache_creation_input_tokens ?? null,
+    cache_read_input_tokens:
+      delta.cache_read_input_tokens ?? current.cache_read_input_tokens ?? null,
+    output_tokens: delta.output_tokens,
   };
 }
 export const CLAUDE_DEFAULT_INSTANCE_ID = defaultInstanceIdForDriver(CLAUDE_PROVIDER);
@@ -1400,6 +1433,16 @@ function makeProviderThread(input: {
     updatedAt: input.now,
   };
 }
+
+const decodeClaudeTranscriptLine = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ type: Schema.String })),
+);
+
+const isClaudeConversationLine = (line: string): boolean =>
+  Option.match(decodeClaudeTranscriptLine(line), {
+    onNone: () => false,
+    onSome: (entry) => entry.type === "user" || entry.type === "assistant",
+  });
 
 const getNativeThreadId = Effect.fnUntraced(function* (
   providerThread: OrchestrationV2ProviderThread,
@@ -2590,6 +2633,9 @@ function resultUserFacingError(result: SDKResultMessage): string | undefined {
   );
 }
 
+const CONTEXT_WINDOW_FULL_ERROR =
+  "Claude stopped: the prompt exceeds the model's context window. Run /compact or start a new thread.";
+
 function terminalResultError(
   reason: SDKResultMessage["terminal_reason"],
   failureHint?: string,
@@ -2608,11 +2654,13 @@ function terminalResultError(
     case "turn_setup_failed":
       return "Claude could not start the turn.";
     case "blocking_limit":
-      return "Claude stopped: a usage limit blocked the request.";
+      // The CLI also ends a turn with blocking_limit once the context window
+      // is full ("Prompt is too long"). Only rate-limit evidence sets the hint.
+      return failureHint ?? CONTEXT_WINDOW_FULL_ERROR;
     case "rapid_refill_breaker":
       return "Claude stopped: the context refilled too quickly after compaction.";
     case "prompt_too_long":
-      return "Claude stopped: the prompt exceeds the model's context window.";
+      return CONTEXT_WINDOW_FULL_ERROR;
     case "image_error":
       return "Claude stopped: an image in the conversation could not be processed.";
     case "model_error":
@@ -2779,9 +2827,7 @@ function providerFailureFromResult(
     }
   }
   const failureClass =
-    message.terminal_reason === "blocking_limit" ||
-    (message.subtype === "success" && message.api_error_status === 429) ||
-    usageLimited
+    (message.subtype === "success" && message.api_error_status === 429) || usageLimited
       ? "usage_limit"
       : "provider_error";
   const listedError = resultUserFacingError(message);
@@ -2972,6 +3018,8 @@ interface ActiveClaudeTurnContext {
     fallbackText: string;
     fallbackNativeItemId: string;
     emittedNativeItemIds: Set<string>;
+    // The CLI repeats a notice that ends a prompt as the turn's result text.
+    noticeTexts: Set<string>;
   };
   readonly reasoning: {
     messageId: string | null;
@@ -2990,6 +3038,11 @@ interface ActiveClaudeTurnContext {
       { readonly startedAt: DateTime.Utc; readonly ordinal: number; text: string }
     >;
   };
+  // Usage of the latest root request, merged from its stream events. Its
+  // assistant snapshots repeat message_start usage, which some proxies send
+  // as zeros, so they only fill in input the stream has not reported. A
+  // compaction makes the usage stale (null) without forgetting the request.
+  streamUsage: { readonly messageId: string; usage: ClaudeMessageUsage | null } | null;
   readonly toolCalls: Map<string, ActiveClaudeToolCall>;
   readonly ignoredTaskIds: Set<string>;
   readonly announcedUsageLimits: Set<string>;
@@ -3705,6 +3758,42 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
 
         const emitProviderEvent = (event: ProviderAdapter.ProviderAdapterV2Event) =>
           Queue.offer(events, event).pipe(Effect.asVoid);
+
+        // Reports one root request's usage as the current context. Usage
+        // without input is a placeholder, never a measurement.
+        const emitContextUsage = Effect.fnUntraced(function* (
+          context: ActiveClaudeTurnContext,
+          usage: ClaudeMessageUsage,
+        ) {
+          const now = yield* DateTime.now;
+          const tokenUsage = claudeProviderTurnTokenUsage(
+            usage,
+            context.input.modelSelection,
+            DateTime.formatIso(now),
+          );
+          if (tokenUsage.inputTokens <= 0) return;
+          yield* emitProviderEvent({
+            type: "provider_turn.updated",
+            driver: CLAUDE_PROVIDER,
+            threadId: context.input.threadId,
+            providerTurn: {
+              id: context.providerTurnId,
+              providerThreadId: context.input.providerThread.id,
+              nodeId: context.input.rootNodeId,
+              runAttemptId: context.input.attemptId,
+              nativeTurnRef: {
+                driver: CLAUDE_PROVIDER,
+                nativeId: context.nativeTurnId,
+                strength: "strong",
+              },
+              ordinal: context.providerTurnOrdinal,
+              status: "running",
+              startedAt: context.startedAt,
+              completedAt: null,
+              tokenUsage,
+            },
+          });
+        });
 
         // Claude emits retry progress but no recovered frame; the next
         // assistant message is the first reliable evidence of recovery.
@@ -6910,6 +6999,17 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             if (event.type === "message_start") {
               reasoning.messageId = event.message.id;
               reasoning.streamBlocks.clear();
+              const usage: ClaudeMessageUsage | undefined = event.message.usage;
+              context.streamUsage =
+                usage === undefined ? null : { messageId: event.message.id, usage };
+              if (usage !== undefined) yield* emitContextUsage(context, usage);
+            } else if (event.type === "message_delta") {
+              const usage: typeof event.usage | undefined = event.usage;
+              const stream = context.streamUsage;
+              if (stream?.usage && usage !== undefined) {
+                stream.usage = mergeClaudeStreamUsage(stream.usage, usage);
+                yield* emitContextUsage(context, stream.usage);
+              }
             } else if (
               event.type === "content_block_start" &&
               event.content_block.type === "thinking" &&
@@ -7001,8 +7101,9 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           if (message.type === "assistant" && input.replayed !== true) {
-            context.nativeMessageCursor = message.uuid;
             if (message.parent_tool_use_id === null) {
+              // Subagent uuids exist only in the sidechain transcript, so resume and fork cannot target them.
+              context.nativeMessageCursor = message.uuid;
               context.latestAssistantRateLimited = message.error === "rate_limit";
               if (message.error === "authentication_failed") {
                 context.authenticationFailureMessage = claudeSignedOutMessage({
@@ -7023,6 +7124,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           }
 
           if (message.type === "system" && message.subtype === "compact_boundary") {
+            if (context.streamUsage !== null) context.streamUsage.usage = null;
             const now = yield* DateTime.now;
             const nativeItemId = message.uuid;
             const postTokens = message.compact_metadata.post_tokens;
@@ -7093,9 +7195,14 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             return;
           }
 
-          if (message.type === "system" && message.subtype === "model_refusal_fallback") {
+          if (
+            message.type === "system" &&
+            (message.subtype === "model_refusal_fallback" ||
+              (message.subtype === "informational" && message.level !== "info"))
+          ) {
             const now = yield* DateTime.now;
             const nativeItemId = message.uuid;
+            context.assistant.noticeTexts.add(message.content);
             yield* emitProviderEvent({
               type: "turn_item.updated",
               driver: CLAUDE_PROVIDER,
@@ -7182,37 +7289,31 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
               message.message.usage !== undefined &&
               message.message.model !== "<synthetic>"
             ) {
-              yield* emitProviderEvent({
-                type: "provider_turn.updated",
-                driver: CLAUDE_PROVIDER,
-                threadId: context.input.threadId,
-                providerTurn: {
-                  id: context.providerTurnId,
-                  providerThreadId: context.input.providerThread.id,
-                  nodeId: context.input.rootNodeId,
-                  runAttemptId: context.input.attemptId,
-                  nativeTurnRef: {
-                    driver: CLAUDE_PROVIDER,
-                    nativeId: context.nativeTurnId,
-                    strength: "strong",
-                  },
-                  ordinal: context.providerTurnOrdinal,
-                  status: "running",
-                  startedAt: context.startedAt,
-                  completedAt: null,
-                  tokenUsage: claudeProviderTurnTokenUsage(
-                    message.message.usage,
-                    context.input.modelSelection,
-                    DateTime.formatIso(now),
-                  ),
-                },
-              });
+              const snapshotUsage = message.message.usage;
+              const stream = context.streamUsage;
+              if (stream === null || stream.messageId !== message.message.id) {
+                // Remember the request so a compaction can mark its later snapshots stale.
+                context.streamUsage = { messageId: message.message.id, usage: snapshotUsage };
+                yield* emitContextUsage(context, snapshotUsage);
+              } else if (
+                stream.usage !== null &&
+                claudeMessageInputTokens(stream.usage) <= 0 &&
+                claudeMessageInputTokens(snapshotUsage) > 0
+              ) {
+                stream.usage = {
+                  ...snapshotUsage,
+                  output_tokens: Math.max(snapshotUsage.output_tokens, stream.usage.output_tokens),
+                };
+                yield* emitContextUsage(context, stream.usage);
+              }
             }
             const parentToolUseId = message.parent_tool_use_id;
             const snapshotModel =
               typeof message.message.model === "string" ? message.message.model.trim() : "";
+            // Claude's own notices (a usage limit, an API error) carry
+            // "<synthetic>", which says nothing about the subagent's model.
             const model =
-              snapshotModel.length === 0
+              snapshotModel.length === 0 || snapshotModel === "<synthetic>"
                 ? undefined
                 : canonicalClaudeSubagentModel(subagentModelCatalog, snapshotModel);
             if (parentToolUseId !== null && model !== undefined) {
@@ -7723,7 +7824,8 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
             context.assistant.emittedNativeItemIds.size === 0 &&
             context.assistant.fallbackText.length === 0 &&
             resultText !== null &&
-            resultText.text.length > 0
+            resultText.text.length > 0 &&
+            !context.assistant.noticeTexts.has(resultText.text)
           ) {
             context.assistant.fallbackText = resultText.text;
             context.assistant.fallbackNativeItemId = resultText.nativeItemId;
@@ -8598,6 +8700,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 fallbackText: "",
                 fallbackNativeItemId: `assistant:${turnInput.runId}`,
                 emittedNativeItemIds: new Set(),
+                noticeTexts: new Set(),
               },
               reasoning: {
                 messageId: null,
@@ -8608,6 +8711,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 snapshots: new Set(),
                 blocks: new Map(),
               },
+              streamUsage: null,
               toolCalls: new Map(),
               ignoredTaskIds: new Set(),
               announcedUsageLimits: new Set(),
@@ -8687,8 +8791,20 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                 }
                 // Replay any result message last: a result finalizes the turn, and
                 // replaying it before the rest would drop them back into the wake
-                // buffer and request another continuation.
-                const resultMessages = drained.filter((entry) => entry.type === "result");
+                // buffer and request another continuation. When Claude dequeues
+                // several notifications at once it can end an empty turn and open
+                // the next within a millisecond; that next turn is still running
+                // and owns this run, so the empty turn's result must not settle it.
+                const lastResultIndex = drained.findLastIndex((entry) => entry.type === "result");
+                const lastResult = drained[lastResultIndex];
+                const emptyTurnBeforeNextTurn =
+                  lastResult?.type === "result" &&
+                  lastResult.num_turns === 0 &&
+                  !lastResult.is_error &&
+                  terminalStatusFromResult(lastResult) === "completed" &&
+                  drained
+                    .slice(lastResultIndex + 1)
+                    .some((entry) => isClaudeTurnStartMessage(entry));
                 const opaqueReplayTombstones = taskIdSetForNativeThread(
                   yield* Ref.get(opaqueBackgroundTaskReplayTombstonesByNativeThread),
                   nativeThreadId,
@@ -8723,8 +8839,7 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
                     return next;
                   });
                 }
-                const lastResult = resultMessages.at(-1);
-                if (lastResult !== undefined) {
+                if (lastResult !== undefined && !emptyTurnBeforeNextTurn) {
                   yield* handleSdkMessage({ query: querySession.query, message: lastResult });
                   return;
                 }
@@ -9013,6 +9128,47 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
         });
         yield* Effect.addFinalizer(() => closeSession());
 
+        // A CLI stopped before it saved the first prompt can leave a transcript
+        // with only metadata lines. Claude can neither resume that id nor
+        // create it again, so resumeThread fails and the caller binds a fresh
+        // native session with a context handoff.
+        const hasEmptyClaudeTranscript = Effect.fn("ClaudeAdapterV2.hasEmptyClaudeTranscript")(
+          function* (nativeThreadId: string) {
+            const configuredDir = adapterOptions.environment.CLAUDE_CONFIG_DIR?.trim() ?? "";
+            const projectsDir = path.join(
+              configuredDir.length > 0
+                ? path.resolve(session.cwd, configuredDir)
+                : path.join(yield* HostProcess.HomeDirectory, ".claude"),
+              "projects",
+            );
+            // Empty only when every copy of the id is empty; any message means
+            // the CLI may still resume it.
+            let found = false;
+            for (const project of yield* fileSystem.readDirectory(projectsDir)) {
+              const transcriptPath = path.join(projectsDir, project, `${nativeThreadId}.jsonl`);
+              // Stray files beside the project dirs fail with ENOTDIR.
+              if (
+                !(yield* fileSystem.exists(transcriptPath).pipe(Effect.orElseSucceed(() => false)))
+              ) {
+                continue;
+              }
+              const conversationLine = yield* fileSystem
+                .stream(transcriptPath)
+                .pipe(
+                  Stream.decodeText,
+                  Stream.splitLines,
+                  Stream.filter(isClaudeConversationLine),
+                  Stream.runHead,
+                );
+              if (Option.isSome(conversationLine)) {
+                return false;
+              }
+              found = true;
+            }
+            return found;
+          },
+        );
+
         const runtime: ProviderAdapter.ProviderAdapterV2SessionRuntime = {
           instanceId: adapterOptions.instanceId,
           driver: CLAUDE_PROVIDER,
@@ -9088,6 +9244,22 @@ export const makeClaudeAdapterV2 = Effect.fn("makeClaudeAdapterV2")(function* (
           ),
           resumeThread: Effect.fn("ClaudeAdapterV2.resumeThread")(
             function* (threadInput: { readonly providerThread: OrchestrationV2ProviderThread }) {
+              const nativeThreadId = threadInput.providerThread.nativeThreadRef?.nativeId;
+              if (
+                nativeThreadId !== undefined &&
+                nativeThreadId !== null &&
+                // A live process holds the conversation even before saving it.
+                (yield* Ref.get(queryContext))?.nativeThreadId !== nativeThreadId &&
+                // An unreadable transcript leaves the resume to the CLI, as before.
+                (yield* hasEmptyClaudeTranscript(nativeThreadId).pipe(
+                  Effect.orElseSucceed(() => false),
+                ))
+              ) {
+                return yield* new ProviderAdapter.ProviderAdapterProtocolError({
+                  driver: CLAUDE_PROVIDER,
+                  detail: `Claude session ${nativeThreadId} has no conversation to resume.`,
+                });
+              }
               const updatedAt = yield* DateTime.now;
               return {
                 ...threadInput.providerThread,

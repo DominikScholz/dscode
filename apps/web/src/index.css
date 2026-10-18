@@ -110,7 +110,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --command-shell-inset: 0.5rem;
   --command-content-inset: 1rem;
   --floating-content-inset: 0.75rem;
-  /* App layer order: docked sheets, then the floating preview player (47–49, see
+  /* App layer order: the bottom terminal drawer (45, above the timeline minimap),
+     docked sheets, then the floating preview player (47–49, see
      previewMiniPlayerLayout.ts), then dialogs and popovers (50 and up). */
   --z-sheet: 46;
   --glass-blur: 12px;
@@ -149,6 +150,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 }
 
 .wco {
+  --native-titlebar-height: env(titlebar-area-height, 0px);
   --workspace-topbar-height: max(40px, env(titlebar-area-height, 52px));
   --workspace-controls-top: env(titlebar-area-y, 0px);
   --workspace-controls-left: calc(env(titlebar-area-x, 0px) + 0.75rem);
@@ -2067,6 +2069,17 @@ code {
    spacing needs to match. */
 .composer-tiptap hr {
   margin: 0.65rem 0;
+}
+
+/* Block spacing separates blocks, not the draft from the composer edge. A
+   leading list or quote would otherwise push the first line down, and the
+   one-line resting composer clips it. */
+.composer-tiptap > :first-child {
+  margin-top: 0;
+}
+
+.composer-tiptap > :last-child {
+  margin-bottom: 0;
 }
 
 /* A heading at the top of a draft should not push the first line down. */

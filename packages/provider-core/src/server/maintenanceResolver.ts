@@ -11,10 +11,10 @@ import {
   type ServerProvider,
   type ServerProviderVersionAdvisory,
 } from "@t3tools/contracts";
-import { compareSemverVersions } from "@t3tools/shared/semver";
+import { compareSemverVersions, satisfiesSemverRange } from "@t3tools/shared/semver";
 import * as HostProcess from "@t3tools/shared/HostProcess";
 import { causeErrorTag } from "@t3tools/shared/observability";
-import { resolveCommandPath } from "@t3tools/shared/shell";
+import { resolveCommandPath, resolveSpawnCommand } from "@t3tools/shared/shell";
 import * as Cache from "effect/Cache";
 import * as Config from "effect/Config";
 import * as DateTime from "effect/DateTime";
@@ -34,8 +34,8 @@ import { collectUint8StreamText } from "./collectStreamText.ts";
 import * as ProviderLatestVersions from "./ProviderLatestVersions.ts";
 
 const LATEST_VERSION_TIMEOUT_MS = 4_000;
-const HOMEBREW_INFO_TIMEOUT_MS = 10_000;
-const HOMEBREW_INFO_MAX_BYTES = 256 * 1_024;
+const PROBE_TIMEOUT_MS = 10_000;
+const PROBE_MAX_BYTES = 256 * 1_024;
 const MISE_WRAPPER_MAX_BYTES = 16 * 1_024;
 const PROVIDER_UPDATE_ACTION_TOAST_MESSAGE = "Install the update now or review provider settings.";
 
@@ -179,14 +179,18 @@ export function makeTargetedProviderUpdateAction(
 export function makeManualOnlyProviderMaintenanceCapabilities(input: {
   readonly provider: ProviderDriverKind;
   readonly packageName: string | null;
+  readonly installPath?: string;
 }): ProviderMaintenanceCapabilities {
-  return makeProviderMaintenanceCapabilities({
-    provider: input.provider,
-    packageName: input.packageName,
-    updateExecutable: null,
-    updateArgs: [],
-    updateLockKey: null,
-  });
+  return {
+    ...makeProviderMaintenanceCapabilities({
+      provider: input.provider,
+      packageName: input.packageName,
+      updateExecutable: null,
+      updateArgs: [],
+      updateLockKey: null,
+    }),
+    ...(input.installPath ? { installPath: input.installPath } : {}),
+  };
 }
 
 export function normalizeCommandPath(commandPath: string): string {
@@ -302,22 +306,31 @@ export function parseHomebrewLatestVersion(
     ownership.kind === "formula"
       ? decoded.value.formulae?.[0]?.versions?.stable
       : decoded.value.casks?.[0]?.version?.split(",", 1)[0];
-  return nonEmptyString(raw);
+  const version = nonEmptyString(raw);
+  return version === "latest" ? null : version;
 }
 
-const runHomebrew = Effect.fn("runHomebrew")(function* (
-  brewPath: string,
+const runProbe = Effect.fn("runProbe")(function* (
+  command: string,
   args: ReadonlyArray<string>,
   env: NodeJS.ProcessEnv,
 ) {
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const collect = Effect.gen(function* () {
-    const child = yield* spawner.spawn(ChildProcess.make(brewPath, args, { env, extendEnv: true }));
+    // Windows package managers are `.cmd` shims that need the shell.
+    const resolved = yield* resolveSpawnCommand(command, args, { env, extendEnv: true });
+    const child = yield* spawner.spawn(
+      ChildProcess.make(resolved.command, resolved.args, {
+        env,
+        extendEnv: true,
+        shell: resolved.shell,
+      }),
+    );
     yield* Effect.addFinalizer(() => child.kill().pipe(Effect.ignore));
-    // stderr is drained so a chatty brew cannot block on a full pipe.
+    // stderr is drained so a chatty tool cannot block on a full pipe.
     const [stdout, exitCode] = yield* Effect.all(
       [
-        collectUint8StreamText({ stream: child.stdout, maxBytes: HOMEBREW_INFO_MAX_BYTES }),
+        collectUint8StreamText({ stream: child.stdout, maxBytes: PROBE_MAX_BYTES }),
         child.exitCode,
         Stream.runDrain(child.stderr),
       ],
@@ -327,10 +340,11 @@ const runHomebrew = Effect.fn("runHomebrew")(function* (
   });
   return yield* collect.pipe(
     Effect.scoped,
-    Effect.timeoutOption(Duration.millis(HOMEBREW_INFO_TIMEOUT_MS)),
+    Effect.timeoutOption(Duration.millis(PROBE_TIMEOUT_MS)),
     Effect.map(Option.getOrNull),
     Effect.catchCause((cause) =>
-      Effect.logWarning("Homebrew probe failed", {
+      Effect.logWarning("Maintenance probe failed", {
+        command,
         subcommand: args[0],
         errorTag: causeErrorTag(cause),
       }).pipe(Effect.as(null)),
@@ -344,13 +358,17 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
   definition: PackageManagedProviderMaintenanceDefinition,
   context: ProviderMaintenanceResolutionContext | null,
 ) {
+  if (!context) {
+    return makeManualOnlyProviderMaintenanceCapabilities({
+      provider: definition.provider,
+      packageName: definition.npmPackageName,
+    });
+  }
   const manual = makeManualOnlyProviderMaintenanceCapabilities({
     provider: definition.provider,
     packageName: definition.npmPackageName,
+    installPath: context.realCommandPath,
   });
-  if (!context) {
-    return manual;
-  }
   const commandPaths = [context.resolvedCommandPath, context.realCommandPath];
   const packageName = definition.npmPackageName;
   // WinGet owns these files: `claude update` only reports "managed by winget"
@@ -404,11 +422,20 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     });
   }
   if (commandPaths.some(isPnpmGlobalCommandPath)) {
+    // pnpm 10 skips unapproved install scripts and still exits 0, leaving a
+    // package whose postinstall finishes the install broken. Global installs
+    // can only approve on the command line, and pnpm before 10.4 rejects the
+    // flag as an unknown option.
+    const pnpmVersion = yield* runProbe("pnpm", ["--version"], context.env);
+    const allowBuild =
+      pnpmVersion !== null && satisfiesSemverRange(pnpmVersion, ">=10.4.0")
+        ? [`--allow-build=${packageName}`]
+        : [];
     return makeProviderMaintenanceCapabilities({
       provider: definition.provider,
       packageName,
       updateExecutable: "pnpm",
-      updateArgs: ["add", "-g", `${packageName}@latest`],
+      updateArgs: ["add", "-g", ...allowBuild, `${packageName}@latest`],
       updateLockKey: "pnpm-global",
     });
   }
@@ -479,7 +506,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     if (!brewPath) {
       return fallback;
     }
-    const brewPrefix = nonEmptyString(yield* runHomebrew(brewPath, ["--prefix"], context.env));
+    const brewPrefix = nonEmptyString(yield* runProbe(brewPath, ["--prefix"], context.env));
     const realBrewPrefix = brewPrefix
       ? yield* fileSystem.realPath(brewPrefix).pipe(Effect.orElseSucceed(() => brewPrefix))
       : null;
@@ -493,7 +520,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       homebrew.kind === "cask" ? ["upgrade", "--cask", homebrew.name] : ["upgrade", homebrew.name];
     // Homebrew lags npm by hours on every release, so compare against what
     // `brew upgrade` can actually deliver.
-    const info = yield* runHomebrew(brewPath, ["info", "--json=v2", homebrew.name], context.env);
+    const info = yield* runProbe(brewPath, ["info", "--json=v2", homebrew.name], context.env);
     return makeProviderMaintenanceCapabilities({
       provider: definition.provider,
       packageName,
@@ -646,10 +673,20 @@ export const makeCachedProviderMaintenanceResolution = Effect.fn(
     options?.fresh ? Cache.invalidate(cache, undefined).pipe(Effect.andThen(cached)) : cached;
 });
 
+/**
+ * An install T3 Code cannot update gets no Update button or command, so its
+ * message names the version and the executable instead.
+ */
+function manualUpdateMessage(latestVersion: string, installPath: string | undefined): string {
+  return installPath
+    ? `Version ${latestVersion} is out. T3 Code runs ${installPath}; update it with the app or tool that installed it.`
+    : `Version ${latestVersion} is out. Update it with the app or tool that installed it.`;
+}
+
 function deriveVersionAdvisory(input: {
   readonly currentVersion: string | null;
   readonly latestVersion: string | null;
-  readonly compareVersions?: (current: string, latest: string) => number;
+  readonly capabilities: ProviderMaintenanceCapabilities;
 }): Pick<ServerProviderVersionAdvisory, "status" | "message"> {
   if (!input.currentVersion) {
     return { status: "unknown", message: null };
@@ -658,11 +695,17 @@ function deriveVersionAdvisory(input: {
     return { status: "unknown", message: null };
   }
   if (
-    (input.compareVersions ?? compareSemverVersions)(input.currentVersion, input.latestVersion) < 0
+    (input.capabilities.compareVersions ?? compareSemverVersions)(
+      input.currentVersion,
+      input.latestVersion,
+    ) < 0
   ) {
     return {
       status: "behind_latest",
-      message: PROVIDER_UPDATE_ACTION_TOAST_MESSAGE,
+      message:
+        input.capabilities.update === null
+          ? manualUpdateMessage(input.latestVersion, input.capabilities.installPath)
+          : PROVIDER_UPDATE_ACTION_TOAST_MESSAGE,
     };
   }
   return { status: "current", message: null };
@@ -681,7 +724,7 @@ export function createProviderVersionAdvisory(input: {
   const advisory = deriveVersionAdvisory({
     currentVersion: input.currentVersion,
     latestVersion,
-    ...(capabilities.compareVersions ? { compareVersions: capabilities.compareVersions } : {}),
+    capabilities,
   });
 
   return {

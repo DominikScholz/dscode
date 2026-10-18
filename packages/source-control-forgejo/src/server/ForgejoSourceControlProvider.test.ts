@@ -122,7 +122,7 @@ it.effect("submits a Forgejo review without sending its summary in the prelimina
   );
 });
 
-it.effect("reads Forgejo checks without repository or viewer requests", () => {
+it.effect("reads the newest Forgejo checks without repository or viewer requests", () => {
   const paths: string[] = [];
   return Effect.gen(function* () {
     const provider = yield* ForgejoPullRequestProvider.make;
@@ -154,7 +154,7 @@ it.effect("reads Forgejo checks without repository or viewer requests", () => {
             "head":{"ref":"feature","sha":"head","repo":null},"base":{"ref":"main","sha":"base","repo":null},
             "created_at":"2026-09-16T00:00:00Z","updated_at":"2026-09-16T00:00:00Z","closed_at":null,"merged_at":null,"labels":[]}`
                 : input.path.endsWith("page=1")
-                  ? `[{"context":"build","status":"failure","description":null,"target_url":null,"updated_at":"2026-09-16T00:00:00Z"}]`
+                  ? `[{"context":"build","status":"failure","description":null,"target_url":null,"updated_at":"2026-09-16T00:00:00.500Z"},{"context":"build","status":"success","description":null,"target_url":null,"updated_at":"2026-09-16T00:00:00Z"}]`
                   : "[]",
             ),
           );
@@ -579,6 +579,59 @@ it.effect(
     );
   },
 );
+
+it.effect("reads Forgejo pull request commits without their file lists", () => {
+  const paths: string[] = [];
+  return Effect.gen(function* () {
+    const provider = yield* ForgejoPullRequestProvider.make;
+    const activity = yield* provider.getChangeRequestActivity({
+      cwd: "/repo",
+      repository: "maria/project",
+      host: "forgejo.test",
+      number: 30,
+    });
+    assert.deepStrictEqual(
+      activity.commits.map((commit) => commit.oid),
+      ["abc"],
+    );
+    const commitReads = paths.filter((path) =>
+      path.startsWith("repos/maria/project/pulls/30/commits"),
+    );
+    assert.isNotEmpty(commitReads);
+    for (const path of commitReads) {
+      const query = new URLSearchParams(path.split("?")[1]);
+      assert.strictEqual(query.get("files"), "false");
+      assert.strictEqual(query.get("verification"), "false");
+    }
+  }).pipe(
+    Effect.provide(
+      Layer.mock(ForgejoCli.ForgejoCli)({
+        api: (input) => {
+          paths.push(input.path);
+          const [path, query] = input.path.split("?");
+          const page = Number(new URLSearchParams(query).get("page") ?? "1");
+          const body =
+            path === "user"
+              ? { login: "maria" }
+              : path === "repos/maria/project/pulls/30/commits" && page === 1
+                ? [
+                    {
+                      sha: "abc",
+                      author: null,
+                      commit: {
+                        message: "Reorganize folders",
+                        committer: { date: "2026-10-11T00:00:00Z" },
+                      },
+                      parents: [],
+                    },
+                  ]
+                : [];
+          return encodeJsonEffect(body).pipe(Effect.orDie, Effect.map(processOutput));
+        },
+      }),
+    ),
+  );
+});
 
 it.effect("discovers Forgejo accounts and retains the server port", () =>
   Effect.gen(function* () {

@@ -157,14 +157,16 @@ const shouldRetainMissingProviderModels = (provider: ServerProvider): boolean =>
 
   if (provider.driver === ProviderDriverKind.make("acpRegistry")) {
     // ACP Registry discovery probes return the agent's complete inventory, so
-    // a completed probe (ready and authenticated) replaces the model list —
-    // otherwise agents that rename or collapse models leave stale entries
-    // pinned forever through the snapshot cache. Readiness-only and failed
-    // probe snapshots only know the "default" placeholder and stay partial.
+    // a completed probe replaces the model list — otherwise agents that rename
+    // or collapse models leave stale entries pinned forever through the
+    // snapshot cache. Only a completed probe reports `nativeSessions`;
+    // readiness-only and failed probe snapshots only know the "default"
+    // placeholder and stay partial. Auth is no signal here: agents without
+    // sign-in stay "unknown" after every probe.
     return !(
       provider.installed &&
       provider.status === "ready" &&
-      provider.auth.status === "authenticated"
+      provider.nativeSessions !== undefined
     );
   }
 
@@ -910,25 +912,30 @@ export const layer = Layer.effect(
         : Effect.void;
       return yield* refreshMachineSnapshot.pipe(
         Effect.andThen(instance.snapshotForCwd(input.cwd)),
+        // A failed scan fails this effect, so a returned snapshot is a real
+        // inventory even while the provider's health check reports an error.
         Effect.flatMap((scopedSnapshot) =>
-          scopedSnapshot.status === "error" && scopedSnapshot.slashCommandsPending === undefined
-            ? Ref.get(providersRef)
-            : instanceRegistry.getInstance(input.instanceId).pipe(
-                Effect.flatMap((currentInstance) => {
-                  if (currentInstance !== instance) return Ref.get(providersRef);
-                  return updateProviders((currentProviders) =>
-                    currentProviders.map((candidate) =>
-                      candidate.instanceId === input.instanceId &&
-                      Equal.equals(workspaceSnapshotOf(candidate), scannedFrom)
-                        ? upsertProviderWorkspaceSnapshot(candidate, input.cwd, {
-                            ...scopedSnapshot,
-                            checkedAt: scannedAt,
-                          })
-                        : candidate,
-                    ),
-                  );
-                }),
-              ),
+          instanceRegistry.getInstance(input.instanceId).pipe(
+            Effect.flatMap((currentInstance) => {
+              if (currentInstance !== instance) return Ref.get(providersRef);
+              return updateProviders((currentProviders) =>
+                currentProviders.map((candidate) =>
+                  candidate.instanceId === input.instanceId &&
+                  Equal.equals(workspaceSnapshotOf(candidate), scannedFrom)
+                    ? upsertProviderWorkspaceSnapshot(candidate, input.cwd, {
+                        ...scopedSnapshot,
+                        checkedAt: scannedAt,
+                        // Unless the driver reports its own command discovery,
+                        // commands come from the health check. A failed check
+                        // leaves them unknown, so keep the last ones and retry.
+                        slashCommandsPending:
+                          scopedSnapshot.slashCommandsPending ?? scopedSnapshot.status === "error",
+                      })
+                    : candidate,
+                ),
+              );
+            }),
+          ),
         ),
         Effect.ensuring(
           claimed

@@ -208,19 +208,44 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     });
   });
 
-  it("keeps the manual update hint when the install is behind but unowned", () => {
+  it("names the install to update when it is behind but unowned", () => {
     expect(
       createProviderVersionAdvisory({
         driver: driver("packageTool"),
         currentVersion: "2.1.110",
         latestVersion: "2.1.117",
-        maintenanceCapabilities: manualPackageTool,
+        maintenanceCapabilities: {
+          ...manualPackageTool,
+          installPath: "/Applications/Tool.app/Contents/Resources/bin/package-tool",
+        },
       }),
     ).toMatchObject({
       status: "behind_latest",
       latestVersion: "2.1.117",
       updateCommand: null,
       canUpdate: false,
+      message:
+        "Version 2.1.117 is out. T3 Code runs /Applications/Tool.app/Contents/Resources/bin/package-tool; update it with the app or tool that installed it.",
+    });
+  });
+
+  it("offers the update when an owned install is behind", () => {
+    expect(
+      createProviderVersionAdvisory({
+        driver: driver("packageTool"),
+        currentVersion: "2.1.110",
+        latestVersion: "2.1.117",
+        maintenanceCapabilities: makeProviderMaintenanceCapabilities({
+          provider: driver("packageTool"),
+          packageName: "@example/package-tool",
+          updateExecutable: "npm",
+          updateArgs: ["install", "-g", "@example/package-tool@latest"],
+          updateLockKey: "npm-global:/usr/local",
+        }),
+      }),
+    ).toMatchObject({
+      status: "behind_latest",
+      canUpdate: true,
       message: "Install the update now or review provider settings.",
     });
   });
@@ -524,18 +549,32 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           "package-tool",
         ]);
 
-        const capabilities = yield* resolveProviderMaintenanceCapabilitiesEffect(
-          packageToolUpdate,
-          {
+        const updateCommand = (spawner: ChildProcessSpawner.ChildProcessSpawner["Service"]) =>
+          resolveProviderMaintenanceCapabilitiesEffect(packageToolUpdate, {
             binaryPath: link,
             env: { PATH: "" },
-          },
-        ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
+          }).pipe(
+            Effect.map((capabilities) => capabilities.update),
+            Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+          );
+        const pnpmVersion = (version: string) =>
+          stdoutSpawner((command, args) => {
+            expect([command, ...args].join(" ")).toMatch(/pnpm(\.cmd)?"? --version$/);
+            return `${version}
+`;
+          });
 
-        expect(capabilities.update).toMatchObject({
-          command: "pnpm add -g @example/package-tool@latest",
+        expect(yield* updateCommand(pnpmVersion("11.1.3"))).toMatchObject({
+          command: "pnpm add -g --allow-build=@example/package-tool @example/package-tool@latest",
           lockKey: "pnpm-global",
         });
+        // Older pnpm rejects the unknown flag, and runs install scripts before 10.
+        expect((yield* updateCommand(pnpmVersion("10.3.0")))?.command).toBe(
+          "pnpm add -g @example/package-tool@latest",
+        );
+        expect((yield* updateCommand(noSpawn))?.command).toBe(
+          "pnpm add -g @example/package-tool@latest",
+        );
       }),
   );
 
@@ -749,9 +788,34 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
   );
 
   it.effect.each([
-    { directory: "Caskroom", name: "package-tool", kind: "cask" },
-    { directory: "Cellar", name: "package-tool", kind: "formula" },
-    { directory: "Cellar", name: "package-tool@latest", kind: "formula" },
+    {
+      directory: "Caskroom",
+      name: "package-tool",
+      kind: "cask",
+      version: "0.148.0,42",
+      latestVersion: "0.148.0",
+    },
+    {
+      directory: "Cellar",
+      name: "package-tool",
+      kind: "formula",
+      version: "0.148.0",
+      latestVersion: "0.148.0",
+    },
+    {
+      directory: "Cellar",
+      name: "package-tool@latest",
+      kind: "formula",
+      version: "0.148.0",
+      latestVersion: "0.148.0",
+    },
+    {
+      directory: "Caskroom",
+      name: "versionless-package-tool",
+      kind: "cask",
+      version: "latest",
+      latestVersion: null,
+    },
   ] as const)(
     "upgrades the owning Homebrew $kind $name through an executable alias",
     (fixture) =>
@@ -764,7 +828,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           tempDir,
           fixture.directory,
           fixture.name,
-          "0.148.0",
+          fixture.latestVersion ?? "latest",
           "package-tool-0.148.0",
         );
         writeExecutable(ownedBinary);
@@ -789,8 +853,8 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
                 ? `${tempDir}\n`
                 : JSON.stringify(
                     fixture.kind === "cask"
-                      ? { casks: [{ version: "0.148.0,42" }] }
-                      : { formulae: [{ versions: { stable: "0.148.0" } }] },
+                      ? { casks: [{ version: fixture.version }] }
+                      : { formulae: [{ versions: { stable: fixture.version } }] },
                   );
             }),
           ),
@@ -803,7 +867,7 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
         expect(capabilities).toEqual({
           provider: driver("packageTool"),
           packageName: "@example/package-tool",
-          latestVersion: "0.148.0",
+          latestVersion: fixture.latestVersion,
           update: {
             command:
               fixture.kind === "cask"
@@ -816,6 +880,26 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
                 : ["upgrade", fixture.name],
             lockKey: "homebrew",
           },
+        });
+
+        const provider = yield* enrichProviderSnapshotWithVersionAdvisory(
+          { ...installedPackageToolProvider, version: "0.148.0" },
+          capabilities,
+        ).pipe(
+          Effect.provide(ProviderLatestVersions.layer),
+          Effect.provideService(
+            HttpClient.HttpClient,
+            HttpClient.make(() =>
+              Effect.die("Homebrew version checks should not fall back to npm"),
+            ),
+          ),
+        );
+
+        expect(provider.versionAdvisory).toMatchObject({
+          status: fixture.latestVersion === null ? "unknown" : "current",
+          latestVersion: fixture.latestVersion,
+          canUpdate: true,
+          message: null,
         });
       }),
     { skip: !symlinksSupported },
@@ -853,7 +937,10 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           ),
         );
 
-        expect(capabilities).toEqual(manualPackageTool);
+        expect(capabilities).toEqual({
+          ...manualPackageTool,
+          installPath: NodeFS.realpathSync(kegBinary),
+        });
       }),
   );
 
@@ -862,6 +949,12 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
     const formula = { kind: "formula", name: "claude-code", prefix: "/opt/homebrew" } as const;
     expect(parseHomebrewLatestVersion(info, formula)).toBe("2.1.5");
     expect(parseHomebrewLatestVersion("not json", formula)).toBeNull();
+  });
+
+  it("treats Homebrew's latest cask version as unknown", () => {
+    const info = JSON.stringify({ casks: [{ version: "latest" }] });
+    const cask = { kind: "cask", name: "package-tool", prefix: "/opt/homebrew" } as const;
+    expect(parseHomebrewLatestVersion(info, cask)).toBeNull();
   });
 
   it.effect.skipIf(windowsHost)(
@@ -880,7 +973,10 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
           },
         ).pipe(Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, noSpawn));
 
-        expect(capabilities).toEqual(manualPackageTool);
+        expect(capabilities).toEqual({
+          ...manualPackageTool,
+          installPath: NodeFS.realpathSync(customPath),
+        });
       }),
   );
 
