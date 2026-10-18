@@ -140,8 +140,9 @@ export const AppRail = memo(function AppRail({ seamless }: { seamless: boolean }
       className={cn(
         "relative z-20 hidden w-(--app-rail-width) shrink-0 flex-col gap-1 pt-(--workspace-topbar-height) pb-5 md:flex",
         // Without a visible edge the icons hug the sidebar, so the gap to the
-        // thread cards matches the gap to the window edge.
-        seamless ? "items-end" : "items-center",
+        // thread cards matches the gap to the window edge. The canvas fill is
+        // still opaque: a collapsed sidebar tucks its edge under the rail.
+        seamless ? "items-end bg-background" : "items-center",
         !seamless &&
           "bg-(--rail-surface) shadow-(--rail-shadow) after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-(image:--rail-edge)",
       )}

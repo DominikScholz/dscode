@@ -1795,6 +1795,14 @@ body {
   overflow: hidden;
 }
 
+/* index.html colors the body for the boot screen without a layer, which beats
+   the layered base rule. The transparent app rail and sidebar show the body,
+   so once this stylesheet loads the theme's chrome color takes over. */
+html.dark body,
+body {
+  background-color: var(--app-chrome-background);
+}
+
 #root {
   height: 100%;
   width: 100%;

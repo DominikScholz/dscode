@@ -87,8 +87,10 @@ function ContextStrip({ className, ...props }: ComponentProps<"div">) {
       data-slot="composer-context-strip"
       className={cn(
         "group/composer-context relative isolate mx-auto -mt-4 flex w-[calc(100%-2*var(--chat-composer-drawer-inset))] items-center gap-2 overflow-x-clip overflow-y-visible px-2 pt-5 pb-1",
-        // The strip continues the composer's edge; its top fades into the seam.
-        "before:absolute before:inset-0 before:-z-1 before:rounded-b-2xl before:squircle before:border before:border-(--chat-composer-outline) before:shadow-(--panel-drop) before:mask-b-from-transparent before:mask-b-from-(length:--spacing-composer-seam) before:mask-b-to-black before:mask-b-to-(length:--spacing-composer-seam)",
+        // The strip continues the composer's edge; its top stays hidden under
+        // the composer. One mask-image, because tailwind-merge drops the
+        // mask-b-from/to color classes next to variable positions.
+        "before:absolute before:inset-0 before:-z-1 before:rounded-b-2xl before:squircle before:border before:border-(--chat-composer-outline) before:shadow-(--panel-drop) before:[mask-image:linear-gradient(to_bottom,transparent_var(--spacing-composer-seam),black_var(--spacing-composer-seam))]",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:before:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-blur-(--glass-blur) group-has-data-[composer-banner-surface=attached]/composer-surface:before:backdrop-saturate-(--glass-saturation)",
         "not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:bg-(--chat-composer-glass-surface)/(--glass-opacity) not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-blur-(--glass-blur) not-supports-[clip-path:shape(from_0_0,line_to_1px_1px)]:before:backdrop-saturate-(--glass-saturation)",
         className,
