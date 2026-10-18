@@ -205,3 +205,48 @@ On mobile, use **Settings → Source control** to change selected environment de
 T3 Code only pulls when it can fast-forward and the checkout has no changed files, untracked files,
 or local commits. It skips checkouts on another branch or without an upstream. If a checkout has
 local work, resolve it yourself before automatic pulls can resume.
+
+## Project graph
+
+On web and desktop, open **Project graph** from the project picker, Project Settings, or the
+command palette. Branch labels sit beside their latest commit; branches sharing a tip share
+that commit's row. Worktrees with uncommitted changes have a separate tip. Shared commits
+appear only once. Unsettled threads have separate rows below
+their branch and open when selected. Expand **Settled threads** beneath a branch to open older
+conversations. Select the worktree icon beside the branch name for worktree actions; hover to see the checkout path.
+Author markers use a GitHub portrait or Gravatar when available, then fall back to initials.
+Threads without a matching local checkout are available through **Unlinked**.
+For projects with multiple checkouts or environments, use **Graph options** in the toolbar to
+choose the checkout and Git source.
+
+On mobile, open **Project visualization** from Home or a checkout in **Settings → Project
+overview**. Choose a project or checkout from the graph options. Tap a thread to open it, a
+history group to expand it, or a commit or branch for details and worktree actions. Search
+highlights matches; **Next** moves between them. Open **Unlinked** to find threads without a
+matching checkout.
+
+To see threads from another running T3 Code app, pair it under **Settings → Connections →
+Add environment**, then choose its project in the picker. Threads update live from that app.
+If its version does not support graphs yet, **Read Git from** can use another connected environment
+on the same machine with access to the same checkout path. Thread actions still use the app
+that owns the threads. The graph URL keeps your checkout and Git source selections.
+
+Scroll vertically through history and horizontally for additional details. Search finds branches,
+thread titles and worktree paths. Refresh reads changes made by external Git tools without fetching
+from a remote. Ordinary stretches of history are collapsed by default, keeping branch heads,
+forks and merges visible. Select **Commits (N)** to expand a section, or **Expand all** for
+the full history. Searching also reveals collapsed commits.
+**Compact lanes** is on by default and reuses columns for branch histories that do not overlap
+vertically. Turn it off to give each branch its own column. Both views retain all branches and
+keep main on the left.
+
+**Merged** means the branch tip is reachable from the local default branch, or its remote-tracking
+ref if no local default branch exists. Squash and rebase merges may still appear unmerged.
+Merge status is unknown when the default branch cannot be determined. Large histories are
+loaded 2,000 commits at a time; use **Load older commits** to extend the graph. All local branch
+labels remain visible, including tips outside the loaded history.
+
+Open a worktree's context menu to close it. Closing removes the checkout directory but keeps
+its branch and threads. Git refuses to remove uncommitted or untracked files. Main checkouts,
+locked worktrees and worktrees with running thread sessions cannot be closed here. Threads
+whose worktree or branch disappeared remain visible separately, so unfinished work can be found.

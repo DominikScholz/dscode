@@ -5132,6 +5132,28 @@ export default function Sidebar() {
                           <Button
                             size="icon-xs"
                             variant="ghost-muted"
+                            title={`Project graph for ${project.displayName}`}
+                            aria-label={`Project graph for ${project.displayName}`}
+                            className="ml-auto size-6"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              dispatchProjectScopeMenu({ type: "open-changed", open: false });
+                              if (isMobile) setOpenMobile(false);
+                              void router.navigate({
+                                to: "/project-graph/$projectKey",
+                                params: { projectKey: project.projectKey },
+                              });
+                            }}
+                          >
+                            <GitBranchIcon className="size-3.5" />
+                          </Button>
+                        ) : null}
+                        {project ? (
+                          <Button
+                            size="icon-xs"
+                            variant="ghost-muted"
                             tabIndex={-1}
                             aria-hidden="true"
                             title={`Project settings for ${project.displayName}`}

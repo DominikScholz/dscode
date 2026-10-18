@@ -1,4 +1,4 @@
-import { StackActions, useNavigation } from "@react-navigation/native";
+import { StackActions, useNavigation, useNavigationState } from "@react-navigation/native";
 import { useMemo } from "react";
 import { isDuoDevice } from "../../lib/device-type";
 import type { AppNativeStackNavigationOptions } from "../../native/StackHeader";
@@ -87,6 +87,21 @@ export function useThreadHeaderOptions(props: {
     ],
   );
   const canGoBack = navigation.canGoBack();
+  const returnsToGraph = useNavigationState(
+    (state) => state.routes[state.index - 1]?.name === "ProjectGraph",
+  );
+  const graphBackHeaderItems = useMemo<NativeHeaderItems>(
+    () => [
+      withNativeGlassHeaderItem({
+        accessibilityLabel: "Return to project visualization",
+        icon: { name: "chevron.left", type: "sfSymbol" as const },
+        identifier: "thread-left-project-graph",
+        onPress: () => navigation.goBack(),
+        type: "button" as const,
+      }),
+    ],
+    [navigation],
+  );
   const compactHomeHeaderItems = useMemo<NativeHeaderItems>(
     () => [
       withNativeGlassHeaderItem({
@@ -127,12 +142,19 @@ export function useThreadHeaderOptions(props: {
         }
       : undefined,
     title: props.title,
-    headerBackVisible: !layout.usesSplitView,
+    headerBackVisible: !layout.usesSplitView && !returnsToGraph,
+    // Graph entry uses an explicit return item: iOS can suppress its native
+    // back item after crossing the graph's custom header / Settings sheet.
+    // Compact uses the NATIVE back button for other previous routes;
+    // deep links / cold starts get an explicit Home button instead.
+    // Split view always uses its custom left items.
     unstable_headerLeftItems: layout.usesSplitView
       ? () => splitLeftHeaderItems
-      : canGoBack
-        ? undefined
-        : () => compactHomeHeaderItems,
+      : returnsToGraph
+        ? () => graphBackHeaderItems
+        : canGoBack
+          ? undefined
+          : () => compactHomeHeaderItems,
     unstable_headerRightItems: () =>
       usesDuoHeader
         ? duoRightHeaderItems

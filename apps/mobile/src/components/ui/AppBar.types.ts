@@ -45,6 +45,7 @@ export interface AppBarSearch {
   readonly placeholder: string;
   readonly mode?: "inline" | "collapsible";
   readonly compactToolbar?: boolean;
+  readonly menuInToolbar?: boolean;
   readonly compactPlaceholder?: string;
   readonly closeAccessibilityLabel?: string;
   readonly clearAccessibilityLabel?: string;
@@ -56,6 +57,7 @@ export interface AppBarSearch {
 export interface AppBarProps {
   readonly title: string;
   readonly subtitle?: string;
+  readonly titleIcon?: ReactNode;
   readonly actions?: ReadonlyArray<AppBarAction>;
   readonly menus?: ReadonlyArray<AppBarMenu>;
   readonly search?: AppBarSearch;

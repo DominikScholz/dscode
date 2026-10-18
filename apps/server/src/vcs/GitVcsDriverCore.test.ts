@@ -1105,6 +1105,227 @@ it.effect("retries a fetch that lost a ref update to another Git process", () =>
 );
 
 it.layer(layerTest)("GitVcsDriver core integration", (it) => {
+  describe("project graph", () => {
+    it.effect("reports untracked, staged and unstaged changes per worktree", () =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const read = () => driver.listRefs({ cwd, includeGraph: true, refresh: true });
+        assert.equal((yield* read()).graph!.worktrees[0]!.dirty, false);
+        yield* writeTextFile(cwd, "pending.txt", "one");
+        assert.equal((yield* read()).graph!.worktrees[0]!.dirty, true);
+        yield* git(cwd, ["add", "pending.txt"]);
+        assert.equal((yield* read()).graph!.worktrees[0]!.dirty, true);
+        yield* git(cwd, ["commit", "-m", "add pending file"]);
+        assert.equal((yield* read()).graph!.worktrees[0]!.dirty, false);
+        yield* writeTextFile(cwd, "pending.txt", "two");
+        assert.equal((yield* read()).graph!.worktrees[0]!.dirty, true);
+      }),
+    );
+
+    it.effect(
+      "returns all local tips, ancestry, merge state and detached worktrees without picker pagination",
+      () =>
+        Effect.gen(function* () {
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const cwd = yield* makeTmpDir();
+          const trees = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          yield* git(cwd, ["branch", "-M", "main"]);
+          const root = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* git(cwd, ["checkout", "-b", "feat/merged"]);
+          yield* git(cwd, ["commit", "--allow-empty", "-m", "merged change"]);
+          yield* git(cwd, ["checkout", "main"]);
+          yield* git(cwd, ["merge", "--no-ff", "feat/merged", "-m", "merge feature"]);
+          yield* git(cwd, ["checkout", "-b", "feat/open", root]);
+          yield* git(cwd, ["commit", "--allow-empty", "-m", "unmerged change"]);
+          const openHead = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* git(cwd, ["worktree", "add", "--detach", `${trees}/detached space`, root]);
+          yield* git(cwd, ["branch", "alias", "feat/open"]);
+          const result = yield* driver.listRefs({
+            cwd,
+            includeGraph: true,
+            refKind: "local",
+            limit: 1,
+          });
+          assert.equal(result.refs.length, 1);
+          assert.isDefined(result.graph);
+          const graph = result.graph!;
+          assert.equal(graph.defaultBranch, "main");
+          assert.equal(graph.branches.length, 4);
+          assert.equal(
+            graph.branches.find((branch) => branch.name === "feat/merged")?.merged,
+            true,
+          );
+          assert.equal(graph.branches.find((branch) => branch.name === "feat/open")?.merged, false);
+          assert.equal(graph.branches.find((branch) => branch.name === "feat/open")?.current, true);
+          assert.equal(graph.branches.find((branch) => branch.name === "alias")?.head, openHead);
+          assert.isTrue(
+            graph.commits.some((commit) => commit.id === openHead && commit.parents.includes(root)),
+          );
+          assert.equal(graph.worktrees.length, 2);
+          assert.equal(graph.worktrees[0]?.isMain, true);
+          assert.equal(graph.worktrees[0]?.branch, "feat/open");
+          assert.equal(graph.worktrees[1]?.branch, null);
+          assert.isTrue(graph.worktrees[1]?.path.endsWith("detached space"));
+          assert.equal(graph.truncated, false);
+          assert.isUndefined((yield* driver.listRefs({ cwd })).graph);
+        }),
+    );
+    it.effect(
+      "includes ordinary commits and loads older history without rewriting parent links",
+      () =>
+        Effect.gen(function* () {
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          const root = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* git(cwd, ["commit", "--allow-empty", "-m", "ordinary middle commit"]);
+          const middle = yield* git(cwd, ["rev-parse", "HEAD"]);
+          yield* git(cwd, [
+            "commit",
+            "--allow-empty",
+            "--author",
+            "Ada Lovelace <123+octocat@users.noreply.github.com>",
+            "-m",
+            "tip commit",
+          ]);
+          const tip = yield* git(cwd, ["rev-parse", "HEAD"]);
+          const recent = (yield* driver.listRefs({ cwd, includeGraph: true, graphCommitLimit: 1 }))
+            .graph!;
+          assert.deepEqual(
+            recent.commits.map((commit) => commit.id),
+            [tip],
+          );
+          assert.deepEqual(recent.commits[0]?.parents, [middle]);
+          assert.equal(
+            recent.commits[0]?.committedAtEpochSeconds,
+            Number(yield* git(cwd, ["show", "-s", "--format=%ct", tip])),
+          );
+          assert.deepEqual(recent.commits[0]?.author, {
+            name: "Ada Lovelace",
+            email: "123+octocat@users.noreply.github.com",
+          });
+          assert.isTrue(recent.truncated);
+          const full = (yield* driver.listRefs({ cwd, includeGraph: true, graphCommitLimit: 3 }))
+            .graph!;
+          assert.deepEqual(
+            full.commits.map((commit) => commit.id),
+            [tip, middle, root],
+          );
+          assert.deepEqual(full.commits[1]?.parents, [root]);
+          assert.isFalse(full.truncated);
+        }),
+    );
+    it.effect("recovers source branches through reflog renames for branches sharing a tip", () =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "-M", "main"]);
+        yield* git(cwd, ["checkout", "-b", "dominik/mvp", "main"]);
+        yield* git(cwd, ["commit", "--allow-empty", "-m", "shared feature history"]);
+        yield* git(cwd, ["branch", "temporary-draw", "dominik/mvp"]);
+        yield* git(cwd, ["branch", "temporary-collection", "dominik/mvp"]);
+        yield* git(cwd, ["branch", "-m", "temporary-draw", "cube-draw"]);
+        yield* git(cwd, ["branch", "-m", "temporary-collection", "cube-collection"]);
+        yield* git(cwd, ["branch", "-m", "dominik/mvp", "mvp"]);
+        const graph = (yield* driver.listRefs({ cwd, includeGraph: true })).graph!;
+        assert.equal(
+          graph.branches.find((branch) => branch.name === "cube-draw")?.createdFrom,
+          "mvp",
+        );
+        assert.equal(
+          graph.branches.find((branch) => branch.name === "cube-collection")?.createdFrom,
+          "mvp",
+        );
+        assert.equal(graph.branches.find((branch) => branch.name === "mvp")?.createdFrom, "main");
+        yield* git(cwd, ["reflog", "expire", "--expire=all", "--all"]);
+        const expired = (yield* driver.listRefs({ cwd, includeGraph: true, refresh: true })).graph!;
+        assert.isTrue(
+          graph.branches
+            .filter((branch) => branch.name !== "main")
+            .every(
+              (branch) =>
+                Number.isInteger(branch.createdAtEpochSeconds) && branch.createdAtEpochSeconds! > 0,
+            ),
+        );
+        assert.isTrue(
+          expired.branches.every(
+            (branch) =>
+              branch.createdFrom === undefined && branch.createdAtEpochSeconds === undefined,
+          ),
+        );
+        assert.deepEqual(expired.commits, graph.commits);
+      }),
+    );
+    it.effect(
+      "does not invent a merge baseline for a repository with a custom initial branch",
+      () =>
+        Effect.gen(function* () {
+          const driver = yield* GitVcsDriver.GitVcsDriver;
+          const cwd = yield* makeTmpDir();
+          yield* initRepoWithCommit(cwd);
+          yield* git(cwd, ["branch", "-M", "custom"]);
+          const result = yield* driver.listRefs({ cwd, includeGraph: true });
+          assert.equal(result.graph?.defaultBranch, null);
+          assert.equal(result.graph?.branches[0]?.merged, null);
+        }),
+    );
+    it.effect("uses a remote-only default and tolerates a stale remote HEAD", () =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        yield* git(cwd, ["branch", "-M", "feature"]);
+        yield* git(cwd, ["update-ref", "refs/remotes/origin/trunk", "HEAD"]);
+        yield* git(cwd, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk"]);
+        const first = (yield* driver.listRefs({ cwd, includeGraph: true })).graph;
+        assert.equal(first?.defaultBranch, "trunk");
+        assert.equal(first?.branches[0]?.merged, true);
+        yield* git(cwd, ["update-ref", "-d", "refs/remotes/origin/trunk"]);
+        const stale = (yield* driver.listRefs({ cwd, includeGraph: true })).graph;
+        assert.equal(stale?.defaultBranch, null);
+        assert.equal(stale?.branches[0]?.merged, null);
+      }),
+    );
+    it.effect("supports an unborn repository", () =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        yield* driver.initRepo({ cwd });
+        const result = yield* driver.listRefs({ cwd, includeGraph: true });
+        assert.deepEqual(result.graph?.branches, []);
+        assert.deepEqual(result.graph?.commits, []);
+      }),
+    );
+    it.effect("refuses to remove a dirty worktree without force and keeps its branch", () =>
+      Effect.gen(function* () {
+        const driver = yield* GitVcsDriver.GitVcsDriver;
+        const cwd = yield* makeTmpDir();
+        const trees = yield* makeTmpDir();
+        yield* initRepoWithCommit(cwd);
+        const treePath = `${trees}/feature`;
+        yield* git(cwd, ["worktree", "add", "-b", "feat/dirty", treePath]);
+        yield* writeTextFile(treePath, "untracked.txt", "keep me");
+        const result = yield* driver
+          .removeWorktree({ cwd, path: treePath, force: false })
+          .pipe(Effect.result);
+        assert.equal(result._tag, "Failure");
+        const graph = (yield* driver.listRefs({ cwd, includeGraph: true, refresh: true })).graph;
+        assert.isTrue(graph?.worktrees.some((tree) => tree.branch === "feat/dirty"));
+        assert.isTrue(graph?.branches.some((branch) => branch.name === "feat/dirty"));
+        const fileSystem = yield* FileSystem.FileSystem;
+        yield* fileSystem.remove(`${treePath}/untracked.txt`);
+        yield* driver.removeWorktree({ cwd, path: treePath, force: false });
+        const after = (yield* driver.listRefs({ cwd, includeGraph: true, refresh: true })).graph;
+        assert.isFalse(after?.worktrees.some((tree) => tree.branch === "feat/dirty"));
+        assert.isTrue(after?.branches.some((branch) => branch.name === "feat/dirty"));
+      }),
+    );
+  });
+
   describe("process environment", () => {
     it.effect("preserves the caller locale for general Git subprocesses", () =>
       Effect.gen(function* () {

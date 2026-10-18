@@ -134,6 +134,9 @@ export type GitRunStackedActionInput = typeof GitRunStackedActionInput.Type;
 
 export const VcsListRefsInput = Schema.Struct({
   cwd: TrimmedNonEmptyStringSchema,
+  /** Opt-in local topology for the project canvas; omitted by ordinary ref pickers. */
+  includeGraph: Schema.optional(Schema.Boolean),
+  graphCommitLimit: Schema.optional(PositiveInt),
   query: Schema.optional(TrimmedNonEmptyStringSchema.check(Schema.isMaxLength(256))),
   cursor: Schema.optional(NonNegativeInt),
   includeMatchingRemoteRefs: Schema.optional(Schema.Boolean),
@@ -271,7 +274,45 @@ export const VcsStatusStreamEvent = Schema.Union([
 ]);
 export type VcsStatusStreamEvent = typeof VcsStatusStreamEvent.Type;
 
+export const VcsProjectGraph = Schema.Struct({
+  defaultBranch: Schema.NullOr(Schema.String),
+  branches: Schema.Array(
+    Schema.Struct({
+      name: Schema.String,
+      head: Schema.String,
+      current: Schema.Boolean,
+      merged: Schema.NullOr(Schema.Boolean),
+      /** Original local branch, when still recoverable from the reflog. */
+      createdFrom: Schema.optional(Schema.String),
+      createdAtEpochSeconds: Schema.optional(NonNegativeInt),
+    }),
+  ),
+  commits: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      parents: Schema.Array(Schema.String),
+      subject: Schema.String,
+      committedAtEpochSeconds: Schema.optional(NonNegativeInt),
+      author: Schema.optional(Schema.Struct({ name: Schema.String, email: Schema.String })),
+    }),
+  ),
+  worktrees: Schema.Array(
+    Schema.Struct({
+      path: Schema.String,
+      head: Schema.String,
+      branch: Schema.NullOr(Schema.String),
+      isMain: Schema.Boolean,
+      locked: Schema.Boolean,
+      prunable: Schema.Boolean,
+      dirty: Schema.optional(Schema.NullOr(Schema.Boolean)),
+    }),
+  ),
+  truncated: Schema.Boolean,
+});
+export type VcsProjectGraph = typeof VcsProjectGraph.Type;
+
 export const VcsListRefsResult = Schema.Struct({
+  graph: Schema.optional(VcsProjectGraph),
   refs: Schema.Array(VcsRef),
   isRepo: Schema.Boolean,
   hasPrimaryRemote: Schema.Boolean,

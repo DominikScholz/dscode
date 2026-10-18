@@ -367,6 +367,14 @@
       "types": "./src/filePreview.ts",
       "default": "./src/filePreview.ts"
     },
+    "./project-graph": {
+      "types": "./src/projectGraph.ts",
+      "default": "./src/projectGraph.ts"
+    },
+    "./graph-avatar": {
+      "types": "./src/graphAvatar.ts",
+      "default": "./src/graphAvatar.ts"
+    },
     "./device/frame": {
       "types": "./src/device/frame.ts",
       "default": "./src/device/frame.ts"
@@ -437,6 +445,7 @@
     "test": "vp test run"
   },
   "dependencies": {
+    "@noble/hashes": "catalog:",
     "@pierre/diffs": "catalog:",
     "@t3tools/contracts": "workspace:*",
     "@t3tools/shared": "workspace:*",

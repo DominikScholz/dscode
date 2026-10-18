@@ -12,6 +12,7 @@ import { NativeStackScreenOptions } from "../../native/StackHeader";
 import { AndroidWorkspaceSidebarButton } from "../../features/layout/workspace-sidebar-toolbar";
 import { useAppearancePreferences } from "../../features/settings/appearance/AppearancePreferencesProvider";
 import { AndroidScreenHeader } from "./AndroidScreenHeader";
+import { AppText } from "./AppText";
 import { ScreenHeaderButton } from "./ScreenHeaderButton.android";
 import { SymbolView } from "./AppSymbol";
 import { Menu } from "./Menu";
@@ -155,6 +156,26 @@ export function AppBar(props: AppBarProps) {
     <AndroidScreenHeader
       title={props.title}
       subtitle={props.subtitle}
+      titleContent={
+        props.titleIcon ? (
+          <View className="flex-row items-center gap-2">
+            {props.titleIcon}
+            <View className="min-w-0 shrink">
+              <AppText
+                numberOfLines={1}
+                className="text-lg font-t3-semibold text-header-foreground"
+              >
+                {props.title}
+              </AppText>
+              {props.subtitle ? (
+                <AppText numberOfLines={1} className="text-[13px] text-foreground-muted">
+                  {props.subtitle}
+                </AppText>
+              ) : null}
+            </View>
+          </View>
+        ) : undefined
+      }
       onBack={props.onBack}
       leading={props.sidebar !== false ? <AndroidWorkspaceSidebarButton /> : undefined}
       hideBottomBorder={props.hideBottomBorder}

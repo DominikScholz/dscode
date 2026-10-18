@@ -74,6 +74,7 @@ import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
+import { ProjectGraphRouteScreen } from "./features/project-graph/ProjectGraphRouteScreen";
 import { AddProjectDestinationRoute } from "./features/projects/AddProjectDestinationRoute";
 import { AddProjectLocalRoute } from "./features/projects/AddProjectLocalRoute";
 import { AddProjectNewRoute } from "./features/projects/AddProjectNewRoute";
@@ -756,6 +757,11 @@ const RootStackConfig = createWorkspaceStackNavigator({
         sheetGrabberVisible: true,
         headerShown: false,
       },
+    }),
+    ProjectGraph: createNativeStackScreen({
+      screen: ProjectGraphRouteScreen,
+      linking: "project-graph",
+      options: { ...SOLID_HEADER_OPTIONS, headerBackVisible: false },
     }),
     Thread: createNativeStackScreen({
       screen: ThreadRouteScreen,

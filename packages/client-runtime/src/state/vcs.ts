@@ -17,6 +17,7 @@ import { Atom, AtomRegistry } from "effect/reactivity";
 
 import {
   createEnvironmentRpcCommand,
+  createEnvironmentRpcQueryAtomFamily,
   createEnvironmentRpcSubscriptionAtomFamily,
   createEnvironmentSubscriptionAtomFamily,
 } from "./runtime.ts";
@@ -44,6 +45,7 @@ const VCS_REFS_RETRY_SCHEDULE = Schedule.exponential("1 second").pipe(
 
 function canUseVcsRefsCache(input: VcsListRefsInput): boolean {
   return (
+    input.includeGraph !== true &&
     input.query === undefined &&
     input.cursor === undefined &&
     input.includeMatchingRemoteRefs === undefined &&
@@ -277,6 +279,14 @@ export function createVcsEnvironmentAtoms<R, E>(
 
   return {
     listRefs,
+    // Graph controls need request completion, not the lifetime of the cached refs subscription.
+    projectGraph: createEnvironmentRpcQueryAtomFamily(runtime, {
+      label: "environment-data:vcs:project-graph",
+      tag: WS_METHODS.vcsListRefs,
+      execute: (input) => request(WS_METHODS.vcsListRefs, { ...input, includeGraph: true }),
+      idleTtlMs: VCS_REFS_IDLE_TTL_MS,
+      refreshTrigger: ({ environmentId }) => vcsRefsCacheStateAtom({ environmentId }),
+    }),
     status: createEnvironmentSubscriptionAtomFamily(runtime, {
       label: "environment-data:vcs:status",
       idleTtlMs: VCS_STATUS_IDLE_TTL_MS,

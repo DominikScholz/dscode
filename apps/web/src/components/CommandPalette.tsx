@@ -2061,6 +2061,28 @@ function OpenCommandPaletteDialog(props: {
   if (contextualProjectGroup) {
     actionItems.push({
       kind: "action",
+      value: "action:project-graph",
+      searchTerms: [
+        "project",
+        "graph",
+        "branches",
+        "worktrees",
+        "canvas",
+        "visualization",
+        "unsettled",
+      ],
+      title: "Open project graph",
+      description: contextualProjectGroup.displayName,
+      icon: <FolderIcon className={ITEM_ICON_CLASS} />,
+      run: async () => {
+        await navigate({
+          to: "/project-graph/$projectKey",
+          params: { projectKey: contextualProjectGroup.projectKey },
+        });
+      },
+    });
+    actionItems.push({
+      kind: "action",
       value: "action:project-settings",
       searchTerms: [
         "project",

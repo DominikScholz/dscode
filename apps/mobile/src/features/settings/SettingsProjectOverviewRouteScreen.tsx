@@ -1,12 +1,14 @@
+import { CommonActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
 import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScrollView";
 import { AppText as Text, AppTextInput } from "../../components/ui/AppText";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { deriveProjectGroupLabel } from "@t3tools/client-runtime/state/project-grouping";
 import type { EnvironmentProject } from "@t3tools/client-runtime/state/shell";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Platform, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { ProjectGraphButton } from "../project-graph/ProjectGraphButton";
 import { projectEnvironment } from "../../state/projects";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { SettingsScreen } from "./components/SettingsScreen";
@@ -17,9 +19,20 @@ import {
 } from "./components/SettingsEnvironmentFilterHeader";
 import { useSettingsEnvironmentFilter, type SettingsTarget } from "./settings-environment-filter";
 
-export function SettingsProjectOverviewRouteScreen() {
+export function SettingsProjectOverviewRouteScreen({
+  route,
+}: StaticScreenProps<{ projectKey?: string } | undefined>) {
   const insets = useSafeAreaInsets();
-  const { selectedTargets, projectGroups, selectedProjectKey } = useSettingsEnvironmentFilter();
+  const { selectedTargets, projectGroups, selectedProjectKey, selectProject, selectAll } =
+    useSettingsEnvironmentFilter();
+  const navigation = useNavigation();
+  const requestedProjectKey = route.params?.projectKey;
+  useEffect(() => {
+    if (!requestedProjectKey) return;
+    selectProject(requestedProjectKey);
+    selectAll();
+    navigation.dispatch(CommonActions.setParams({ projectKey: undefined }));
+  }, [requestedProjectKey, selectProject, selectAll, navigation]);
   const group = projectGroups.find((entry) => entry.key === selectedProjectKey);
   const selectedEnvironmentIds = new Set(selectedTargets.map((entry) => entry.environmentId));
   const members =
@@ -163,6 +176,7 @@ function ProjectOverviewContent(props: {
               <Text className="text-sm leading-normal text-foreground-muted" selectable>
                 {member.workspaceRoot}
               </Text>
+              <ProjectGraphButton project={member} />
             </View>
           );
         })}

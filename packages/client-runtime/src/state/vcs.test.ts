@@ -11,6 +11,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -117,6 +118,90 @@ function cacheWithRefs(
 }
 
 describe("cached VCS refs", () => {
+  it.effect("settles graph loading and supports refresh, invalidation, and retry", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const requests = yield* Queue.unbounded<VcsListRefsInput>();
+        const responses =
+          yield* Queue.unbounded<
+            Effect.Effect<VcsListRefsResult, EnvironmentRpcUnavailableError>
+          >();
+        const client = {
+          [WS_METHODS.vcsListRefs]: (input: VcsListRefsInput) =>
+            Queue.offer(requests, input).pipe(
+              Effect.andThen(Queue.take(responses)),
+              Effect.flatMap((response) => response),
+            ),
+        } as unknown as WsRpcProtocolClient;
+        const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+          target: TARGET,
+          state: yield* SubscriptionRef.make(CONNECTED_CONNECTION_STATE),
+          session: yield* SubscriptionRef.make(Option.some(session(client))),
+          prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
+          connect: Effect.void,
+          disconnect: Effect.void,
+          retryNow: Effect.void,
+        });
+        const run: EnvironmentRegistry.EnvironmentRegistry["Service"]["run"] = (
+          _environmentId,
+          effect,
+        ) => Effect.provideService(effect, EnvironmentSupervisor.EnvironmentSupervisor, supervisor);
+        const followStream: EnvironmentRegistry.EnvironmentRegistry["Service"]["followStream"] = (
+          _environmentId,
+          stream,
+        ) => Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor);
+        const environmentRegistry = EnvironmentRegistry.EnvironmentRegistry.of({
+          run,
+          followStream,
+        } as unknown as EnvironmentRegistry.EnvironmentRegistry["Service"]);
+        const runtime = Atom.runtime(
+          Layer.merge(
+            Layer.succeed(EnvironmentRegistry.EnvironmentRegistry, environmentRegistry),
+            Layer.succeed(Persistence.EnvironmentCacheStore, cacheWithRefs(Option.none())),
+          ),
+        );
+        const registry = yield* Effect.acquireRelease(Effect.sync(AtomRegistry.make), (registry) =>
+          Effect.sync(() => registry.dispose()),
+        );
+        const graph = createVcsEnvironmentAtoms(runtime).projectGraph({
+          environmentId: TARGET.environmentId,
+          input: { cwd: "/repo", graphCommitLimit: 2_000, refKind: "local", refresh: true },
+        });
+        const unmount = registry.mount(graph);
+        yield* Effect.addFinalizer(() => Effect.sync(unmount));
+
+        for (const action of ["initial", "refresh", "invalidate", "failure", "retry"]) {
+          if (action === "invalidate") invalidateVcsRefs(registry, TARGET);
+          else if (action !== "initial") registry.refresh(graph);
+          expect(yield* Queue.take(requests)).toEqual({
+            cwd: "/repo",
+            graphCommitLimit: 2_000,
+            refKind: "local",
+            refresh: true,
+            includeGraph: true,
+          });
+          expect(registry.get(graph).waiting).toBe(true);
+          yield* Queue.offer(
+            responses,
+            action === "failure"
+              ? Effect.fail(
+                  new EnvironmentRpcUnavailableError({
+                    environmentId: TARGET.environmentId,
+                    message: "Graph request failed",
+                  }),
+                )
+              : Effect.succeed(LIVE_REFS),
+          );
+          const result = yield* AtomRegistry.getResult(registry, graph, {
+            suspendOnWaiting: true,
+          }).pipe(Effect.result);
+          expect(result._tag).toBe(action === "failure" ? "Failure" : "Success");
+          expect(registry.get(graph).waiting).toBe(false);
+        }
+      }),
+    ),
+  );
+
   it("invalidates all ref streams in the mutated environment", () => {
     const registry = AtomRegistry.make();
     const environment = {

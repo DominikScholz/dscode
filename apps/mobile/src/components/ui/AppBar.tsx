@@ -2,7 +2,8 @@ import { Toolbar } from "./Toolbar";
 import { AppActivityIndicator } from "./AppActivityIndicator";
 import type { HeaderBarButtonMailSearchToolbarItem } from "react-native-screens";
 import { useId } from "react";
-import { View } from "react-native";
+import { View, useWindowDimensions } from "react-native";
+import { AppText as Text } from "./AppText";
 import { createNativeHeaderMenu } from "./nativeHeaderMenu.ios";
 import { ScreenHeaderButton } from "./ScreenHeaderButton";
 import { NativeStackScreenOptions } from "../../native/StackHeader";
@@ -45,12 +46,14 @@ export function AppBar(props: AppBarProps) {
   const { themeVariables } = useAppearancePreferences();
   const usesNativeMailSearchToolbar = useNativeMailSearchToolbar();
   const { search, menus } = props;
-  const menu = menus?.[0];
+  const { title, subtitle, titleIcon } = props;
+  const renderTitle = () => <AppBarTitle title={title} subtitle={subtitle} titleIcon={titleIcon} />;
+  const menu = search?.menuInToolbar === false ? undefined : menus?.[0];
   const compactSearch =
     search !== undefined &&
     (search.compactToolbar ?? !layout.usesSplitView) &&
     usesNativeMailSearchToolbar;
-  const visibleMenus = compactSearch ? (menus?.slice(1) ?? []) : (menus ?? []);
+  const visibleMenus = compactSearch && menu ? (menus?.slice(1) ?? []) : (menus ?? []);
   const refresh = search?.refreshInToolbar ? search.onRefresh : undefined;
   return (
     <>
@@ -67,7 +70,8 @@ export function AppBar(props: AppBarProps) {
             !props.backInSplitView ||
             !(props.backInSplitView.onPress || props.onBack),
           title: props.title,
-          unstable_headerSubtitle: props.subtitle || undefined,
+          unstable_headerSubtitle: titleIcon ? undefined : subtitle || undefined,
+          ...(titleIcon ? { headerTitle: renderTitle } : undefined),
           ...(props.matchSearchSurface
             ? { contentStyle: { backgroundColor: themeVariables["--color-sheet-solid"] } }
             : undefined),
@@ -182,6 +186,29 @@ export function AppBar(props: AppBarProps) {
         </Toolbar>
       ) : null}
     </>
+  );
+}
+
+function AppBarTitle({
+  title,
+  subtitle,
+  titleIcon,
+}: Pick<AppBarProps, "title" | "subtitle" | "titleIcon">) {
+  const { width } = useWindowDimensions();
+  return (
+    <View className="flex-row items-center gap-2" style={{ maxWidth: Math.max(0, width - 160) }}>
+      {titleIcon}
+      <View className="min-w-0 shrink">
+        <Text numberOfLines={1} className="text-base font-t3-semibold text-foreground">
+          {title}
+        </Text>
+        {subtitle ? (
+          <Text numberOfLines={1} className="text-xs text-foreground-muted">
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+    </View>
   );
 }
 

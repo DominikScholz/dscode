@@ -14,7 +14,7 @@ import { AsyncResult } from "effect/reactivity";
 import { type EnvironmentId, type ProjectIconOverride } from "@t3tools/contracts";
 import { useLocation, useNavigate } from "@tanstack/react-router";
 import * as Cause from "effect/Cause";
-import { InfoIcon, Trash2Icon } from "lucide-react";
+import { GitBranchIcon, InfoIcon, Trash2Icon } from "lucide-react";
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
@@ -493,6 +493,23 @@ function ProjectDetail({
                 : "This connection cannot change this project."}
             </p>
           ) : null}
+          <SettingsRow
+            title="Project graph"
+            description="Explore local branches, merge status, threads and worktrees on an infinite canvas."
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                void navigate({
+                  to: "/project-graph/$projectKey",
+                  params: { projectKey: group.projectKey },
+                })
+              }
+            >
+              <GitBranchIcon className="size-4" /> Open project graph
+            </Button>
+          </SettingsRow>
           <SettingsRow
             title="Name"
             description="The shared name for this project group in the sidebar and thread lists."
