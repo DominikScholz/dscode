@@ -2272,6 +2272,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       branch: command.branch,
       worktreePath: command.worktreePath,
       activeProviderThreadId: null,
+      pullRequests: [],
       lineage: {
         parentThreadId: null,
         relationshipToParent: null,
@@ -4998,11 +4999,48 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           : undefined;
       const queueBehindRun = activeRun ?? worktreeMissingRun;
       const pendingMergeBackTransfers = pendingMergeBackTransfersForThread(projection);
-      const shouldQueue =
-        queueBehindRun !== undefined &&
-        (dispatchMode.type === "defer_start" ||
-          dispatchMode.type === "start_immediately" ||
-          dispatchMode.type === "queue_after_active");
+      const startsOrQueuesRun =
+        dispatchMode.type === "defer_start" ||
+        dispatchMode.type === "start_immediately" ||
+        dispatchMode.type === "queue_after_active";
+      const shouldQueue = queueBehindRun !== undefined && startsOrQueuesRun;
+      // A message the user sends from a client means they are back, so the
+      // queue a stop or a restart held runs again, in its order, rather than
+      // waiting for a Resume.
+      // Continuations and scheduled tasks the server sends for them are not
+      // them coming back. Starting the queue still re-holds it for a failed
+      // provider or a usage limit; a queue held after worktree setup failed
+      // keeps its hold until a worktree exists, even once later messages have
+      // run, since its messages would start in the project checkout.
+      const worktreeSetupUnresolved =
+        projection.thread.worktreePath === null &&
+        projection.runs.some(
+          (run) =>
+            (run.status === "failed" || run.status === "interrupted") &&
+            run.workspacePreparation?.type === "worktree",
+        );
+      const sentByUserFromClient =
+        command.createdBy === "user" &&
+        (command.creationSource === "web" || command.creationSource === "mobile") &&
+        command.scheduledTaskId === undefined;
+      const heldRunsToRelease =
+        sentByUserFromClient && startsOrQueuesRun && !worktreeSetupUnresolved
+          ? projection.runs.filter((run) => run.status === "queued" && run.queueHeld === true)
+          : [];
+      const releasedAt = yield* DateTime.now;
+      for (const held of heldRunsToRelease) {
+        yield* emit(
+          events,
+          command,
+        )({
+          type: "run.updated",
+          threadId: command.threadId,
+          runId: held.id,
+          providerInstanceId: held.providerInstanceId,
+          occurredAt: releasedAt,
+          payload: { ...held, queueHeld: false },
+        });
+      }
       if (shouldQueue) {
         if (pendingMergeBackTransfers.length > 0) {
           return yield* new OrchestratorDispatchError({
@@ -5112,9 +5150,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           activeAttemptId: attemptId,
           status: "queued",
           ...(worktreeMissingRun !== undefined ||
-          projection.runs.some(
-            (candidate) => candidate.status === "queued" && candidate.queueHeld === true,
-          )
+          (heldRunsToRelease.length === 0 &&
+            projection.runs.some(
+              (candidate) => candidate.status === "queued" && candidate.queueHeld === true,
+            ))
             ? { queueHeld: true }
             : {}),
           queuePosition:
@@ -6980,7 +7019,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       title: child.title,
       completionWake: "always",
       completionDelivery: { state: "pending", observedByRunId: null },
-      status: run.status === "queued" ? "pending" : "running",
+      status: run.status === "queued" ? (run.queueHeld === true ? "idle" : "pending") : "running",
       progress: undefined,
       result: null,
       startedAt: now,
@@ -10195,7 +10234,8 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
     >,
     options: {
       readonly settledContinuationOf?: RunId;
-      readonly taskId: NodeId;
+      readonly syncRunId?: RunId;
+      readonly task: OrchestrationV2Subagent;
       readonly resultRun?: OrchestrationV2Run;
     },
   ) =>
@@ -10209,10 +10249,10 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       ) {
         return;
       }
-      const taskRuns = childControls.runs.filter((run) => run.delegatedTaskId === options.taskId);
+      const taskRuns = childControls.runs.filter((run) => run.delegatedTaskId === options.task.id);
       const childRun =
         taskRuns.length === 0
-          ? options.taskId === forkedFrom.nodeId
+          ? options.task.id === forkedFrom.nodeId
             ? options.resultRun
             : undefined
           : taskRuns.toSorted((a, b) => b.ordinal - a.ordinal)[0];
@@ -10220,6 +10260,59 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       const outcome = runOutcome(childRun);
       const terminalStatus = delegatedTaskTerminalStatus(outcome);
       if (terminalStatus === null) {
+        if (childRun.delegatedTaskId === undefined || childRun.id !== options.syncRunId) return;
+        const task = options.task;
+        const status: OrchestrationV2Subagent["status"] =
+          childRun.status === "queued"
+            ? childRun.queueHeld === true
+              ? "idle"
+              : "pending"
+            : childRun.status === "waiting"
+              ? "waiting"
+              : "running";
+        if (task.result !== null || task.status === status) return;
+        const parent = yield* projectionStore.getThreadRecords(
+          childControls.thread.lineage.parentThreadId,
+          ["nodes", "turnItems"],
+          { turnItemTypes: ["subagent"] },
+        );
+        const now = yield* DateTime.now;
+        const scope = {
+          threadId: parent.thread.id,
+          ...(task.runId === null ? {} : { runId: task.runId }),
+          nodeId: task.id,
+          providerInstanceId: task.providerInstanceId,
+          occurredAt: now,
+        };
+        const node = parent.nodes.find((row) => row.id === task.id);
+        const item = parent.turnItems.find(
+          (row) => row.type === "subagent" && row.subagentId === task.id,
+        );
+        yield* writeSystemEvents([
+          {
+            ...scope,
+            type: "subagent.updated",
+            payload: { ...task, status, completedAt: null, updatedAt: now },
+          },
+          ...(node === undefined
+            ? []
+            : [
+                {
+                  ...scope,
+                  type: "node.updated" as const,
+                  payload: { ...node, status, completedAt: null },
+                },
+              ]),
+          ...(item === undefined
+            ? []
+            : [
+                {
+                  ...scope,
+                  type: "turn-item.updated" as const,
+                  payload: { ...item, status, completedAt: null, updatedAt: now },
+                },
+              ]),
+        ]);
         return;
       }
       if (
@@ -10264,7 +10357,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
       );
       const task = parentProjection.subagents.find(
         (candidate) =>
-          candidate.id === options.taskId &&
+          candidate.id === options.task.id &&
           candidate.origin === "app_owned" &&
           candidate.childThreadId === childThreadId,
       );
@@ -10277,7 +10370,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           transfer.sourceThreadId === childThreadId &&
           transfer.targetThreadId === parentThreadId &&
           (transfer.sourcePoint.runId === childRun.id ||
-            (options.taskId === forkedFrom.nodeId && transfer.sourcePoint.runId === undefined)),
+            (options.task.id === forkedFrom.nodeId && transfer.sourcePoint.runId === undefined)),
       );
       if (existingResultTransfer !== undefined) {
         return;
@@ -10492,7 +10585,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
 
   const finalizeAppOwnedSubagent = (
     childThreadId: ThreadId,
-    options?: { readonly settledContinuationOf?: RunId },
+    options?: { readonly settledContinuationOf?: RunId; readonly syncRunId?: RunId },
   ) =>
     Effect.gen(function* () {
       const childControls = yield* projectionStore.getThreadRecords(
@@ -10527,7 +10620,7 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
           continue;
         yield* finalizeAppOwnedSubagentTask(childControls, {
           ...options,
-          taskId: task.id,
+          task,
           ...(progress.resultRun === undefined ? {} : { resultRun: progress.resultRun }),
         });
       }
@@ -11355,48 +11448,46 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         : threadDispatch.withLock(parentThreadId, dispatch);
     });
 
-  const handleTerminalRun = (stored: OrchestrationV2StoredEvent) =>
+  const handleRunUpdate = (stored: OrchestrationV2StoredEvent) =>
     Effect.gen(function* () {
+      if (stored.event.type !== "run.updated") return;
       const threadId = stored.event.threadId;
+      const run = stored.event.payload;
       // finalize writes the parent thread and startNextQueuedRun writes this
       // thread, so each takes its own thread's lock, sequentially and never
       // nested: dispatchDelegatedTaskRequest already writes child events
       // while holding the parent lock, so nesting the parent lock inside the
       // child lock here would invert that order, and the keyed executor's
       // semaphores are neither reentrant nor deadlock-aware.
-      if (stored.event.type === "run.updated") {
+      if (delegatedTaskTerminalStatus(run.status) !== null) {
         yield* threadDispatch.withLock(
           threadId,
-          finalizeDelegatedCompletionDelivery(threadId, stored.event.payload.id),
+          finalizeDelegatedCompletionDelivery(threadId, run.id),
         );
-      }
-      yield* threadDispatch
-        .withLock(
-          threadId,
-          startNextQueuedRun(
+        yield* threadDispatch
+          .withLock(
             threadId,
-            stored.event.type === "run.updated"
-              ? {
-                  endedRunId: stored.event.payload.id,
-                  ...(stored.event.payload.status === "failed"
-                    ? { failedRunId: stored.event.payload.id }
-                    : {}),
-                }
-              : undefined,
-          ),
-        )
-        .pipe(
-          Effect.catchCause((cause) =>
-            Effect.logWarning("Failed to start the next queued V2 run", { threadId, cause }),
-          ),
-        );
+            startNextQueuedRun(threadId, {
+              endedRunId: run.id,
+              ...(run.status === "failed" ? { failedRunId: run.id } : {}),
+            }),
+          )
+          .pipe(
+            Effect.catchCause((cause) =>
+              Effect.logWarning("Failed to start the next queued V2 run", { threadId, cause }),
+            ),
+          );
+      }
       const parentThreadId = yield* appOwnedSubagentParentThreadId(threadId);
       if (parentThreadId !== undefined) {
-        yield* threadDispatch.withLock(parentThreadId, finalizeAppOwnedSubagent(threadId));
+        yield* threadDispatch.withLock(
+          parentThreadId,
+          finalizeAppOwnedSubagent(threadId, { syncRunId: run.id }),
+        );
       }
     }).pipe(
       Effect.catchCause((cause) =>
-        Effect.logWarning("Failed to react to terminal V2 run", {
+        Effect.logWarning("Failed to react to V2 run update", {
           threadId: stored.event.threadId,
           sequence: stored.sequence,
           cause,
@@ -11417,13 +11508,16 @@ const makeOrchestrator = Effect.fn("orchestrationV2.Orchestrator.layer")(functio
         (stored) =>
           stored.event.type === "run.updated" &&
           !String(stored.commandId).startsWith("command:runtime-reconcile:") &&
-          (stored.event.payload.status === "completed" ||
+          ((stored.event.payload.delegatedTaskId !== undefined &&
+            (stored.event.payload.status === "queued" ||
+              stored.event.payload.status === "starting")) ||
+            stored.event.payload.status === "completed" ||
             stored.event.payload.status === "interrupted" ||
             stored.event.payload.status === "failed" ||
             stored.event.payload.status === "cancelled" ||
             stored.event.payload.status === "rolled_back"),
       ),
-      Stream.runForEach(handleTerminalRun),
+      Stream.runForEach(handleRunUpdate),
       Effect.forkDetach,
     );
 

@@ -9,6 +9,8 @@ import {
   BROWSER_PROFILE_MAX_COUNT,
   type BrowserLinkTarget,
   type BrowserProfile,
+  BrowserSearchEngine,
+  BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH,
   type EnvironmentId,
   BROWSER_PROFILE_NAME_MAX_LENGTH,
   BROWSER_RECORDING_FRAME_RATES,
@@ -16,9 +18,11 @@ import {
   DEFAULT_BROWSER_PROFILE_ID,
   DEFAULT_BROWSER_LINK_TARGET,
   DEFAULT_BROWSER_RECORDING_FRAME_RATE,
+  DEFAULT_BROWSER_SEARCH_ENGINE,
   DEFAULT_BROWSER_VIEWPORT,
   DEFAULT_PREVIEW_APPEARANCE,
   DEFAULT_PREVIEW_ZOOM_FACTOR,
+  DEFAULT_SERVER_SETTINGS,
   FILL_PREVIEW_VIEWPORT,
   PREVIEW_VIEWPORT_MAX_AREA,
   PREVIEW_VIEWPORT_MAX_DIMENSION,
@@ -31,6 +35,7 @@ import {
   type PreviewAppearancePreference,
   type PreviewViewportSetting,
 } from "@t3tools/contracts";
+import { isValidSearchUrlTemplate } from "@t3tools/shared/preview";
 import { PREVIEW_VIEWPORT_PRESETS } from "@t3tools/shared/previewViewport";
 import { MoreVertical, Plus as PlusIcon } from "lucide-react";
 import { useRef, useState } from "react";
@@ -111,7 +116,6 @@ import {
   SettingsSection,
 } from "./settingsLayout";
 import { searchableSetting } from "./settingsSearch";
-import { ProjectDefaultsSettings } from "./ProjectDefaultsSettings";
 import { useSettingsScope } from "./SettingsScopeContext";
 import { BrowserImportWizard, type WizardTarget } from "./BrowserImportWizard";
 import type { ImportOutcome } from "./browserImportWizard.logic";
@@ -682,6 +686,91 @@ function BrowserLinkTargetSetting({ disabled }: { readonly disabled: boolean }) 
   );
 }
 
+const SEARCH_ENGINE_LABELS: Readonly<Record<BrowserSearchEngine, string>> = {
+  duckduckgo: "DuckDuckGo",
+  google: "Google",
+  bing: "Bing",
+  brave: "Brave Search",
+  kagi: "Kagi",
+  ecosia: "Ecosia",
+  custom: "Custom",
+};
+
+function BrowserSearchEngineSetting() {
+  const engine = useClientSettings((settings) => settings.browserSearchEngine);
+  const customUrl = useClientSettings((settings) => settings.browserCustomSearchUrl);
+  const updateSettings = useUpdatePrimarySettings();
+
+  return (
+    <>
+      <SettingsRow
+        {...searchableSetting("browser-search-engine")}
+        description="What the address bar searches when you type something that isn't a URL."
+        resetAction={
+          engine !== DEFAULT_BROWSER_SEARCH_ENGINE || customUrl !== "" ? (
+            <SettingResetButton
+              label="search engine"
+              onClick={() =>
+                updateSettings({
+                  browserSearchEngine: DEFAULT_BROWSER_SEARCH_ENGINE,
+                  browserCustomSearchUrl: "",
+                })
+              }
+            />
+          ) : null
+        }
+        control={
+          <Select
+            value={engine}
+            onValueChange={(value) => {
+              const next = BrowserSearchEngine.literals.find((literal) => literal === value);
+              if (next !== undefined) {
+                updateSettings({ browserSearchEngine: next });
+              }
+            }}
+          >
+            <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Search engine">
+              <SelectValue>{SEARCH_ENGINE_LABELS[engine]}</SelectValue>
+            </SelectTrigger>
+            <SelectPopup align="end" alignItemWithTrigger={false}>
+              {BrowserSearchEngine.literals.map((literal) => (
+                <SelectItem hideIndicator key={literal} value={literal}>
+                  {SEARCH_ENGINE_LABELS[literal]}
+                </SelectItem>
+              ))}
+            </SelectPopup>
+          </Select>
+        }
+      />
+      {engine === "custom" ? (
+        <SettingsRow
+          title="Custom search URL"
+          description="Use %s where the search terms go."
+          status={
+            isValidSearchUrlTemplate(customUrl)
+              ? undefined
+              : "Enter an http or https URL containing %s. Searches use DuckDuckGo until then."
+          }
+          control={
+            <DraftInput
+              nativeInput
+              size="sm"
+              className="w-full sm:w-64"
+              aria-label="Custom search URL"
+              placeholder="https://example.com/search?q=%s"
+              autoCapitalize="none"
+              spellCheck={false}
+              maxLength={BROWSER_CUSTOM_SEARCH_URL_MAX_LENGTH}
+              value={customUrl}
+              onCommit={(next) => updateSettings({ browserCustomSearchUrl: next.trim() })}
+            />
+          }
+        />
+      ) : null}
+    </>
+  );
+}
+
 function PullRequestLinksOpenInAppSetting() {
   const openInApp = useClientSettings((settings) => settings.pullRequestLinksOpenInApp);
   const updateSettings = useUpdatePrimarySettings();
@@ -968,6 +1057,46 @@ export function DeviceIntegrationControls({
       ) : null}
       <DeviceHostsSettings environmentId={environmentId} />
     </>
+  );
+}
+
+function AgentBrowserAccessSetting() {
+  const { scope } = useSettingsScope();
+  const settings = useScopedSettings();
+  const updateSettings = useUpdateScopedSettings();
+  const isProjectScope = scope.kind === "project" || scope.kind === "checkout";
+
+  return (
+    <SettingsRow
+      serverScoped
+      settingKeys={["enableAgentBrowserAccess"]}
+      {...searchableSetting("agent-browser-access")}
+      description={
+        isProjectScope
+          ? "Allow agents in this project to use the shared browser. Applies when the agent session next starts."
+          : "Allow agents to use the shared browser. Projects can override it."
+      }
+      resetAction={
+        settings.enableAgentBrowserAccess !== DEFAULT_SERVER_SETTINGS.enableAgentBrowserAccess ? (
+          <SettingResetButton
+            label="default browser access"
+            onClick={() =>
+              updateSettings({
+                enableAgentBrowserAccess: DEFAULT_SERVER_SETTINGS.enableAgentBrowserAccess,
+              })
+            }
+          />
+        ) : null
+      }
+      control={
+        <ScopedSwitch
+          settingKeys={["enableAgentBrowserAccess"]}
+          aria-label="Agent browser access"
+          checked={settings.enableAgentBrowserAccess}
+          onCheckedChange={(enabled) => updateSettings({ enableAgentBrowserAccess: enabled })}
+        />
+      }
+    />
   );
 }
 
@@ -1485,8 +1614,8 @@ export function IntegrationsSettingsPanel() {
 
   return (
     <SettingsPageContainer>
-      <ProjectDefaultsSettings category="integrations" />
       <SettingsSection id="browser" title="Browser">
+        <AgentBrowserAccessSetting />
         {previewDefaultsDisabled ? (
           <SettingsUnavailableGroup message="Only available in the desktop app.">
             {previewDefaults}
@@ -1494,6 +1623,8 @@ export function IntegrationsSettingsPanel() {
         ) : (
           previewDefaults
         )}
+        {/* Not desktop-only: web clients search from server-run browser tabs too. */}
+        <BrowserSearchEngineSetting />
         <PullRequestLinksOpenInAppSetting />
       </SettingsSection>
       <DeviceIntegrationSettings />

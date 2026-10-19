@@ -39,7 +39,7 @@ import {
   NATIVE_MAIL_SEARCH_TOOLBAR_CONTENT_INSET,
   NATIVE_MAIL_SEARCH_TOOLBAR_SUPPORTED,
 } from "../layout/native-mail-search-toolbar";
-import { NativeHeaderToolbar } from "../../native/StackHeader";
+import { NativeHeaderToolbar } from "../../native/NativeHeaderToolbar";
 import { copyTextWithHaptic } from "../../lib/copyTextWithHaptic";
 import { useProjects, useThreadShellsForProjectRefs } from "../../state/entities";
 import { useEnvironmentQuery } from "../../state/query";

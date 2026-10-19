@@ -176,6 +176,18 @@ export function makeTargetedProviderUpdateAction(
   return { ...update, args, command };
 }
 
+// pnpm 11 resolves `@latest` to the newest release older than `minimumReleaseAge`
+// and exits 0, so a release advertised from the npm dist-tag would never install.
+// An exact spec installs it and pnpm records it in `minimumReleaseAgeExclude`.
+export function resolveLatestProviderUpdateAction(
+  capabilities: ProviderMaintenanceCapabilities,
+  latestVersion: string | null,
+): ProviderMaintenanceCommandAction | null {
+  const update = capabilities.update;
+  if (update?.lockKey !== "pnpm-global" || latestVersion === null) return update;
+  return makeTargetedProviderUpdateAction(capabilities, latestVersion) ?? update;
+}
+
 export function makeManualOnlyProviderMaintenanceCapabilities(input: {
   readonly provider: ProviderDriverKind;
   readonly packageName: string | null;
@@ -485,16 +497,39 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     });
   }
 
-  if (commandPaths.some(isMiseCommandPath) || (yield* isMiseWrapperScript(context))) {
+  const homebrew = homebrewOwnershipFromCommandPath(context.realCommandPath);
+  if (
+    commandPaths.some(isMiseCommandPath) ||
+    // Mise shims resolve to the version manager's keg, not the provider's.
+    (homebrew?.kind === "formula" && homebrew.name.toLowerCase() === "mise") ||
+    (yield* isMiseWrapperScript(context))
+  ) {
     return manual;
   }
-
-  const homebrew = homebrewOwnershipFromCommandPath(context.realCommandPath);
   if (homebrew) {
-    // Mise shims resolve to the version manager, not the provider.
-    if (homebrew.kind === "formula" && homebrew.name.toLowerCase() === "mise") {
-      return manual;
-    }
+    return (
+      (yield* resolveHomebrewProviderMaintenance(
+        { provider: definition.provider, packageName },
+        homebrew,
+        context,
+      )) ?? fallback
+    );
+  }
+
+  return fallback;
+});
+
+/**
+ * `brew upgrade` capabilities once the keg's prefix is confirmed by a `brew`
+ * that reports it as its own, with `latestVersion` from `brew info`. Null when
+ * no `brew` is found or it owns another prefix.
+ */
+export const resolveHomebrewProviderMaintenance = Effect.fn("resolveHomebrewProviderMaintenance")(
+  function* (
+    input: { readonly provider: ProviderDriverKind; readonly packageName: string | null },
+    homebrew: HomebrewOwnership,
+    context: ProviderMaintenanceResolutionContext,
+  ) {
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
     // The keg's own brew works even when a GUI-launched server has no
@@ -504,7 +539,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       ? kegBrewPath
       : yield* resolveCommandPath("brew", { env: context.env });
     if (!brewPath) {
-      return fallback;
+      return null;
     }
     const brewPrefix = nonEmptyString(yield* runProbe(brewPath, ["--prefix"], context.env));
     const realBrewPrefix = brewPrefix
@@ -514,7 +549,7 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
       !realBrewPrefix ||
       normalizeCommandPath(realBrewPrefix) !== normalizeCommandPath(homebrew.prefix)
     ) {
-      return fallback;
+      return null;
     }
     const args =
       homebrew.kind === "cask" ? ["upgrade", "--cask", homebrew.name] : ["upgrade", homebrew.name];
@@ -522,18 +557,16 @@ export const resolvePackageManagedProviderMaintenance = Effect.fn(
     // `brew upgrade` can actually deliver.
     const info = yield* runProbe(brewPath, ["info", "--json=v2", homebrew.name], context.env);
     return makeProviderMaintenanceCapabilities({
-      provider: definition.provider,
-      packageName,
+      provider: input.provider,
+      packageName: input.packageName,
       updateExecutable: brewPath,
       updateArgs: args,
       updateLockKey: "homebrew",
       updateCommand: ["brew", ...args].join(" "),
       latestVersion: info ? parseHomebrewLatestVersion(info, homebrew) : null,
     });
-  }
-
-  return fallback;
-});
+  },
+);
 
 const isMiseWrapperScript = Effect.fn("isMiseWrapperScript")(function* (
   context: ProviderMaintenanceResolutionContext,
@@ -731,7 +764,7 @@ export function createProviderVersionAdvisory(input: {
     status: advisory.status,
     currentVersion: input.currentVersion,
     latestVersion,
-    updateCommand: capabilities.update?.command ?? null,
+    updateCommand: resolveLatestProviderUpdateAction(capabilities, latestVersion)?.command ?? null,
     canUpdate: capabilities.update !== null,
     canInstallVersion: makeTargetedProviderUpdateAction(capabilities, "0.0.0") !== null,
     checkedAt: input.checkedAt ?? null,
