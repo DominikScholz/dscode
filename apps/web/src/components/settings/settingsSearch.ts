@@ -544,6 +544,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["telemetry analytics usage data tracking legal opt out"],
   },
   {
+    id: "t3-code-attribution",
+    title: "Built on T3 Code",
+    to: "/settings/general",
+    searchTerms: ["about fork upstream credits attribution license MIT open source GitHub"],
+  },
+  {
     id: "telemetry-export",
     title: "OpenTelemetry export",
     to: "/settings/diagnostics",

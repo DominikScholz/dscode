@@ -3,7 +3,7 @@ import { ScreenScrollView as ScrollView } from "../../components/ui/ScreenScroll
 import Constants from "expo-constants";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, View } from "react-native";
+import { Linking, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { AppText as Text } from "../../components/ui/AppText";
@@ -17,6 +17,8 @@ import {
 import { SettingsRow } from "./components/SettingsRow";
 import { SettingsSection } from "./components/SettingsSection";
 import { SettingsScreen } from "./components/SettingsScreen";
+
+const T3_CODE_REPOSITORY_URL = "https://github.com/pingdotgg/t3code";
 
 export function SettingsAboutRouteScreen() {
   const insets = useSafeAreaInsets();
@@ -122,6 +124,12 @@ function AppSettingsSection() {
         icon="doc.on.doc"
         label="Open source licenses"
         target="SettingsOpenSourceLicenses"
+      />
+      <SettingsRow
+        icon="arrow.triangle.branch"
+        label="Built on T3 Code"
+        value="MIT License"
+        onPress={() => void Linking.openURL(T3_CODE_REPOSITORY_URL).catch(() => undefined)}
       />
       <SettingsRow icon="doc.text" label="Legal" fullScreenTarget="SettingsLegal" />
       {updateCheckAvailable ? (

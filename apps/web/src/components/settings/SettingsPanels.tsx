@@ -3,7 +3,7 @@ import { settingsScopeEnvironmentLabels } from "./settingsScopeAxis";
 import { useScopedSettingsWriteAllowed } from "./useScopedSettings";
 import { Spinner } from "~/components/ui/spinner";
 import { NotificationSettings } from "./NotificationSettings";
-import { PRIVACY_POLICY_URL } from "../../legalLinks";
+import { PRIVACY_POLICY_URL, T3_CODE_REPOSITORY_URL } from "../../legalLinks";
 import { ArchiveIcon, ArchiveX, CheckIcon, ChevronRightIcon, SettingsIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import type { CSSProperties, ReactNode } from "react";
@@ -3239,6 +3239,19 @@ export function GeneralSettingsPanel() {
           </>
         )}
         <MobileAppSettingsRow />
+        <SettingsRow
+          {...searchableSetting("t3-code-attribution")}
+          description="DS Code is a fork of T3 Code by T3 Tools Inc., used under the MIT License."
+          control={
+            <Button
+              render={<a href={T3_CODE_REPOSITORY_URL} target="_blank" rel="noreferrer noopener" />}
+              size="sm"
+              variant="outline"
+            >
+              View T3 Code
+            </Button>
+          }
+        />
         <SettingsRow
           {...searchableSetting("privacy-policy")}
           description="How we handle your data, including the anonymous usage data T3 Code collects."

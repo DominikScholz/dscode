@@ -225,7 +225,7 @@ export function AgentActivity(
   // inherits.
   const renderLogo = (height: number, color: Foreground) => (
     <HStack modifiers={[frame({ width: height * 1.5, height }), foregroundStyle(color)]}>
-      <Image assetName="T3Mark" modifiers={[resizable()]} />
+      <Image assetName="DSMark" modifiers={[resizable()]} />
     </HStack>
   );
 
