@@ -1,4 +1,10 @@
-import { ArrowLeftIcon, ChartBarIcon, GearIcon, GitPullRequestIcon } from "@phosphor-icons/react";
+import {
+  ArrowLeftIcon,
+  ChartBarIcon,
+  GearIcon,
+  GitPullRequestIcon,
+  SquaresFourIcon,
+} from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
@@ -172,6 +178,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
     void navigate({ to: "/usage" });
   };
 
+  const handleDashboardClick = () => {
+    closeMobileSidebar();
+    void navigate({ to: "/dashboard" });
+  };
+
   const handleBackClick = () => {
     closeMobileSidebar();
     void navigateToMainApp();
@@ -198,6 +209,11 @@ export const SidebarUtilityMenu = memo(function SidebarUtilityMenu() {
       ) : (
         <>
           <SidebarUtilityItem icon={<GearIcon />} label="Settings" onClick={handleSettingsClick} />
+          <SidebarUtilityItem
+            icon={<SquaresFourIcon />}
+            label="Dashboard"
+            onClick={handleDashboardClick}
+          />
           {pullRequestsSupported ? (
             <SidebarUtilityItem
               icon={<GitPullRequestIcon />}

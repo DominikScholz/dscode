@@ -30,10 +30,10 @@ Save the two exports to:
 
 The result must be a 1024×1024 PNG with the classic macOS safe area: the opaque icon body is 824×824, inset 100 pixels on every side, with only the native Icon Composer shadow extending into the surrounding transparent canvas.
 
-The development macOS icon is not an Icon Composer export. It is rendered from the production icon with the dev-icon tool, so a dev build sits in the Dock as a blueprint version of the real app. The current one was made in the dev-icon playground with construction lines on; from its checkout, the CLI equivalent is roughly:
+The development macOS icon is not an Icon Composer export. It is rendered from the production icon with the dev-icon tool, so a dev build sits in the Dock as a blueprint version of the real app. Render it in the dev-icon playground, or from its checkout with the CLI:
 
 ```sh
-bun cli <repo>/assets/prod/black-macos-1024.png -o <repo>/assets/dev/blueprint-macos-1024.png --construction-lines
+bun cli <repo>/assets/prod/black-macos-1024.png -o <repo>/assets/dev/blueprint-macos-1024.png
 ```
 
 To have Codex perform the native exports, paste this prompt into a task opened at the repository root:

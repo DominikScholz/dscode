@@ -1,5 +1,6 @@
 import { createFileRoute, redirect } from "@tanstack/react-router";
 import { ProjectGraphPage } from "../components/project-graph/ProjectGraphPage";
+import { useRememberProjectGraph } from "../components/project-graph/projectGraphNavigation";
 
 export const Route = createFileRoute("/project-graph/$projectKey")({
   validateSearch: (
@@ -22,6 +23,7 @@ export const Route = createFileRoute("/project-graph/$projectKey")({
 function ProjectGraphRoute() {
   const { projectKey } = Route.useParams();
   const { gitEnvironment, checkout } = Route.useSearch();
+  useRememberProjectGraph(projectKey);
   return (
     <ProjectGraphPage
       key={projectKey}

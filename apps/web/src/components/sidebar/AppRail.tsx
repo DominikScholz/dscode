@@ -2,6 +2,7 @@ import {
   ChartBarIcon,
   ChatsCircleIcon,
   GearIcon,
+  GitBranchIcon,
   GitPullRequestIcon,
   SquaresFourIcon,
 } from "@phosphor-icons/react";
@@ -13,6 +14,7 @@ import { useLocation, useNavigate } from "@tanstack/react-router";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { cn } from "../../lib/utils";
 import { usePullRequestsSupported } from "../../state/environments";
+import { useOpenProjectGraph } from "../project-graph/projectGraphNavigation";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
@@ -48,8 +50,7 @@ interface AppNavItem {
   icon: ReactNode;
   label: string;
   active?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
+  onClick: () => void;
 }
 
 function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
@@ -57,6 +58,7 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
   const navigateToMainApp = useNavigateToMainApp();
   const pathname = useLocation({ select: (location) => location.pathname });
   const pullRequestsSupported = usePullRequestsSupported();
+  const openProjectGraph = useOpenProjectGraph();
 
   const primary: AppNavItem[] = [
     {
@@ -66,7 +68,20 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
       active: !isSidebarUtilityPage(pathname),
       onClick: () => void navigateToMainApp(),
     },
-    { key: "dashboard", icon: <SquaresFourIcon />, label: "Dashboard", disabled: true },
+    {
+      key: "dashboard",
+      icon: <SquaresFourIcon />,
+      label: "Dashboard",
+      active: pathname === "/dashboard",
+      onClick: () => void navigate({ to: "/dashboard" }),
+    },
+    {
+      key: "project-graph",
+      icon: <GitBranchIcon />,
+      label: "Project graph",
+      active: pathname.startsWith("/project-graph/"),
+      onClick: openProjectGraph,
+    },
   ];
   if (pullRequestsSupported) {
     primary.push({
@@ -104,12 +119,11 @@ function AppRailItem({ item }: { item: AppNavItem }) {
         render={
           <button
             type="button"
-            aria-label={item.disabled ? `${item.label} (coming soon)` : item.label}
+            aria-label={item.label}
             aria-current={item.active ? "page" : undefined}
-            disabled={item.disabled}
             onClick={item.onClick}
             className={cn(
-              "flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40 [&_svg]:size-[18px]",
+              "flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-[18px]",
               item.active
                 ? "relative bg-(--panel-surface) text-foreground panel-edge"
                 : "hover:bg-(--panel-surface) hover:text-foreground",
@@ -119,9 +133,7 @@ function AppRailItem({ item }: { item: AppNavItem }) {
       >
         {item.icon}
       </TooltipTrigger>
-      <TooltipPopup side="right">
-        {item.disabled ? `${item.label} (coming soon)` : item.label}
-      </TooltipPopup>
+      <TooltipPopup side="right">{item.label}</TooltipPopup>
     </Tooltip>
   );
 }
@@ -164,18 +176,16 @@ function SidebarNavMenuItem({ item }: { item: AppNavItem }) {
     <button
       type="button"
       aria-current={item.active ? "page" : undefined}
-      disabled={item.disabled}
       onClick={item.onClick}
       className={cn(
-        "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-4 [&_svg]:shrink-0",
         item.active
           ? "relative bg-(--panel-surface) text-foreground panel-edge"
-          : "text-muted-foreground hover:bg-(--panel-surface) hover:text-foreground disabled:text-muted-foreground/50",
+          : "text-muted-foreground hover:bg-(--panel-surface) hover:text-foreground",
       )}
     >
       {item.icon}
       <span className="min-w-0 flex-1 truncate">{item.label}</span>
-      {item.disabled ? <span className="text-2xs text-muted-foreground/60">Soon</span> : null}
     </button>
   );
 }
