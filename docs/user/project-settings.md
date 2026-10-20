@@ -231,9 +231,10 @@ matching checkout.
 
 To see threads from another running T3 Code app, pair it under **Settings → Connections →
 Add environment**, then choose its project in the picker. Threads update live from that app.
-If its version does not support graphs yet, **Read Git from** can use another connected environment
-on the same machine with access to the same checkout path. Thread actions still use the app
-that owns the threads. The graph URL keeps your checkout and Git source selections.
+If its version does not support graphs yet, the graph reads Git from another connected environment
+that does and runs on the same machine, meaning it is reached at the same host address. Choose a
+different source under **Read Git from**. Thread actions still use the app that owns the threads.
+The graph URL keeps your checkout and Git source selections.
 
 Scroll vertically through history and horizontally for additional details. Search finds branches,
 thread titles and worktree paths. Refresh reads changes made by external Git tools without fetching

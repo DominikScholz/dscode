@@ -279,6 +279,10 @@
       "types": "./src/state/subagentRuntime.ts",
       "default": "./src/state/subagentRuntime.ts"
     },
+    "./state/project-graph-source": {
+      "types": "./src/state/projectGraphSource.ts",
+      "default": "./src/state/projectGraphSource.ts"
+    },
     "./state/thread-sort": {
       "types": "./src/state/threadSort.ts",
       "default": "./src/state/threadSort.ts"

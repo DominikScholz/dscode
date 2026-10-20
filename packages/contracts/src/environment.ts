@@ -109,6 +109,9 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
    */
   projectProviderInstanceOverrides: Schema.optionalKey(Schema.Boolean),
   threadSnooze: Schema.optionalKey(Schema.Boolean),
+  /** Server answers `vcs.listRefs` with `includeGraph` by returning `graph`; others drop the
+      flag, so clients read graphs for their projects from another server on the same machine. */
+  projectGraph: Schema.optionalKey(Schema.Boolean),
   /** Absent on servers from
       before environment themes shipped, which never emit the events -- so a
       client reconnecting to one must drop published themes rather than keep

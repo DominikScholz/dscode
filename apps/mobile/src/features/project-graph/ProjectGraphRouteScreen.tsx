@@ -12,6 +12,7 @@ import {
   layoutProjectGraph,
   type GraphNode,
 } from "@t3tools/client-runtime/project-graph";
+import { resolveProjectGraphSource } from "@t3tools/client-runtime/state/project-graph-source";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import type {
   EnvironmentProject,
@@ -182,7 +183,12 @@ function ProjectGraph({
   const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { environments } = useEnvironments();
-  const [gitEnvironmentId, setGitEnvironmentId] = useState(project.environmentId);
+  const [requestedGitEnvironmentId, setGitEnvironmentId] = useState<EnvironmentId>();
+  const gitEnvironmentId = resolveProjectGraphSource({
+    owner: project.environmentId,
+    requested: requestedGitEnvironmentId,
+    environments,
+  });
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [unlinkedOpen, setUnlinkedOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);

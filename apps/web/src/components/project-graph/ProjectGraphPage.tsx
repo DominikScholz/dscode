@@ -1,6 +1,7 @@
 import { useNavigate } from "@tanstack/react-router";
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/shell";
+import { resolveProjectGraphSource } from "@t3tools/client-runtime/state/project-graph-source";
 import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
 import { normalizeProjectPathForComparison } from "@t3tools/shared/path";
 import type { EnvironmentId, VcsProjectGraph } from "@t3tools/contracts";
@@ -73,6 +74,11 @@ export function ProjectGraphPage({
         This project is not available. Choose a project from the sidebar.
       </div>
     );
+  const gitEnvironmentId = resolveProjectGraphSource({
+    owner: member.environmentId,
+    requested: environments.find((entry) => entry.environmentId === gitEnvironment)?.environmentId,
+    environments,
+  });
   const controls = (
     <div className="flex h-7 shrink-0 items-center gap-2">
       <ProjectFavicon project={group} className="size-4 shrink-0" />
@@ -134,7 +140,7 @@ export function ProjectGraphPage({
                 <select
                   aria-label="Read Git from"
                   className="w-full rounded border border-border bg-background p-1.5"
-                  value={gitEnvironment ?? member.environmentId}
+                  value={gitEnvironmentId}
                   onChange={(event) =>
                     void navigate({
                       to: "/project-graph/$projectKey",
@@ -158,7 +164,7 @@ export function ProjectGraphPage({
                 </select>
               </label>
             )}
-            {gitEnvironment && gitEnvironment !== member.environmentId && (
+            {gitEnvironmentId !== member.environmentId && (
               <p className="text-2xs text-muted-foreground">
                 Threads stay live on {member.environmentLabel ?? "their environment"}. The Git
                 source must have access to the same checkout path.
@@ -187,10 +193,7 @@ export function ProjectGraphPage({
         key={`${member.environmentId}:${member.id}`}
         member={member}
         controls={controls}
-        gitEnvironmentId={
-          environments.find((entry) => entry.environmentId === gitEnvironment)?.environmentId ??
-          member.environmentId
-        }
+        gitEnvironmentId={gitEnvironmentId}
       />
     </div>
   );
