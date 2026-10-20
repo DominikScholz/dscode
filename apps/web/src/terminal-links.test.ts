@@ -58,6 +58,7 @@ describe("extractTerminalLinks", () => {
     ['"my file.ts":12:7', "my file.ts:12:7", 17],
     ["'my file.ts:12:7'", "my file.ts:12:7", 16],
     ["`my file.ts`", "my file.ts", 11],
+    ['"mój plik.ts":12', "mój plik.ts:12", 16],
   ])("finds a quoted basename in %s", (line, text, end) => {
     expect(extractTerminalLinks(line)).toEqual([{ kind: "path", text, start: 1, end }]);
   });
@@ -128,6 +129,18 @@ describe("extractTerminalLinks", () => {
     ]);
   });
 
+  it.each([
+    "src/żółć.ts:12:7",
+    "żółć/main.ts:12",
+    String.raw`żółć\main.ts:12`,
+    "src/cafe\u0301.ts:12",
+    "src/𐐀.ts:12",
+  ])("keeps the complete Unicode relative path %s", (text) => {
+    expect(extractTerminalLinks(`see ${text} for details`)).toEqual([
+      { kind: "path", text, start: 4, end: 4 + text.length },
+    ]);
+  });
+
   it("finds Windows absolute paths with forward slashes", () => {
     const line = "see C:/Users/someone/project/src/file.ts:42 for details";
     const path = "C:/Users/someone/project/src/file.ts:42";
@@ -169,6 +182,37 @@ describe("extractTerminalLinks", () => {
     const start = line.indexOf(text);
     expect(extractTerminalLinks(line)).toEqual([
       { kind: "path", text, start, end: start + text.length },
+    ]);
+  });
+
+  it.each([
+    " GET /api/trpc/post.list,user.me?batch=1&input=%7B%220%22%3A%7B%22json%22%3Anull%7D%7D 200 in 35ms",
+    "GET /api?+debug 200",
+    'Started GET "/posts?page=2" for ::1',
+    "proxying api/trpc/post.list?batch=1 to the backend",
+  ])("does not turn a logged request route into an editor link: %s", (line) => {
+    expect(extractTerminalLinks(line)).toEqual([]);
+  });
+
+  it("keeps file and URL links before and after a logged request route", () => {
+    const before = "src/server.ts:12";
+    const after = "/app/bin/server:3:7";
+    const url = "https://example.com/api/users?id=42";
+    const line = `${before} GET /api/users?id=42 200 ${after} ${url}`;
+    const afterStart = line.indexOf(after);
+    const urlStart = line.indexOf(url);
+
+    expect(extractTerminalLinks(line)).toEqual([
+      { kind: "path", text: before, start: 0, end: before.length },
+      { kind: "path", text: after, start: afterStart, end: afterStart + after.length },
+      { kind: "url", text: url, start: urlStart, end: urlStart + url.length },
+    ]);
+  });
+
+  it("keeps a question mark inside a filesystem path", () => {
+    const path = "/tmp/report?draft";
+    expect(extractTerminalLinks(`wrote ${path}`)).toEqual([
+      { kind: "path", text: path, start: 6, end: 6 + path.length },
     ]);
   });
 });

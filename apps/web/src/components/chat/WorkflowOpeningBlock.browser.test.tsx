@@ -5,6 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
 import "~/index.css";
+import { getSyntaxHighlighterPromise } from "../../lib/syntaxHighlighting";
 
 import { AppAtomRegistryProvider } from "../../rpc/atomRegistry";
 import { MarkdownFindContext } from "./markdownFindContext";
@@ -22,6 +23,16 @@ vi.mock(import("../../state/server"), async (original) => {
     serverEnvironment: { ...actual.serverEnvironment, configValueAtom: (() => noConfig) as never },
   };
 });
+// Loading the real Shiki WASM and grammar can take seconds on a busy runner; the block only
+// needs to hand its script to the markdown code block that highlights it.
+vi.mock(import("../../lib/syntaxHighlighting"), async (original) => ({
+  ...(await original()),
+  getSyntaxHighlighterPromise: async () =>
+    ({
+      codeToHtml: (code: string) =>
+        Object.assign(document.createElement("pre"), { textContent: code }).outerHTML,
+    }) as never,
+}));
 
 const SHORT_SCRIPT =
   "export const meta = { name: 'repo-check' }\nagent('Run SCRIPTONLY with Bash')";
@@ -99,6 +110,9 @@ const foldToggle = () =>
 
 it("shows a short script as highlighted code with nothing to open", async () => {
   await render(SHORT_SCRIPT);
+  await act(async () => {
+    await getSyntaxHighlighterPromise("javascript");
+  });
   expect(host.querySelector('[data-language="javascript"]')?.textContent).toContain("SCRIPTONLY");
   await vi.waitFor(() => expect(host.querySelector(".chat-markdown-shiki")).not.toBeNull());
   expect(foldToggle()).toBeUndefined();

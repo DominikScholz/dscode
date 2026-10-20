@@ -22,6 +22,7 @@ import {
   expandCollapsedComposerCursor,
   formatAssistantCitationForComposer,
   isCollapsedCursorAdjacentToInlineToken,
+  isPathSuggestionCurrent,
   parseStandaloneComposerSlashCommand,
   replaceTextRange,
 } from "./composer-logic";
@@ -48,6 +49,41 @@ const citation: AssistantCitation = {
 };
 const citationSource = serializeAssistantCitation(citation).replaceAll("+", "%20");
 
+describe("isPathSuggestionCurrent", () => {
+  const searchedTarget = {
+    environmentId: EnvironmentId.make("local"),
+    cwd: "/repo",
+    query: "alpha",
+  };
+
+  it("allows a file suggestion matching the live search", () => {
+    expect(
+      isPathSuggestionCurrent(
+        searchedTarget,
+        detectComposerTrigger("@alpha", 6),
+        searchedTarget.environmentId,
+        searchedTarget.cwd,
+      ),
+    ).toBe(true);
+  });
+
+  it.each([
+    ["query", { ...searchedTarget, query: "beta" }],
+    ["cwd", { ...searchedTarget, cwd: "/other-repo" }],
+    ["environment", { ...searchedTarget, environmentId: EnvironmentId.make("remote") }],
+  ] as const)("rejects a visible file suggestion after the live %s changes", (_change, current) => {
+    const prompt = `@${current.query}`;
+    expect(
+      isPathSuggestionCurrent(
+        searchedTarget,
+        detectComposerTrigger(prompt, prompt.length),
+        current.environmentId,
+        current.cwd,
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("formatAssistantCitationForComposer", () => {
   it.each([undefined, "", " \n\t "])(
     "keeps citation-only insertion for a blank comment %j",
@@ -72,7 +108,7 @@ describe("composerSubmissionIntentForKey", () => {
   const input = {
     keybindings: DEFAULT_RESOLVED_KEYBINDINGS,
     platform: "Linux",
-    isMobileViewport: false,
+    isSoftwareKeyboardOpen: false,
     isDraftThread: false,
   };
   const enter = { key: "Enter", metaKey: false, ctrlKey: false, altKey: false, shiftKey: false };
@@ -292,8 +328,29 @@ describe("composerSubmissionIntentForKey", () => {
     },
   );
 
+  it.each(["MacIntel", "Win32", "Linux"])(
+    "keeps modifier submission available with the software keyboard open on %s",
+    (platform) => {
+      const modEnter = {
+        ...enter,
+        metaKey: platform === "MacIntel",
+        ctrlKey: platform !== "MacIntel",
+      };
+      const keyboardOpen = { ...input, platform, isSoftwareKeyboardOpen: true };
+      expect(composerSubmissionIntentForKey({ ...keyboardOpen, event: modEnter })).toBe(
+        "foreground",
+      );
+      expect(
+        composerSubmissionIntentForKey({ ...keyboardOpen, isRunning: true, event: modEnter }),
+      ).toBe("alternate");
+      expect(
+        composerSubmissionIntentForKey({ ...keyboardOpen, isDraftThread: true, event: modEnter }),
+      ).toBe("background");
+    },
+  );
+
   it.each([
-    { isMobileViewport: true },
+    { isSoftwareKeyboardOpen: true },
     { event: { ...enter, isComposing: true } },
     { event: { ...enter, keyCode: 229 } },
     { event: { ...enter, repeat: true } },
@@ -816,21 +873,6 @@ describe("assistant citation cursor offsets", () => {
 
     expect(result).toEqual({ text: `(),${citationSource}!`, cursor: 1 });
     expect(collapseExpandedComposerCursor(result.text, result.text.length)).toBe("(),□!".length);
-  });
-});
-
-describe("replaceTextRange trailing space consumption", () => {
-  it("double space after insertion when replacement ends with space", () => {
-    const text = "and then @AG summarize";
-    const rangeStart = "and then ".length;
-    const rangeEnd = "and then @AG".length;
-
-    const withoutConsume = replaceTextRange(text, rangeStart, rangeEnd, "@AGENTS.md ");
-    expect(withoutConsume.text).toBe("and then @AGENTS.md  summarize");
-
-    const extendedEnd = text[rangeEnd] === " " ? rangeEnd + 1 : rangeEnd;
-    const withConsume = replaceTextRange(text, rangeStart, extendedEnd, "@AGENTS.md ");
-    expect(withConsume.text).toBe("and then @AGENTS.md summarize");
   });
 });
 

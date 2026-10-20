@@ -13,11 +13,14 @@ import * as Metric from "effect/Metric";
 import * as Queue from "effect/Queue";
 import * as EffectScheduler from "effect/Scheduler";
 import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
 import * as TestClock from "effect/testing/TestClock";
+import * as Tracer from "effect/Tracer";
 
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as SecretRequests from "../secrets/SecretRequests.ts";
+import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
 import * as SqlitePersistence from "../persistence/Sqlite.ts";
 import * as Scheduler from "../scheduling/Scheduler.ts";
 import * as ScheduledTaskService from "./ScheduledTaskService.ts";
@@ -64,6 +67,7 @@ const withService = <A, E>(
   body: (input: {
     readonly service: ScheduledTaskService.ScheduledTaskService["Service"];
     readonly launches: Queue.Queue<LaunchInput>;
+    readonly sql: SqlClient.SqlClient;
     readonly secretsByRef: Map<string, string>;
   }) => Effect.Effect<A, E, never>,
   options: { readonly gate?: Deferred.Deferred<void>; readonly relayHookBaseUrl?: string } = {},
@@ -80,6 +84,10 @@ const withService = <A, E>(
             Effect.andThen(options.gate ? Deferred.await(options.gate) : Effect.void),
             Effect.as({ threadId: "thread-1", resumed: false } as never),
           ),
+      }),
+      Layer.mock(ManagedProjectFolders.ManagedProjectFolders)({
+        namedProjectsRoot: "/projects",
+        isScratchProject: () => Effect.succeed(false),
       }),
       Layer.mock(ThreadManagementService.ThreadManagementService)({}),
       Layer.mock(SecretRequests.SecretRequests)({
@@ -98,7 +106,8 @@ const withService = <A, E>(
     );
     return yield* Effect.gen(function* () {
       const service = yield* ScheduledTaskService.ScheduledTaskService;
-      return yield* body({ service, launches, secretsByRef });
+      const sql = yield* SqlClient.SqlClient;
+      return yield* body({ service, launches, sql, secretsByRef });
     }).pipe(Effect.provide(ScheduledTaskService.layer.pipe(Layer.provide(layerDependencies))));
   }).pipe(Effect.provide(SqlitePersistence.layerMemory));
 
@@ -556,6 +565,52 @@ it.effect("a held request already delivered directly runs only once", () =>
   ),
 );
 
+it.effect("relay retries recover failed acceptance without releasing another request's claim", () =>
+  withService(({ service, launches, sql }) =>
+    Effect.gen(function* () {
+      const { task } = yield* service.upsert(yield* webhookTaskInput());
+      const request = requestFor(task, { relayDeliveryId: "retry-after-log-failure" });
+      yield* sql`
+        CREATE TRIGGER fail_webhook_delivery_log
+        BEFORE INSERT ON scheduled_task_webhook_deliveries
+        BEGIN
+          SELECT RAISE(FAIL, 'injected delivery log failure');
+        END
+      `;
+      const error = yield* service.triggerWebhook(request).pipe(Effect.flip);
+      assert.equal(error.message, "Could not record webhook delivery.");
+      assert.equal(yield* Queue.size(launches), 0);
+      assert.isEmpty((yield* service.listWebhookDeliveries({ id: task.id })).deliveries);
+      yield* sql`DROP TRIGGER fail_webhook_delivery_log`;
+
+      const retried = yield* Effect.all(
+        [service.triggerWebhook(request), service.triggerWebhook(request)],
+        { concurrency: "unbounded" },
+      );
+      assert.deepEqual(
+        retried.map((result) => (result._tag === "accepted" ? result.outcome : result._tag)).sort(),
+        ["accepted", "duplicate"],
+      );
+      assert.include((yield* Queue.take(launches)).commandId, request.relayDeliveryId!);
+
+      yield* sql`
+        CREATE TRIGGER fail_webhook_claim
+        BEFORE INSERT ON scheduled_task_webhook_relay_deliveries
+        BEGIN
+          SELECT RAISE(FAIL, 'injected claim failure');
+        END
+      `;
+      const retryError = yield* service.triggerWebhook(request).pipe(Effect.flip);
+      assert.equal(retryError.message, "Could not record webhook delivery.");
+      yield* sql`DROP TRIGGER fail_webhook_claim`;
+      const replayed = yield* service.triggerWebhook(request);
+      assert.equal(replayed._tag === "accepted" ? replayed.outcome : replayed._tag, "duplicate");
+      assert.equal(yield* Queue.size(launches), 0);
+      assert.equal((yield* service.listWebhookDeliveries({ id: task.id })).deliveries.length, 1);
+    }),
+  ),
+);
+
 it.effect("a held request whose sender hung up mid-request still runs", () =>
   withService(({ service, launches }) =>
     Effect.gen(function* () {
@@ -826,6 +881,33 @@ const deliveriesCounted = (outcome: string, source: "relay" | "direct") =>
       return found?.type === "Counter" ? Number(found.state.count) : 0;
     }),
   );
+
+it.effect("keeps delivery attributes on the webhook operation span", () =>
+  withService(({ service }) =>
+    Effect.gen(function* () {
+      const { task } = yield* service.upsert(yield* webhookTaskInput({ enabled: false }));
+      const spans: Tracer.NativeSpan[] = [];
+      const tracer = Tracer.make({
+        span: (options) => {
+          const span = new Tracer.NativeSpan(options);
+          spans.push(span);
+          return span;
+        },
+      });
+      const receivedAt = DateTime.formatIso(DateTime.subtract(yield* DateTime.now, { seconds: 1 }));
+      yield* service
+        .triggerWebhook(requestFor(task, { receivedAt, relayDeliveryId: "traced-delivery" }))
+        .pipe(Effect.withTracer(tracer));
+
+      const span = spans.find((entry) => entry.name === "ScheduledTaskService.triggerWebhook");
+      assert.isDefined(span);
+      assert.equal(span?.attributes.get("scheduled_task.id"), task.id);
+      assert.equal(span?.attributes.get("scheduled_task.webhook.outcome"), "disabled");
+      assert.equal(span?.attributes.get("scheduled_task.webhook.source"), "relay");
+      assert.equal(span?.attributes.get("scheduled_task.webhook.held_ms"), 1_000);
+    }),
+  ),
+);
 
 it.effect("counts each handled request by what happened to it", () =>
   withService(({ service, launches }) =>

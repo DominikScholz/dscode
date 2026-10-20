@@ -1,4 +1,4 @@
-import { AppActivityIndicator } from "../../components/ui/AppActivityIndicator";
+import type { PullRequestChangeBreakdown } from "@t3tools/contracts";
 import { PullRequestSectionHeading } from "./PullRequestSectionHeading";
 import { AnimatedLegendList } from "@legendapp/list/reanimated";
 import Animated from "react-native-reanimated";
@@ -24,6 +24,34 @@ import {
 import { usePullRequestFilesViewed } from "./usePullRequestFilesViewed";
 import { usePullRequestFileFilter } from "./usePullRequestFileFilter";
 
+const BREAKDOWN_LABELS = {
+  code: "Code",
+  tests: "Tests",
+  mocks: "Mocks",
+  generated: "Generated",
+  docs: "Docs",
+} satisfies Record<keyof NonNullable<PullRequestChangeBreakdown>, string>;
+
+function PullRequestChangeBreakdownLine(props: {
+  readonly breakdown: NonNullable<PullRequestChangeBreakdown>;
+}) {
+  const parts = (Object.keys(BREAKDOWN_LABELS) as Array<keyof typeof BREAKDOWN_LABELS>).flatMap(
+    (kind) => {
+      const { additions, deletions } = props.breakdown[kind];
+      return additions === 0 && deletions === 0
+        ? []
+        : [
+            `${BREAKDOWN_LABELS[kind]} +${additions.toLocaleString()} −${deletions.toLocaleString()}`,
+          ];
+    },
+  );
+  return (
+    <Text className="text-2xs tabular-nums text-foreground-muted" numberOfLines={2}>
+      {parts.join(" · ")}
+    </Text>
+  );
+}
+
 function fileDirectory(path: string) {
   const separator = path.lastIndexOf("/");
   return separator < 0 ? "" : path.slice(0, separator);
@@ -38,6 +66,9 @@ export function usePullRequestFilesContent(props: {
   const result = usePullRequestDiff(props.params);
   const detail = useEnvironmentQuery(composerPullRequests.detail(requestTarget(props.params)));
   const viewed = usePullRequestFilesViewed(props.params, props.params.commit ? null : detail.data);
+  const breakdown = useEnvironmentQuery(
+    props.params.commit ? null : composerPullRequests.changeBreakdown(requestTarget(props.params)),
+  ).data;
   const filter = usePullRequestFileFilter(result.parsed);
   const parsed = filter.parsed;
   const loading = result.isPending && parsed.kind === "empty" && !result.error;
@@ -210,6 +241,7 @@ export function usePullRequestFilesContent(props: {
                     ? `${filter.hiddenCount} test ${filter.hiddenCount === 1 ? "file" : "files"} hidden`
                     : "Test files included"}
                 </Text>
+                {breakdown ? <PullRequestChangeBreakdownLine breakdown={breakdown} /> : null}
               </View>
               <PullRequestDiffStats
                 additions={parsed.additions}
@@ -256,19 +288,13 @@ export function usePullRequestFilesContent(props: {
     footer: (
       <>
         {result.nextCursor ? (
-          <Pressable
+          <Button
+            label={result.error ? "Retry loading files" : "Load more files"}
+            tone="secondary"
             onPress={result.error ? result.refresh : result.loadMore}
-            accessibilityRole="button"
-            className="min-h-11 items-center justify-center rounded-xl bg-grouped-card px-4 py-3"
-          >
-            {result.isPending ? (
-              <AppActivityIndicator />
-            ) : (
-              <Text className="text-sm font-t3-medium">
-                {result.error ? "Retry loading files" : "Load more files"}
-              </Text>
-            )}
-          </Pressable>
+            loading={result.isPending}
+            fullWidth
+          />
         ) : null}
         {viewed.error ? (
           <Text className="py-2 text-xs text-danger-foreground">{viewed.error}</Text>

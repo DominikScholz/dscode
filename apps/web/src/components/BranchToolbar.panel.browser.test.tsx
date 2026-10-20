@@ -26,11 +26,6 @@ vi.mock(import("./BranchToolbarBranchSelector"), async (original) => ({
 }));
 vi.mock(import("../state/entities"), async (original) => ({
   ...(await original()),
-  useQuietThreadShell: (() => ({
-    environmentId: "local",
-    projectId: "project",
-    worktreePath: state.worktreePath,
-  })) as never,
   useProject: (() => ({ workspaceRoot: "/tmp/project" })) as never,
   useThreadShellsForProjectRefs: () => [],
 }));
@@ -64,6 +59,9 @@ function render(props: Partial<ComponentProps<typeof BranchToolbar>>) {
         panelSection="workspace"
         environmentId={EnvironmentId.make("local")}
         threadId={ThreadId.make("thread")}
+        projectId={ProjectId.make("project")}
+        worktreePath={state.worktreePath}
+        isServerThread
         showGitControls
         envMode="local"
         envLocked={false}
@@ -106,10 +104,27 @@ it("keeps machine choices usable when the combined row's workspace is locked", a
   expect(onEnvironmentChange).toHaveBeenCalledWith("remote");
 });
 
+it("shows a started thread's primary machine as a static label in the composer", async () => {
+  await render({
+    layout: "composer",
+    showGitControls: false,
+    availableEnvironments: ["local", "remote"].map((id) => ({
+      environmentId: EnvironmentId.make(id),
+      projectId: ProjectId.make("project"),
+      label: id,
+      isPrimary: id === "local",
+      machine: "server",
+    })),
+  });
+  expect(container.textContent).toBe("local");
+  expect(container.querySelector("button")).toBeNull();
+});
+
 it.each([
   ["local", null, "/tmp/project"],
   ["worktree", null, null],
   ["worktree", "/tmp/worktree", "/tmp/worktree"],
+  ["worktree", "C:/repo/worktree", String.raw`C:\repo\worktree`],
 ] as const)(
   "copies only an existing workspace path with mode %s and worktree %s",
   async (envMode, worktreePath, copiedPath) => {

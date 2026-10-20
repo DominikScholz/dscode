@@ -62,6 +62,10 @@ const OUTPUT_TRUNCATED_MARKER = "\n\n[truncated]";
 const VCS_PROCESS_CONCURRENCY = 8;
 const GITHUB_PROCESS_CONCURRENCY = 4;
 
+/** Shown to users when a Git command fails because another process holds the index lock. */
+export const GIT_INDEX_LOCKED_DETAIL =
+  "Git's index is locked. Wait for other Git operations to finish, then try again.";
+
 export const CHECKPOINT_CAPTURE_OPERATION = "GitVcsDriver.checkpoints.captureCheckpoint";
 
 /**
@@ -168,6 +172,7 @@ const isTransientGitExit = (stderr: string) =>
 // bare write error too; explicit unrelated errors remain failures.
 // Linux writeout-only only starts writeback, so it must not use this fallback.
 const FULL_FSYNC_ARG = "core.fsyncMethod=fsync";
+const BATCH_FSYNC_ARG = "core.fsyncMethod=batch";
 const WRITEOUT_ONLY_FSYNC_ARG = "core.fsyncMethod=writeout-only";
 const canRetryFullFsync = (stderr: string) =>
   /fsync error on [^\r\n]+: operation not supported\r?$/im.test(stderr) ||
@@ -245,13 +250,15 @@ export const make = Effect.gen(function* () {
       result.code !== null &&
       result.code !== 0 &&
       input.command === "git" &&
-      input.args.includes(FULL_FSYNC_ARG) &&
+      (input.args.includes(FULL_FSYNC_ARG) || input.args.includes(BATCH_FSYNC_ARG)) &&
       canRetryFullFsync(result.stderr)
     ) {
       result = yield* spawn(
         {
           ...input,
-          args: input.args.map((arg) => (arg === FULL_FSYNC_ARG ? WRITEOUT_ONLY_FSYNC_ARG : arg)),
+          args: input.args.map((arg) =>
+            arg === FULL_FSYNC_ARG || arg === BATCH_FSYNC_ARG ? WRITEOUT_ONLY_FSYNC_ARG : arg,
+          ),
         },
         baseError,
       );
@@ -263,7 +270,7 @@ export const make = Effect.gen(function* () {
 
     if (!input.allowNonZeroExit && result.code !== 0) {
       const failureKind = classifyNonZeroExit(input.command, result.stderr);
-      return yield* VcsProcessExitError.fromProcessExit(
+      const error = VcsProcessExitError.fromProcessExit(
         baseError,
         {
           exitCode: result.code,
@@ -275,6 +282,18 @@ export const make = Effect.gen(function* () {
           failureKind === "command-failed" &&
           isTransientGitExit(result.stderr),
       );
+      if (
+        input.command === "git" &&
+        /^fatal: unable to create ['"][^\r\n]*[/\\]index\.lock['"]: file exists\.?$/im.test(
+          result.stderr,
+        )
+      ) {
+        return yield* new VcsProcessExitError({
+          ...error,
+          detail: GIT_INDEX_LOCKED_DETAIL,
+        });
+      }
+      return yield* error;
     }
 
     return {
