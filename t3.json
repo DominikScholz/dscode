@@ -7,6 +7,11 @@
       "command": "node scripts/setup-worktree.ts",
       "icon": "configure",
       "runOnWorktreeCreate": true
+    },
+    {
+      "name": "Desktop (Electron)",
+      "command": "vp run dev:desktop",
+      "icon": "play"
     }
   ]
 }
