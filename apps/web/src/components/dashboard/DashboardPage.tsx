@@ -1,4 +1,10 @@
-import { ArchiveIcon, ChatsCircleIcon, HammerIcon } from "@phosphor-icons/react";
+import {
+  ArchiveIcon,
+  ChatsCircleIcon,
+  ClockCountdownIcon,
+  HammerIcon,
+  type Icon,
+} from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 
@@ -15,14 +21,40 @@ import {
 } from "../../state/entities";
 import { formatRelativeElapsed } from "../../timestampFormat";
 import { ProjectFavicon } from "../ProjectFavicon";
+import { selectSectionFilter } from "../Sidebar.logic";
 import { useSettingsProjectGroups } from "../settings/useSettingsProjectGroups";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
-import { CollapsibleSectionHeader } from "../ui/collapsible-section-header";
 import { ScrollArea } from "../ui/scroll-area";
 import { SidebarInset } from "../ui/sidebar";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { type DashboardProject, summarizeDashboardProjects } from "./dashboardProjects";
+import {
+  type DashboardProject,
+  type DashboardSection,
+  summarizeDashboardProjects,
+} from "./dashboardProjects";
+
+// Icons match the sidebar's section filters.
+const DASHBOARD_SECTIONS: ReadonlyArray<{
+  section: DashboardSection;
+  label: string;
+  icon: Icon;
+}> = [
+  { section: "active", label: "Active", icon: ChatsCircleIcon },
+  { section: "working", label: "Working", icon: HammerIcon },
+  { section: "snoozed", label: "Snoozed", icon: ClockCountdownIcon },
+  { section: "settled", label: "Settled", icon: ArchiveIcon },
+];
+const DASHBOARD_SECTION_FILTER_KEY = "t3code:dashboard:section-filter";
+const DashboardSectionFilter = Schema.Array(
+  Schema.Literals(["active", "working", "snoozed", "settled"]),
+);
+const DEFAULT_DASHBOARD_SECTION_FILTER: readonly DashboardSection[] = [
+  "active",
+  "working",
+  "snoozed",
+  "settled",
+];
 
 export function DashboardPage() {
   useEscapeToGoBack();
@@ -31,21 +63,41 @@ export function DashboardPage() {
   const threads = useThreadShells();
   const serverConfigs = useServerConfigs();
   const projectsReady = useAllEnvironmentProjectSnapshotsReady();
-  const { open, allSettled } = summarizeDashboardProjects({
+  const [sectionFilter, setSectionFilter] = useLocalStorage(
+    DASHBOARD_SECTION_FILTER_KEY,
+    DEFAULT_DASHBOARD_SECTION_FILTER,
+    DashboardSectionFilter,
+  );
+  // Snooze wake times are compared against this minute, so a woken thread can
+  // count as snoozed for up to a minute; the sidebar is exact.
+  const nowMinute = useNowMinute();
+  const sections = summarizeDashboardProjects({
     groups,
     threads,
-    supportsSettlement: (environmentId) =>
-      serverConfigs.get(environmentId)?.environment.capabilities.threadSettlement === true,
+    capabilities: (environmentId) => serverConfigs.get(environmentId)?.environment.capabilities,
+    now: `${nowMinute}:00.000Z`,
   });
+  const shownSections = DASHBOARD_SECTIONS.filter(
+    ({ section }) => sectionFilter.includes(section) && sections[section].length > 0,
+  );
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
         {/* Keeps the window drag strip and the collapsed-sidebar toggle's room. */}
         <WorkspacePageHeader electron={isElectron} />
-        <h1 className="shrink-0 pb-4 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end) text-2xl font-semibold tracking-tight sm:text-3xl">
-          Dashboard
-        </h1>
+        <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 pb-5 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)">
+          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">Dashboard</h1>
+          {groups.length > 0 ? (
+            <DashboardSectionFilterBar
+              selected={sectionFilter}
+              counts={sections}
+              onSelect={(section, additive) =>
+                setSectionFilter((current) => selectSectionFilter(current, section, additive))
+              }
+            />
+          ) : null}
+        </div>
         {groups.length === 0 ? (
           // A pending environment cannot prove the workspace is empty.
           projectsReady ? (
@@ -58,13 +110,28 @@ export function DashboardPage() {
           ) : null
         ) : (
           <ScrollArea className="min-h-0 flex-1">
-            <div className="flex flex-col gap-4 pb-12 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)">
-              {open.length > 0 ? (
-                <ProjectSection id="active" title="Active" projects={open} />
+            <div className="flex flex-col gap-6 pb-12 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)">
+              {shownSections.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No projects here.</p>
               ) : null}
-              {allSettled.length > 0 ? (
-                <ProjectSection id="settled" title="Settled" projects={allSettled} />
-              ) : null}
+              {shownSections.map(({ section, label, icon: SectionIcon }) => (
+                <section key={section} aria-label={label} className="flex flex-col gap-2">
+                  {/* With one section shown, the pressed filter already names it. */}
+                  {shownSections.length > 1 ? (
+                    <h2 className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground [&_svg]:size-3.5">
+                      <SectionIcon aria-hidden />
+                      {label}
+                    </h2>
+                  ) : null}
+                  <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
+                    {sections[section].map((project) => (
+                      <li key={project.group.projectKey} className="min-w-0">
+                        <ProjectCard project={project} />
+                      </li>
+                    ))}
+                  </ul>
+                </section>
+              ))}
             </div>
           </ScrollArea>
         )}
@@ -73,42 +140,48 @@ export function DashboardPage() {
   );
 }
 
-function ProjectSection({
-  id,
-  title,
-  projects,
-}: {
-  id: "active" | "settled";
-  title: string;
-  projects: ReadonlyArray<DashboardProject<SidebarProjectSnapshot>>;
+// The sidebar's section filter, with names since the page has room: a click
+// shows one section, shift+click adds or removes one.
+function DashboardSectionFilterBar(props: {
+  selected: readonly DashboardSection[];
+  counts: Record<DashboardSection, ReadonlyArray<unknown>>;
+  onSelect: (section: DashboardSection, additive: boolean) => void;
 }) {
-  const [collapsed, setCollapsed] = useLocalStorage(
-    `t3code.dashboard.${id}Collapsed`,
-    false,
-    Schema.Boolean,
-  );
   return (
-    <section className="flex flex-col gap-2">
-      <h2>
-        <CollapsibleSectionHeader expanded={!collapsed} onClick={() => setCollapsed(!collapsed)}>
-          {title} <span className="tabular-nums">{projects.length}</span>
-        </CollapsibleSectionHeader>
-      </h2>
-      {collapsed ? null : (
-        <ul className="grid grid-cols-[repeat(auto-fill,minmax(15rem,1fr))] gap-2">
-          {projects.map((project) => (
-            <li key={project.group.projectKey} className="min-w-0">
-              <ProjectCard project={project} />
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+    <div
+      role="group"
+      aria-label="Project sections (shift-click to show several)"
+      className="flex shrink-0 gap-0.5 rounded-lg p-0.5 panel-well"
+    >
+      {DASHBOARD_SECTIONS.map(({ section, label, icon: SectionIcon }) => {
+        const pressed = props.selected.includes(section);
+        return (
+          <button
+            key={section}
+            type="button"
+            aria-pressed={pressed}
+            onClick={(event) => props.onSelect(section, event.shiftKey)}
+            className={cn(
+              "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
+              pressed
+                ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            <SectionIcon aria-hidden />
+            {label}
+            <span className="text-muted-foreground tabular-nums">
+              {props.counts[section].length}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
 function ProjectCard({
-  project: { group, working, active, settled, lastActivityMs },
+  project: { group, working, active, snoozed, settled, lastActivityMs },
 }: {
   project: DashboardProject<SidebarProjectSnapshot>;
 }) {
@@ -130,17 +203,23 @@ function ProjectCard({
             </span>
           )}
         </div>
-        <ThreadCounts working={working} active={active} settled={settled} />
+        <ThreadCounts working={working} active={active} snoozed={snoozed} settled={settled} />
       </div>
     </Link>
   );
 }
 
 // Icons match the sidebar's section filters.
-function ThreadCounts(props: { working: number; active: number; settled: number }) {
+function ThreadCounts(props: {
+  working: number;
+  active: number;
+  snoozed: number;
+  settled: number;
+}) {
   const counts = [
     { label: "working", count: props.working, icon: HammerIcon, className: "text-info" },
     { label: "active", count: props.active, icon: ChatsCircleIcon },
+    { label: "snoozed", count: props.snoozed, icon: ClockCountdownIcon },
     { label: "settled", count: props.settled, icon: ArchiveIcon },
   ].filter((entry) => entry.count > 0);
   const row = "flex h-4 items-center gap-2.5 text-xs text-muted-foreground tabular-nums";

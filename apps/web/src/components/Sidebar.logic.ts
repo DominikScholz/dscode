@@ -120,6 +120,18 @@ export const animateSidebarLayoutChanges: AnimateLayoutChanges = (args) =>
 
 export type SidebarSection = "pinned" | "active" | "working" | "snoozed" | "settled";
 
+// A click shows only that section; shift+click adds or removes it, never
+// leaving the list without a section.
+export function selectSectionFilter<T extends string>(
+  current: readonly T[],
+  section: T,
+  additive: boolean,
+): readonly T[] {
+  if (!additive) return [section];
+  if (!current.includes(section)) return [...current, section];
+  return current.length > 1 ? current.filter((entry) => entry !== section) : current;
+}
+
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
   readonly settled: boolean;

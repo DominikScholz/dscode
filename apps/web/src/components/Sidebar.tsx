@@ -212,6 +212,7 @@ import {
   resolveSidebarDropTarget,
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
+  selectSectionFilter,
   resolveSidebarRowAccessibility,
   type SidebarDropVerb,
   resolveSidebarThreadStatus,
@@ -576,14 +577,8 @@ function useSidebarThreads(input: {
         count: current.count + SETTLED_TAIL_PAGE_COUNT,
       })),
     sectionFilter,
-    // A click shows only that section; shift+click adds or removes it, never
-    // leaving the list without a section.
     selectSidebarSection: (section: SidebarSection, additive: boolean) =>
-      setSectionFilter((current) => {
-        if (!additive) return [section];
-        if (!current.includes(section)) return [...current, section];
-        return current.length > 1 ? current.filter((entry) => entry !== section) : current;
-      }),
+      setSectionFilter((current) => selectSectionFilter(current, section, additive)),
     visiblePinnedThreads,
     visibleActiveThreads,
     renderedSettledThreads,

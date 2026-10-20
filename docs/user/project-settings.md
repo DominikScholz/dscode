@@ -213,7 +213,7 @@ local work, resolve it yourself before automatic pulls can resume.
 
 On web and desktop, open **Project graph** from the app navigation, the project picker, Project
 Settings, or the command palette. The navigation opens the current thread's project, or the graph
-you viewed last. **Dashboard** shows every project as a grid; select one to open its graph. Projects whose threads are all settled come after a divider. Branch labels sit beside their latest commit; branches sharing a tip share
+you viewed last. **Dashboard** shows every project as a grid; select one to open its graph. Like the sidebar, it sorts projects into **Active**, **Working**, **Snoozed** and **Settled**; click a section to show only it, or shift-click to show several. Branch labels sit beside their latest commit; branches sharing a tip share
 that commit's row. Worktrees with uncommitted changes have a separate tip. Shared commits
 appear only once. Unsettled threads have separate rows below
 their branch and open when selected. Expand **Settled threads** beneath a branch to open older

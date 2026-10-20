@@ -1,24 +1,33 @@
+import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 import { getThreadSortTimestamp } from "@t3tools/client-runtime/state/thread-sort";
-import type { EnvironmentId, ProjectId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  ExecutionEnvironmentCapabilities,
+  ProjectId,
+} from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../../types";
 import { filterSidebarV2VisibleThreads, isSidebarThreadWorking } from "../Sidebar.logic";
+
+export type DashboardSection = "active" | "working" | "snoozed" | "settled";
 
 export interface DashboardProject<TGroup> {
   group: TGroup;
   working: number;
   active: number;
+  snoozed: number;
   settled: number;
   /** When the user last wrote in any of the project's threads, as the sidebar sorts. */
   lastActivityMs: number | null;
 }
 
 /**
- * Counts each project's threads by the sidebar's sections and splits off
- * projects whose threads are all settled; projects without threads count as
- * settled. Settlement matches the sidebar: only environments that support it
- * settle, and snoozed or pinned threads are still active. Each part lists the
- * most recently active projects first; ties keep the incoming order.
+ * Counts each project's threads by the sidebar's sections and files the
+ * project under the first section it has threads in: active (waiting on you),
+ * working, snoozed, then settled, which also takes projects without threads.
+ * Thread sections match the sidebar: snoozing outranks settling, each only on
+ * environments that support it, and pinned threads are active. Each section
+ * lists the most recently active projects first; ties keep the incoming order.
  */
 export function summarizeDashboardProjects<
   TGroup extends {
@@ -27,8 +36,11 @@ export function summarizeDashboardProjects<
 >(input: {
   groups: ReadonlyArray<TGroup>;
   threads: ReadonlyArray<SidebarThreadSummary>;
-  supportsSettlement: (environmentId: EnvironmentId) => boolean;
-}): { open: DashboardProject<TGroup>[]; allSettled: DashboardProject<TGroup>[] } {
+  capabilities: (
+    environmentId: EnvironmentId,
+  ) => Pick<ExecutionEnvironmentCapabilities, "threadSettlement" | "threadSnooze"> | undefined;
+  now: string;
+}): Record<DashboardSection, DashboardProject<TGroup>[]> {
   const threadsByProject = new Map<string, SidebarThreadSummary[]>();
   for (const thread of filterSidebarV2VisibleThreads(input.threads, null)) {
     const key = `${thread.environmentId}:${thread.projectId}`;
@@ -36,20 +48,28 @@ export function summarizeDashboardProjects<
     if (threads) threads.push(thread);
     else threadsByProject.set(key, [thread]);
   }
-  const open: DashboardProject<TGroup>[] = [];
-  const allSettled: DashboardProject<TGroup>[] = [];
+  const sections: Record<DashboardSection, DashboardProject<TGroup>[]> = {
+    active: [],
+    working: [],
+    snoozed: [],
+    settled: [],
+  };
   for (const group of input.groups) {
     const project: DashboardProject<TGroup> = {
       group,
       working: 0,
       active: 0,
+      snoozed: 0,
       settled: 0,
       lastActivityMs: null,
     };
     for (const member of group.memberProjects) {
       for (const thread of threadsByProject.get(`${member.environmentId}:${member.id}`) ?? []) {
-        if (
-          input.supportsSettlement(thread.environmentId) &&
+        const capabilities = input.capabilities(thread.environmentId);
+        if (capabilities?.threadSnooze === true && effectiveSnoozed(thread, { now: input.now })) {
+          project.snoozed += 1;
+        } else if (
+          capabilities?.threadSettlement === true &&
           thread.settledOverride === "settled"
         ) {
           project.settled += 1;
@@ -64,9 +84,18 @@ export function summarizeDashboardProjects<
         }
       }
     }
-    (project.working + project.active > 0 ? open : allSettled).push(project);
+    sections[
+      project.active > 0
+        ? "active"
+        : project.working > 0
+          ? "working"
+          : project.snoozed > 0
+            ? "snoozed"
+            : "settled"
+    ].push(project);
   }
-  return { open: open.sort(compareByRecency), allSettled: allSettled.sort(compareByRecency) };
+  for (const projects of Object.values(sections)) projects.sort(compareByRecency);
+  return sections;
 }
 
 function compareByRecency(
