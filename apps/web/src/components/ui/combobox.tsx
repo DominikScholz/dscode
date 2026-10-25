@@ -164,12 +164,12 @@ function ComboboxPopup({
       >
         <span
           className={cn(
-            "popup-surface panel-edge relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-xl transition-[scale,opacity]",
+            "popup-surface panel-edge relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-2xl transition-[scale,opacity]",
             className,
           )}
         >
           <ComboboxPrimitive.Popup
-            className="flex min-w-0 max-h-[min(var(--available-height),23rem)] flex-1 flex-col overflow-hidden text-foreground"
+            className="flex min-w-0 max-h-[min(var(--available-height),23rem)] flex-1 flex-col overflow-hidden rounded-[inherit] text-foreground squircle"
             data-slot="combobox-popup"
             {...props}
           >
@@ -192,7 +192,7 @@ function ComboboxItem({
   return (
     <ComboboxPrimitive.Item
       className={cn(
-        "flex relative min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-lg px-2 py-1 squircle text-base outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:not-data-highlighted:bg-(--popup-row-selected) data-selected:text-foreground data-highlighted:popup-row-raised data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex relative min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-xl px-2 py-1 squircle text-base outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:not-data-highlighted:bg-(--popup-row-selected) data-selected:text-foreground data-highlighted:popup-row-raised data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="combobox-item"
