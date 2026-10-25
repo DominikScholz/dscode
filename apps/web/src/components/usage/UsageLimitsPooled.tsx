@@ -48,7 +48,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
-import { LimitStat, StatLabel } from "./UsageLimitPace";
+import { LimitRow, StatLabel } from "./UsageLimitPace";
 import { UsagePanel } from "./UsagePanel";
 
 function accountInitials(email: string): string {
@@ -546,7 +546,7 @@ function PoolWindowCard({
       : null;
   if (projection !== null && onlyMember !== undefined) {
     return (
-      <LimitStat
+      <LimitRow
         label={label ?? pool.label}
         description={description}
         window={onlyMember.window}
@@ -557,23 +557,25 @@ function PoolWindowCard({
     );
   }
   return (
-    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 px-6 py-4 text-center md:py-1">
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-2 py-4 md:grid-cols-[9rem_minmax(0,1fr)_9rem]">
       <StatLabel label={label ?? pool.label} description={description} />
-      <span className="inline-flex items-center gap-2 text-2xl font-semibold text-foreground tabular-nums">
-        <span>
-          {pool.remainingPercent}%
-          <span className="ms-1 text-sm font-normal text-muted-foreground">left</span>
-        </span>
-        {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
-      </span>
-      <div className="mt-2 w-full max-w-64 text-start">
+      <div className="order-3 col-span-2 md:order-none md:col-span-1">
         <PoolBar pool={pool} color={color} now={now} />
       </div>
-      {nextRefill && pool.columns.length > 1 ? (
-        <span className="text-xs text-muted-foreground tabular-nums">
-          ↻ +{nextRefill.restoresPercent}%
+      <span className="order-2 flex flex-col items-end text-end md:order-none">
+        <span className="inline-flex items-center gap-2 text-2xl font-semibold text-foreground tabular-nums">
+          {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+          <span>
+            {pool.remainingPercent}%
+            <span className="ms-1 text-sm font-normal text-muted-foreground">left</span>
+          </span>
         </span>
-      ) : null}
+        {nextRefill && pool.columns.length > 1 ? (
+          <span className="text-xs text-muted-foreground tabular-nums">
+            ↻ +{nextRefill.restoresPercent}%
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -651,7 +653,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
   return (
     <section className="flex flex-col gap-3">
       <ProviderSummary pool={pool} label={label} color={color} now={now} />
-      <UsagePanel className="flex flex-col divide-y divide-foreground/8 p-0 md:flex-row md:py-6 md:divide-x md:divide-y-0">
+      <UsagePanel className="flex flex-col divide-y divide-foreground/8 py-1">
         {windows.map((window) => {
           const details =
             pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
