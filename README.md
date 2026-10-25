@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/dev/blueprint-macos-1024.png" alt="DS Code" width="160" />
+  <img src="assets/prod/black-macos-1024.png" alt="DS Code" width="160" />
 </p>
 
 <h1 align="center">DS Code</h1>

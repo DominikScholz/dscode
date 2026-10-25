@@ -15,7 +15,7 @@ import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
 import sharp from "sharp";
 
-type IconVariant = "dev" | "nightly" | "prod";
+type IconVariant = "nightly" | "prod";
 
 const ADAPTIVE_CANVAS = 432;
 const SPLASH_CANVAS = 1152;
@@ -101,22 +101,6 @@ const renderForeground = Effect.fn("androidIcons.renderForeground")(function* (
   );
 });
 
-const renderDevelopmentBackground = Effect.fn("androidIcons.renderDevelopmentBackground")(
-  function* (repositoryRoot: string, size: number) {
-    const annotations = yield* readLayerSource(repositoryRoot, "dev", "annotations.svg");
-    const defs = annotations.match(/<defs>[\s\S]*?<\/defs>/)?.[0] ?? "";
-    const body = annotations.replace(/^[\s\S]*?<\/defs>/, "").replace(/<\/svg>\s*$/, "");
-    const paper = yield* readLayerSource(repositoryRoot, "dev", "background.svg");
-    const background = yield* rasterize("dev-background", fullBleed(paper), size);
-    const overlay = yield* rasterize(
-      "dev-annotations",
-      canvasSvg(size, `${defs}<g transform="${wordmarkTransform(size)}">${body}</g>`),
-      size,
-    );
-    return yield* composite("dev-background", background, [{ input: overlay }]);
-  },
-);
-
 const renderNightlyBackground = Effect.fn("androidIcons.renderNightlyBackground")(function* (
   repositoryRoot: string,
   size: number,
@@ -171,8 +155,6 @@ const renderBackground = Effect.fn("androidIcons.renderBackground")(function* (
   size: number,
 ) {
   switch (variant) {
-    case "dev":
-      return yield* renderDevelopmentBackground(repositoryRoot, size);
     case "nightly":
       return yield* renderNightlyBackground(repositoryRoot, size);
     case "prod":
@@ -196,14 +178,9 @@ const exportAndroidIcons = Effect.gen(function* () {
   const outputs = [
     ["android-icon-foreground.png", yield* renderForeground(repositoryRoot, ADAPTIVE_CANVAS)],
     [
-      "android-icon-background-dev.png",
-      yield* renderDevelopmentBackground(repositoryRoot, ADAPTIVE_CANVAS),
-    ],
-    [
       "android-icon-background-nightly.png",
       yield* renderNightlyBackground(repositoryRoot, ADAPTIVE_CANVAS),
     ],
-    ["android-splash-icon-dev.png", yield* renderSplashIcon(repositoryRoot, "dev")],
     ["android-splash-icon-nightly.png", yield* renderSplashIcon(repositoryRoot, "nightly")],
     ["android-splash-icon-prod.png", yield* renderSplashIcon(repositoryRoot, "prod")],
   ] as const;

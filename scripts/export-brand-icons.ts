@@ -204,20 +204,6 @@ export class IconExportAssetsStaleError extends Schema.TaggedError<IconExportAss
 
 const ICON_VARIANTS = [
   {
-    label: "development",
-    source: BRAND_ASSET_PATHS.developmentIconComposerProject,
-    outputs: {
-      ios: BRAND_ASSET_PATHS.developmentIosIconPng,
-      macos: BRAND_ASSET_PATHS.developmentDesktopIconPng,
-      universal: BRAND_ASSET_PATHS.developmentUniversalIconPng,
-      appleTouch: BRAND_ASSET_PATHS.developmentWebAppleTouchIconPng,
-      favicon16: BRAND_ASSET_PATHS.developmentWebFavicon16Png,
-      favicon32: BRAND_ASSET_PATHS.developmentWebFavicon32Png,
-      faviconIco: BRAND_ASSET_PATHS.developmentWebFaviconIco,
-      windowsIco: BRAND_ASSET_PATHS.developmentWindowsIconIco,
-    },
-  },
-  {
     label: "preview",
     source: BRAND_ASSET_PATHS.nightlyIconComposerProject,
     outputs: {
@@ -247,10 +233,7 @@ const ICON_VARIANTS = [
   },
 ] as const satisfies ReadonlyArray<IconVariant>;
 
-// The development macOS icon is rendered from the production one with dev-icon (see assets/README.md).
-const ICON_COMPOSER_MACOS_VARIANTS = ICON_VARIANTS.filter(
-  (variant) => variant.label !== "development",
-);
+const ICON_COMPOSER_MACOS_VARIANTS = ICON_VARIANTS;
 
 const MACOS_EXPORT_CODEX_PROMPT = [
   "Use [@Computer](plugin://computer-use@openai-bundled) and the Icon Composer app to export the two macOS app icons in this repository.",
@@ -623,7 +606,6 @@ const logManualMacOsExportInstructions = Effect.fn("iconExport.logManualMacOsExp
         ...ICON_COMPOSER_MACOS_VARIANTS.map(
           (variant) => `- ${variant.source} -> ${variant.outputs.macos}`,
         ),
-        `Then regenerate ${BRAND_ASSET_PATHS.developmentDesktopIconPng} with dev-icon.`,
         "See assets/README.md for the complete workflow.",
         "",
         "Copy/paste this prompt into Codex to perform the native exports:",
@@ -765,7 +747,7 @@ export const exportBrandIcons = Effect.fn("exportBrandIcons")(function* (checkOn
     const sourceContents = generated.get(override.sourceRelativePath);
     if (sourceContents === undefined) {
       return yield* Effect.die(
-        new Error(`Generated development web icon is missing: ${override.sourceRelativePath}`),
+        new Error(`Generated production web icon is missing: ${override.sourceRelativePath}`),
       );
     }
     generated.set(override.targetRelativePath, sourceContents);
@@ -808,7 +790,7 @@ export const exportBrandIconsCommand = Command.make(
   ({ check }) => exportBrandIcons(check).pipe(Effect.scoped),
 ).pipe(
   Command.withDescription(
-    "Export development, preview, and production assets from Icon Composer projects.",
+    "Export preview and production assets from Icon Composer projects.",
   ),
 );
 

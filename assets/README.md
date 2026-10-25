@@ -1,14 +1,13 @@
 # Brand icons
 
-The three Icon Composer projects are the source of truth for full application icons:
+The two Icon Composer projects are the source of truth for full application icons:
 
-- `dev/app-icon.icon`
 - `nightly/app-icon.icon`
 - `prod/app-icon.icon`
 
 Each project uses `text.svg` for the DS mark and `background.svg` when the background is a vector layer. Additional layers use semantic names that describe their role and placement.
 
-Run `vp run icons:export` from the repository root to regenerate the tracked iOS, Linux, Windows, and web assets. The development web exports are also copied to `apps/web/public` for the browser favicon and splash screen. Run `vp run icons:check` to verify that the generated assets and public copies match their sources without changing files.
+Run `vp run icons:export` from the repository root to regenerate the tracked iOS, Linux, Windows, and web assets. Development builds have no separate artwork: they use the production DS icon, and its web exports are also copied to `apps/web/public` for the browser favicon and splash screen. Run `vp run icons:check` to verify that the generated assets and public copies match their sources without changing files.
 
 Exporting requires Icon Composer 2 or newer on macOS. The script selects the newest compatible exporter from Xcode or a standalone Icon Composer installation and pins design generation 26. Set `ICON_COMPOSER_TOOL` to the full path of `Icon Composer.app/Contents/Executables/ictool` to override automatic discovery.
 
@@ -29,12 +28,6 @@ Save the two exports to:
 - `prod/app-icon.icon` -> `prod/black-macos-1024.png`
 
 The result must be a 1024×1024 PNG with the classic macOS safe area: the opaque icon body is 824×824, inset 100 pixels on every side, with only the native Icon Composer shadow extending into the surrounding transparent canvas.
-
-The development macOS icon is not an Icon Composer export. It is rendered from the production icon with the dev-icon tool, so a dev build sits in the Dock as a blueprint version of the real app. Render it in the dev-icon playground, or from its checkout with the CLI:
-
-```sh
-bun cli <repo>/assets/prod/black-macos-1024.png -o <repo>/assets/dev/blueprint-macos-1024.png
-```
 
 To have Codex perform the native exports, paste this prompt into a task opened at the repository root:
 
@@ -62,8 +55,8 @@ is instead rendered from the same Icon Composer SVG sources by `vp run icons:exp
 
 - `apps/mobile/assets/android-icon-foreground.png`: the shared transparent wordmark, sized to stay
   inside the safe zone
-- `apps/mobile/assets/android-icon-background-dev.png` and `-nightly.png`: full-bleed variant
-  artwork (blueprint grid and annotations; night sky and clouds). Production uses a solid color.
+- `apps/mobile/assets/android-icon-background-nightly.png`: full-bleed night sky and clouds.
+  Production and development use a solid color.
 - `apps/mobile/assets/android-splash-icon-*.png`: the two layers composed into one 288dp image, so
   the splash mask reproduces the launcher icon's framing.
 
