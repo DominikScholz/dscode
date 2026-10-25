@@ -17,7 +17,7 @@ import { usePullRequestsSupported } from "../../state/environments";
 import { useOpenProjectGraph } from "../project-graph/projectGraphNavigation";
 import { readPullRequestListPreferences } from "../pullRequest/pullRequestListPreferences";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
-import { isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
+import { isAppModalPage, isSidebarUtilityPage, useNavigateToMainApp } from "./mainAppLocation";
 
 // Redesign exploration: app navigation as a slim rail left of the sidebar, or
 // as a menu at the top of the sidebar, where the bottom-up thread list leaves room.
@@ -65,7 +65,7 @@ function useAppNavItems(): { primary: AppNavItem[]; secondary: AppNavItem[] } {
       key: "chats",
       icon: <ChatsCircleIcon />,
       label: "Chats",
-      active: !isSidebarUtilityPage(pathname),
+      active: !isSidebarUtilityPage(pathname) && !isAppModalPage(pathname),
       onClick: () => void navigateToMainApp(),
     },
     {
