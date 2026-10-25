@@ -33,24 +33,47 @@ function WindowTime({
     <>
       {date === DATE_FORMAT.format(now) ? null : `${date}, `}
       {hour12 && minute === "00" ? part("hour") : `${part("hour")}:${minute}`}
-      {hour12 ? <span className="ms-0.5 text-4xs">{part("dayPeriod")}</span> : null}
+      {hour12 ? <span className="ms-0.5 text-3xs">{part("dayPeriod")}</span> : null}
     </>
   );
 }
 
-/**
- * One limit window as the bar upstream draws: the share left, and a line at the share of time
- * left, so fill short of the line is spending ahead of an even pace. The hatched end of the fill
- * is what the pace so far spends before the reset. Under it, the window's reset and start.
- */
-export function LimitPaceRow({
+/** A strip column's heading; a window that needs explaining explains itself on hover. */
+export function StatLabel({
   label,
+  description,
+}: {
+  readonly label: string;
+  readonly description?: string | undefined;
+}) {
+  if (!description) return <span className="truncate text-sm text-muted-foreground">{label}</span>;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span className="cursor-default truncate text-sm text-muted-foreground underline decoration-dotted underline-offset-4" />
+        }
+      >
+        {label}
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        <span className="block max-w-64">{description}</span>
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/** One column of a provider's limit strip: what is left, then the bar upstream draws. */
+export function LimitStat({
+  label,
+  description,
   window,
   projection,
   color,
   now,
 }: {
   readonly label: string;
+  readonly description?: string | undefined;
   readonly window: ServerProviderUsageWindow;
   readonly projection: LimitProjection;
   readonly color: string;
@@ -67,98 +90,93 @@ export function LimitPaceRow({
   const timeLeft = Math.round((1 - elapsed) * 100);
   const [barRef, paceMark] = usePaceMark(timeLeft);
   const endMs = Date.parse(window.resetsAt ?? "");
-  const startMs = endMs - (window.windowDurationMins ?? 0) * 60_000;
-  const status = reached
+  const forecast = reached
     ? "Limit reached"
     : runsOutEarly
       ? `Runs out ${formatUpcomingTimestamp(new Date(runsOutAt).toISOString(), timestampFormat, now)}`
       : `About ${Math.round(leftAtReset)}% left at reset`;
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-5 gap-y-1 md:grid-cols-[8rem_minmax(0,1fr)_11rem]">
-      <span className="truncate text-sm text-foreground">{label}</span>
-      <div className="order-3 col-span-2 md:order-none md:col-span-1">
-        <Tooltip>
-          <TooltipTrigger
-            render={
-              <div
-                ref={barRef}
-                role="img"
-                tabIndex={0}
-                aria-label={`${label}: ${Math.round(left)}% left, ${timeLeft}% of the window left. ${status}.`}
-                className="relative h-4 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-              />
-            }
-          >
-            <div className="absolute inset-0" style={paceMark?.gap}>
-              <div className="absolute inset-x-0 inset-y-1 rounded-full bg-muted" />
-              {left > 0 ? (
-                <div
-                  className="absolute inset-y-1 left-0 overflow-hidden rounded-full"
-                  style={{ width: `${left}%` }}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0"
-                    style={{ width: `${(leftAtReset / left) * 100}%`, backgroundColor: color }}
-                  />
-                  <div
-                    className={cn(
-                      "absolute inset-y-0 right-0 chart-hatch",
-                      runsOutEarly && "text-warning",
-                    )}
-                    style={{
-                      width: `${100 - (leftAtReset / left) * 100}%`,
-                      ...(runsOutEarly ? {} : { color }),
-                    }}
-                  />
-                </div>
-              ) : null}
-            </div>
-            {paceMark ? (
-              <span
-                aria-hidden
-                className="absolute inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
-                style={paceMark.tick}
-              />
-            ) : null}
-          </TooltipTrigger>
-          <TooltipPopup side="top">
-            <div className="flex max-w-64 flex-col gap-0.5">
-              <span className="text-foreground">
-                {Math.round(left)}% left · {timeLeft}% of the window left
-              </span>
-              <span className="text-muted-foreground">
-                The line is where even spending would be. Hatching is what your pace so far uses
-                before the reset.
-              </span>
-            </div>
-          </TooltipPopup>
-        </Tooltip>
-        <div className="flex justify-between text-3xs whitespace-nowrap text-muted-foreground tabular-nums">
-          <span>
-            Resets <WindowTime ms={endMs} now={now} hour12={hour12} />
-          </span>
-          <span>
-            Started <WindowTime ms={startMs} now={now} hour12={hour12} />
-          </span>
-        </div>
-      </div>
-      <span className="order-2 flex min-w-0 flex-col items-end text-xs md:order-none md:items-start">
-        <span className="text-sm text-muted-foreground tabular-nums">
-          <span className="font-semibold text-foreground">{Math.round(left)}%</span> left
-        </span>
-        <span
-          className={cn(
-            "truncate",
-            reached
-              ? "text-destructive-foreground"
-              : runsOutEarly
-                ? "text-warning-foreground"
-                : "text-muted-foreground",
-          )}
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 px-6 py-4 text-center md:py-1">
+      <StatLabel label={label} description={description} />
+      <span className="text-2xl font-semibold text-foreground tabular-nums">
+        {Math.round(left)}%
+        <span className="ms-1 text-sm font-normal text-muted-foreground">left</span>
+      </span>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <div
+              ref={barRef}
+              role="img"
+              tabIndex={0}
+              aria-label={`${label}: ${Math.round(left)}% left, ${timeLeft}% of the window left. ${forecast}.`}
+              className="relative mt-2 h-3 w-full max-w-64 cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+            />
+          }
         >
-          {status}
-        </span>
+          <div className="absolute inset-0" style={paceMark?.gap}>
+            <div className="absolute inset-x-0 inset-y-1 rounded-full bg-foreground/8" />
+            {left > 0 ? (
+              <div
+                className="absolute inset-y-1 left-0 overflow-hidden rounded-full"
+                style={{ width: `${left}%` }}
+              >
+                <div
+                  className="absolute inset-y-0 left-0"
+                  style={{ width: `${(leftAtReset / left) * 100}%`, backgroundColor: color }}
+                />
+                <div
+                  className={cn(
+                    "absolute inset-y-0 right-0 chart-hatch",
+                    runsOutEarly && "text-warning",
+                  )}
+                  style={{
+                    width: `${100 - (leftAtReset / left) * 100}%`,
+                    ...(runsOutEarly ? {} : { color }),
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+          {paceMark ? (
+            <span
+              aria-hidden
+              className="absolute inset-y-0 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
+              style={paceMark.tick}
+            />
+          ) : null}
+        </TooltipTrigger>
+        <TooltipPopup side="top">
+          <div className="flex max-w-64 flex-col gap-0.5 text-start">
+            <span className="text-foreground">
+              {Math.round(left)}% left · {timeLeft}% of the window left
+            </span>
+            <span className="text-muted-foreground">
+              The line is where even spending would be. Hatching is what your pace so far uses
+              before the reset. {forecast}.
+            </span>
+          </div>
+        </TooltipPopup>
+      </Tooltip>
+      <span
+        className={cn(
+          "text-xs tabular-nums",
+          reached
+            ? "text-destructive-foreground"
+            : runsOutEarly
+              ? "text-warning-foreground"
+              : "text-muted-foreground",
+        )}
+      >
+        {runsOutEarly ? (
+          forecast
+        ) : (
+          <>
+            {reached ? "Limit reached · resets " : "Resets "}
+            <WindowTime ms={endMs} now={now} hour12={hour12} />
+          </>
+        )}
       </span>
     </div>
   );

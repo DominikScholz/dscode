@@ -387,7 +387,8 @@ export function UsagePage() {
       <div className="ms-auto hidden shrink-0 items-center gap-2 @4xl/usage-header:flex">
         <ToggleGroup
           aria-label="Usage metric"
-          variant="segmented"
+          variant="pill"
+          size="segmented"
           value={[metric]}
           onValueChange={(next) => {
             const value = next[0];
@@ -439,6 +440,7 @@ export function UsagePage() {
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10 window-glow"
         />
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 grain" />
         <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 ps-5 pe-2">
           {topbarContent}
           <AppRouteModalClose />
@@ -502,7 +504,8 @@ export function UsagePage() {
                 rangeControl={
                   <ToggleGroup
                     aria-label="Usage period"
-                    variant="segmented"
+                    variant="pill"
+                    size="sm"
                     value={[String(windowDays)]}
                     onValueChange={(next) => {
                       const value = next[0];
@@ -654,7 +657,11 @@ function UsageOverview({
                 figureClass(loadingPartial),
               )}
             >
-              {metric === "cost" ? formatUsd(merged.costUsd) : formatTokens(merged.totalTokens)}
+              {metric === "cost" ? (
+                <MutedCents text={formatUsd(merged.costUsd)} />
+              ) : (
+                formatTokens(merged.totalTokens)
+              )}
             </span>
             <span className="text-xs text-muted-foreground">
               {metric === "cost" ? "Cost · API estimate" : "Processed tokens"}
@@ -788,7 +795,7 @@ function UsageOverview({
 
       <UsagePanel
         aria-label="Totals"
-        className="grid grid-cols-2 gap-y-5 px-0 md:grid-cols-5 md:divide-x md:divide-border"
+        className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8"
       >
         <Metric
           loading={loadingPartial}
@@ -852,7 +859,8 @@ function UsageOverview({
           <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
           <ToggleGroup
             aria-label="Usage breakdown"
-            variant="segmented"
+            variant="pill"
+            size="segmented"
             value={[breakdown]}
             onValueChange={(next) => {
               const value = next[0];
@@ -1188,10 +1196,10 @@ function Metric({
   readonly loading: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1 px-5 text-center">
-      <span className="text-xs text-muted-foreground">{label}</span>
+    <div className="flex min-w-0 flex-col items-center gap-1.5 px-5 text-center">
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span
-        className={cn("text-lg font-semibold text-foreground tabular-nums", figureClass(loading))}
+        className={cn("text-xl font-semibold text-foreground tabular-nums", figureClass(loading))}
       >
         {value}
       </span>
@@ -1470,12 +1478,24 @@ function UsageSkeleton() {
   );
 }
 
+/** Dollars stay bright and cents recede, so the headline reads at a glance. */
+function MutedCents({ text }: { readonly text: string }) {
+  const point = text.lastIndexOf(".");
+  if (point < 0) return text;
+  return (
+    <>
+      {text.slice(0, point)}
+      <span className="text-muted-foreground">{text.slice(point)}</span>
+    </>
+  );
+}
+
 function MetricSkeletons({ labels }: { readonly labels: readonly string[] }) {
   return (
-    <UsagePanel className="grid grid-cols-2 gap-y-5 px-0 md:grid-cols-5 md:divide-x md:divide-border">
+    <UsagePanel className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8">
       {labels.map((label) => (
-        <div key={label} className="flex flex-col items-center gap-1 px-5">
-          <span className="text-xs text-muted-foreground">{label}</span>
+        <div key={label} className="flex flex-col items-center gap-1.5 px-5">
+          <span className="text-sm text-muted-foreground">{label}</span>
           <Skeleton className="h-7 w-16" />
         </div>
       ))}

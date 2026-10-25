@@ -6,6 +6,7 @@ import {
   collectLimitPools,
   cursorUsageWindowDetails,
   displayLimitWindows,
+  formatDuration,
   formatResetsIn,
   type LimitAccount,
   type LimitPool,
@@ -47,8 +48,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
-import { LimitPaceRow } from "./UsageLimitPace";
-import type { ServerProvider, ServerProviderUsageWindow } from "@t3tools/contracts";
+import { LimitStat, StatLabel } from "./UsageLimitPace";
 import { UsagePanel } from "./UsagePanel";
 
 function accountInitials(email: string): string {
@@ -546,40 +546,99 @@ function PoolWindowCard({
       : null;
   if (projection !== null && onlyMember !== undefined) {
     return (
-      <div className="flex flex-col gap-1.5 py-3">
-        <LimitPaceRow
-          label={label ?? pool.label}
-          window={onlyMember.window}
-          projection={projection}
-          color={color}
-          now={now}
-        />
-        {description ? <p className="text-xs text-muted-foreground">{description}</p> : null}
-      </div>
+      <LimitStat
+        label={label ?? pool.label}
+        description={description}
+        window={onlyMember.window}
+        projection={projection}
+        color={color}
+        now={now}
+      />
     );
   }
   return (
-    <div className="grid items-center gap-x-6 gap-y-3 py-3 md:grid-cols-[11rem_minmax(0,1fr)]">
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-foreground">{label ?? pool.label}</span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-3xl font-semibold text-foreground tabular-nums">
-            {pool.remainingPercent}%
-          </span>
-          <span className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-            <span>left</span>
-            {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+    <div className="flex min-w-0 flex-1 flex-col items-center gap-1 px-6 py-4 text-center md:py-1">
+      <StatLabel label={label ?? pool.label} description={description} />
+      <span className="inline-flex items-center gap-2 text-2xl font-semibold text-foreground tabular-nums">
+        <span>
+          {pool.remainingPercent}%
+          <span className="ms-1 text-sm font-normal text-muted-foreground">left</span>
+        </span>
+        {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+      </span>
+      <div className="mt-2 w-full max-w-64 text-start">
+        <PoolBar pool={pool} color={color} now={now} />
+      </div>
+      {nextRefill && pool.columns.length > 1 ? (
+        <span className="text-xs text-muted-foreground tabular-nums">
+          ↻ +{nextRefill.restoresPercent}%
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function ProviderSummary({
+  pool,
+  label,
+  color,
+  now,
+}: {
+  readonly pool: LimitPool;
+  readonly label: string;
+  readonly color: string;
+  readonly now: number;
+}) {
+  const plans = [...new Set(pool.accounts.flatMap((account) => account.plan ?? []))];
+  const nextReset = Math.min(
+    ...pool.windows.flatMap((window) =>
+      window.resets.map((reset) => reset.at).filter((at) => at > now),
+    ),
+  );
+  return (
+    <div className="relative isolate flex flex-wrap items-center gap-x-8 gap-y-2 overflow-hidden rounded-xl border border-foreground/10 bg-foreground/3 px-4 py-3 squircle">
+      <span className="flex items-center gap-3">
+        <span
+          className="relative flex size-8 items-center justify-center rounded-lg"
+          style={{ backgroundColor: color }}
+        >
+          {/* The provider's colour spills from its tile onto the card, as light would. */}
+          <span
+            aria-hidden
+            className="absolute top-1/2 left-1/2 -z-10 h-24 w-40 -translate-1/2 opacity-25"
+            style={{ backgroundImage: `radial-gradient(closest-side, ${color}, transparent)` }}
+          />
+          <ProviderInstanceIcon
+            driverKind={pool.driver}
+            displayName={label}
+            indicatorBackground="var(--background)"
+            className="size-4.5"
+            iconClassName="size-4.5 fill-background text-background"
+          />
+        </span>
+        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+      </span>
+      {plans.length > 0 ? (
+        <span className="text-sm text-muted-foreground">
+          Plan
+          <span className="ms-2 font-semibold text-foreground capitalize">{plans.join(", ")}</span>
+        </span>
+      ) : null}
+      {pool.accounts.length > 1 ? (
+        <span className="text-sm text-muted-foreground">
+          Accounts
+          <span className="ms-2 font-semibold text-foreground tabular-nums">
+            {pool.accounts.length}
           </span>
         </span>
-        {nextRefill && pool.columns.length > 1 ? (
-          <span className="text-xs font-medium text-foreground tabular-nums">
-            ↻ +{nextRefill.restoresPercent}%
+      ) : null}
+      {Number.isFinite(nextReset) ? (
+        <span className="text-sm text-muted-foreground">
+          Next reset
+          <span className="ms-2 font-semibold text-foreground tabular-nums">
+            in {formatDuration(nextReset - now)}
           </span>
-        ) : null}
-      </div>
-      <PoolBar pool={pool} color={color} now={now} />
-      {description ? (
-        <p className="text-xs text-muted-foreground md:col-span-2">{description}</p>
+        </span>
       ) : null}
     </div>
   );
@@ -590,18 +649,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
   const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
   return (
-    <UsagePanel className="flex flex-col gap-1 py-4">
-      <h2 className="flex items-center gap-2 pb-1 text-sm font-medium text-foreground">
-        <ProviderInstanceIcon
-          driverKind={pool.driver}
-          displayName={label}
-          indicatorBackground="var(--background)"
-          className="size-5"
-          iconClassName="size-4 text-foreground/80"
-        />
-        {label}
-      </h2>
-      <div className="flex flex-col divide-y divide-border">
+    <section className="flex flex-col gap-3">
+      <ProviderSummary pool={pool} label={label} color={color} now={now} />
+      <UsagePanel className="flex flex-col divide-y divide-foreground/8 p-0 md:flex-row md:py-6 md:divide-x md:divide-y-0">
         {windows.map((window) => {
           const details =
             pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
@@ -616,8 +666,8 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
             />
           );
         })}
-      </div>
-    </UsagePanel>
+      </UsagePanel>
+    </section>
   );
 }
 
@@ -641,7 +691,7 @@ export function UsageLimitsPooled({
       pools.findIndex((pool) => pool.driver === "claudeAgent"),
     ) + 1;
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-8">
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.

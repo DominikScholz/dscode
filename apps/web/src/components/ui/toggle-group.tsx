@@ -31,7 +31,7 @@ function ToggleGroup({
           : "*:pointer-coarse:after:min-h-auto",
         variant === "segmented"
           ? "gap-0.5 rounded-lg bg-input/40 p-0.5"
-          : variant === "default"
+          : variant === "default" || variant === "pill"
             ? "gap-0.5"
             : orientation === "horizontal"
               ? "*:not-first:not-data-[slot=separator]:before:-start-[0.5px] *:not-last:not-data-[slot=separator]:before:-end-[0.5px] *:not-first:rounded-s-none *:not-last:rounded-e-none *:not-first:border-s-0 *:not-last:border-e-0 *:not-first:before:rounded-s-none *:not-last:before:rounded-e-none"
