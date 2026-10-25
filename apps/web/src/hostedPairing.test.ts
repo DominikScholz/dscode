@@ -43,6 +43,15 @@ describe("hostedPairing", () => {
     expect(url.hash).toBe("#token=pairing-token");
   });
 
+  it("keeps the subpath of a hosted app served below the origin root", () => {
+    vi.stubEnv("VITE_HOSTED_APP_URL", "https://dominikscholz.github.io/dscode");
+
+    const url = new URL(buildHostedPairingUrl({ host: "100.64.1.2:3773", token: "pairing-token" }));
+
+    expect(url.origin).toBe("https://dominikscholz.github.io");
+    expect(url.pathname).toBe("/dscode/pair");
+  });
+
   it("builds hosted channel selection URLs through the configured router origin", () => {
     vi.stubEnv("VITE_HOSTED_APP_URL", "https://app.t3.codes");
 

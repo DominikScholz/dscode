@@ -1,0 +1,66 @@
+name: GitHub Pages
+
+# Publishes the hosted web app to GitHub Pages. Like app.t3.codes it has no
+# backend of its own: visitors pair a T3 server they run themselves.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: true
+          run-install: |
+            args:
+              - --filter=@t3tools/web...
+
+      - id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build web app
+        env:
+          T3CODE_WEB_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+          VITE_HOSTED_APP_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          vp run --filter @t3tools/web build
+          # Pages has no SPA rewrites; serving the app as the 404 page lets deep links load.
+          cp apps/web/dist/index.html apps/web/dist/404.html
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: apps/web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -14,6 +14,13 @@ export function configuredHostedAppUrl(): string {
   return import.meta.env.VITE_HOSTED_APP_URL?.trim() || DEFAULT_HOSTED_APP_URL;
 }
 
+// Relative to the hosted URL's path so a subpath deployment keeps its prefix.
+function hostedAppBaseUrl(): URL {
+  const url = new URL(configuredHostedAppUrl());
+  if (!url.pathname.endsWith("/")) url.pathname += "/";
+  return url;
+}
+
 function configuredBackendUrl(): string {
   return import.meta.env.VITE_HTTP_URL?.trim() || import.meta.env.VITE_WS_URL?.trim() || "";
 }
@@ -73,7 +80,7 @@ export function buildHostedPairingUrl(input: {
   readonly token: string;
   readonly label?: string | null;
 }): string {
-  const url = new URL("/pair", configuredHostedAppUrl());
+  const url = new URL("pair", hostedAppBaseUrl());
   url.searchParams.set("host", input.host);
 
   const label = input.label?.trim();

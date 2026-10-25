@@ -537,14 +537,14 @@ function resolveAdvertisedEndpointPairingUrl(
 }
 
 function resolveCurrentOriginPairingUrl(credential: string): string {
-  const url = new URL("/pair", window.location.href);
+  const url = new URL(`${import.meta.env.BASE_URL}pair`, window.location.href);
   return setPairingTokenOnUrl(url, credential).toString();
 }
 
 function isHostedAppPairingUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    return url.pathname === "/pair" && url.searchParams.has("host");
+    return url.pathname.endsWith("/pair") && url.searchParams.has("host");
   } catch {
     return false;
   }

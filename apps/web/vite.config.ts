@@ -172,6 +172,8 @@ const allowedHosts = [".ts.net", ...configuredAllowedHosts];
 
 export default defineConfig(() => {
   return {
+    // GitHub Pages serves the hosted build from a repository subpath.
+    base: process.env.T3CODE_WEB_BASE_PATH?.trim() || "/",
     assetsInclude: ["**/*.wasm"],
     plugins: [
       devCompressionPlugin(),
