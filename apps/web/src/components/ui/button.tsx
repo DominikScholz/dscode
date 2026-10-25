@@ -64,7 +64,7 @@ const buttonVariants = cva(
         secondary:
           "border-transparent bg-secondary text-secondary-foreground [:active,[data-pressed]]:bg-secondary/80 [:hover,[data-pressed]]:bg-secondary/90",
         "warning-outline":
-          "border-warning/32 bg-warning-surface text-warning-foreground shadow-xs/5 [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:border-warning/40 [:hover,[data-pressed]]:bg-warning/16 dark:[:hover,[data-pressed]]:bg-warning/24",
+          "border-warning/24 bg-(--surface-tint)/6 bg-(image:--panel-glow-warning) text-foreground shadow-(--panel-drop) [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:border-warning/36 [:hover,[data-pressed]]:bg-(--surface-tint)/10",
       },
     },
   },

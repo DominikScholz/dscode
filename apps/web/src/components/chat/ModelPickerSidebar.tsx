@@ -35,7 +35,7 @@ const railButtonClassName = (isSelected: boolean, isDisabled = false) =>
   cn(
     "relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     isSelected
-      ? "text-foreground popup-row-raised"
+      ? "bg-(--popup-row-highlight) text-foreground shadow-(--panel-drop) panel-edge"
       : "hover:bg-(--popup-row-selected) hover:text-foreground",
     isDisabled && "cursor-not-allowed opacity-50 hover:bg-transparent",
   );
@@ -148,7 +148,7 @@ export const ModelPickerSidebar = memo(function ModelPickerSidebar(props: {
                   className="size-6 z-30"
                   iconClassName="size-5"
                   indicatorBackground={
-                    isSelected ? "var(--popup-row-raised)" : "var(--popup-surface)"
+                    isSelected ? "var(--popup-row-highlight)" : "var(--popup-surface)"
                   }
                   {...(entry.accentColor ? { badgeClassName: "h-3 min-w-3 px-0.5 text-5xs" } : {})}
                 />

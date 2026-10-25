@@ -13,7 +13,7 @@ import {
   AutocompleteListHeading,
   AutocompleteListVirtualized,
 } from "~/components/ui/autocomplete";
-import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_CLASS } from "~/components/ui/dialog-styles";
+import { DIALOG_BACKDROP_CLASS, DIALOG_POPUP_BASE_CLASS } from "~/components/ui/dialog-styles";
 import { Button } from "~/components/ui/button";
 
 const CommandDialog = CommandDialogPrimitive.Root;
@@ -61,8 +61,8 @@ function CommandDialogPopup({
       <CommandDialogViewport>
         <CommandDialogPrimitive.Popup
           className={cn(
-            DIALOG_POPUP_CLASS,
-            "pointer-events-auto max-h-105 max-w-xl text-foreground",
+            DIALOG_POPUP_BASE_CLASS,
+            "popup-surface panel-edge pointer-events-auto max-h-105 max-w-xl rounded-3xl text-foreground",
             className,
           )}
           data-slot="command-dialog-popup"
@@ -97,7 +97,7 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof AutocompleteInput>) {
   return (
-    <div className="px-[var(--command-shell-inset)] py-1.5 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
+    <div className="border-b border-border px-[var(--command-shell-inset)] py-1.5 [&_[data-slot=autocomplete-start-addon]]:ps-[calc(var(--command-shell-inset)+0.0625rem)]">
       <AutocompleteInput
         autoFocus
         className={cn(
@@ -183,10 +183,11 @@ function CommandItem({
   return (
     <AutocompleteItem
       className={cn(
-        "py-1.5 data-selected:bg-foreground/[0.06] data-highlighted:bg-foreground/[0.09] data-highlighted:text-foreground [&[data-highlighted][data-selected]]:bg-foreground/[0.09] [&[data-highlighted][data-selected]]:text-foreground",
-        active !== undefined &&
-          "cursor-pointer hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit data-selected:bg-transparent data-selected:text-inherit [&[data-highlighted][data-selected]]:bg-transparent [&[data-highlighted][data-selected]]:text-inherit",
-        active && "bg-accent! text-accent-foreground!",
+        "rounded-xl py-1.5 squircle",
+        active === undefined
+          ? "data-selected:not-data-highlighted:bg-(--popup-row-selected) data-highlighted:bg-(--popup-row-highlight) data-highlighted:text-foreground [&[data-highlighted][data-selected]]:bg-(--popup-row-highlight) [&[data-highlighted][data-selected]]:text-foreground"
+          : "cursor-pointer hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit data-selected:bg-transparent data-selected:text-inherit [&[data-highlighted][data-selected]]:bg-transparent [&[data-highlighted][data-selected]]:text-inherit",
+        active && "bg-(--popup-row-highlight)! text-accent-foreground!",
         className,
       )}
       data-active={active || undefined}
@@ -213,7 +214,7 @@ function CommandFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "relative flex items-center justify-between gap-2 rounded-b-[calc(var(--radius-2xl)-1px)] bg-foreground/[0.025] px-[var(--command-content-inset)] py-2.5 font-medium text-sm text-muted-foreground [&_[data-slot=kbd-group]]:font-sans [&_[data-slot=kbd]]:bg-foreground/[0.08] [&_[data-slot=kbd]]:text-foreground [&_[data-slot=kbd]]:ring-0",
+        "relative flex items-center justify-between gap-2 border-t border-border px-[var(--command-content-inset)] py-2.5 font-medium text-muted-foreground text-xs [&_[data-slot=kbd-group]]:font-sans [&_[data-slot=kbd]]:bg-(--popup-row-selected) [&_[data-slot=kbd]]:text-foreground [&_[data-slot=kbd]]:shadow-(--panel-drop) [&_[data-slot=kbd]]:ring-0",
         className,
       )}
       data-slot="command-footer"

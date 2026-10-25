@@ -1639,10 +1639,10 @@ html[data-theme-id] [data-app-sidebar] {
     color-mix(in srgb, var(--surface-tint) 7%, transparent) 100%
   );
   --popup-drop: 0 1px 2px rgb(0 0 0 / 0.04), 0 16px 40px -18px rgb(0 0 0 / 0.35);
-  /* Rows step up from the popup: a quiet fill for the chosen value, a raised
-     tile for the highlighted row. */
+  /* Rows step up from the popup: a quiet fill for the chosen value, a
+     stronger one for the highlighted row. */
   --popup-row-selected: color-mix(in srgb, var(--surface-tint) 3%, var(--popover));
-  --popup-row-raised: color-mix(in srgb, var(--surface-tint) 6%, var(--popover));
+  --popup-row-highlight: color-mix(in srgb, var(--surface-tint) 6%, var(--popover));
 
   @variant dark {
     --surface-tint: oklch(0.86 0.05 262);
@@ -1657,7 +1657,7 @@ html[data-theme-id] [data-app-sidebar] {
       inset 0 1px 0 0 rgb(255 255 255 / 0.03), 0 1px 1px rgb(0 0 0 / 0.3),
       0 18px 44px -16px rgb(0 0 0 / 0.8);
     --popup-row-selected: color-mix(in srgb, var(--surface-tint) 9%, var(--background));
-    --popup-row-raised: color-mix(in srgb, var(--surface-tint) 13%, var(--background));
+    --popup-row-highlight: color-mix(in srgb, var(--surface-tint) 13%, var(--background));
     --panel-edge: color-mix(in srgb, var(--surface-tint) 3%, transparent);
     --panel-edge-gradient: radial-gradient(
       140% 180% at 0% 0%,
@@ -1721,15 +1721,6 @@ html[data-theme-id] [data-app-sidebar] {
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     background-color: var(--popup-surface);
   }
-}
-
-/* The highlighted popup row, raised like the app's buttons. The row must be
-   positioned. */
-@utility popup-row-raised {
-  background-color: var(--popup-row-raised);
-  background-image: var(--panel-sheen);
-  box-shadow: var(--panel-drop);
-  @apply panel-edge;
 }
 
 /* A 1px ring painted with --panel-edge-gradient, for an absolutely positioned
