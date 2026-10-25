@@ -107,6 +107,7 @@ export function UsageModelDialog({
               metric={costUnknown ? "tokens" : metric}
               referenceTime={chartWindow.referenceTime}
               resolution={chartWindow.resolution}
+              series={usage.series}
               timeZone={chartWindow.timeZone}
               hour12={chartWindow.hour12}
             />

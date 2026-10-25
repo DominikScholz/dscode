@@ -1,7 +1,7 @@
 // @effect-diagnostics globalDate:off -- A fixed instant keeps calendar-window assertions deterministic.
 import { describe, expect, it, vi } from "vite-plus/test";
 
-import { formatHourShort, makeWindow } from "./usageFormat.ts";
+import { formatHourShort, formatSeriesSlot, makeWindow, zonedHourStartMs } from "./usageFormat.ts";
 
 describe("hourly usage formatting", () => {
   it("keeps requested zones separate when formatting repeated calls", () => {
@@ -50,5 +50,23 @@ describe("hourly usage formatting", () => {
     } finally {
       resolvedOptions.mockRestore();
     }
+  });
+
+  it("labels series slots by wall-clock hour, wrapping a range at midnight", () => {
+    expect(formatSeriesSlot("2026-08-02", 0, 1)).toBe("Aug 2, 12 AM");
+    expect(formatSeriesSlot("2026-08-02", 16, 4)).toBe("Aug 2, 4 PM–8 PM");
+    expect(formatSeriesSlot("2026-08-02", 12, 12, false)).toBe("Aug 2, 12:00–00:00");
+  });
+
+  it("finds the instant a local hour starts, across daylight-saving changes", () => {
+    expect(new Date(zonedHourStartMs("2026-08-02", 16, "Europe/Berlin")).toISOString()).toBe(
+      "2026-08-02T14:00:00.000Z",
+    );
+    expect(new Date(zonedHourStartMs("2026-10-25", 4, "Europe/Berlin")).toISOString()).toBe(
+      "2026-10-25T03:00:00.000Z",
+    );
+    expect(new Date(zonedHourStartMs("2026-08-02", 0, "Asia/Kathmandu")).toISOString()).toBe(
+      "2026-08-01T18:15:00.000Z",
+    );
   });
 });

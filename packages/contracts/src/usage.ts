@@ -108,6 +108,10 @@ export const UsagePricing = Schema.Struct({
 });
 export type UsagePricing = typeof UsagePricing.Type;
 
+/** Chart slot widths; each divides a day so slots follow wall-clock hours. */
+export const UsageSeriesStepHours = Schema.Literals([1, 2, 3, 4, 6, 8, 12]);
+export type UsageSeriesStepHours = typeof UsageSeriesStepHours.Type;
+
 export const UsageSummaryInput = Schema.Struct({
   sinceDay: UsageDay,
   untilDay: UsageDay,
@@ -117,8 +121,27 @@ export const UsageSummaryInput = Schema.Struct({
   sinceTime: Schema.optional(TrimmedNonEmptyString),
   untilTime: Schema.optional(TrimmedNonEmptyString),
   awaitRefresh: Schema.optional(Schema.Boolean),
+  /** Day-resolution summaries add `series` at this width; servers without it ignore the field. */
+  seriesStepHours: Schema.optional(UsageSeriesStepHours),
 });
 export type UsageSummaryInput = typeof UsageSummaryInput.Type;
+
+/** Slot i starts at local hour (i * stepHours) % 24 on day sinceDay + floor(i * stepHours / 24). */
+export const UsageSeriesRow = Schema.Struct({
+  provider: UsageProviderKind,
+  model: TrimmedNonEmptyString,
+  sourcePath: Schema.optional(TrimmedNonEmptyString),
+  totalTokens: Schema.Array(NonNegativeInt),
+  costUsd: Schema.Array(Schema.Number),
+});
+export type UsageSeriesRow = typeof UsageSeriesRow.Type;
+
+/** Chart detail beside the daily buckets. Rows end at the current slot, so they can be shorter than the window. */
+export const UsageSeries = Schema.Struct({
+  stepHours: UsageSeriesStepHours,
+  rows: ForwardCompatibleArray(UsageSeriesRow),
+});
+export type UsageSeries = typeof UsageSeries.Type;
 
 export const UsageSummary = Schema.Struct({
   contractVersion: Schema.Number,
@@ -130,6 +153,7 @@ export const UsageSummary = Schema.Struct({
   sources: ForwardCompatibleArray(UsageSource),
   pricing: UsagePricing,
   scanDurationMs: NonNegativeInt,
+  series: Schema.optionalKey(UsageSeries),
 });
 export type UsageSummary = typeof UsageSummary.Type;
 

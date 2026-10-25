@@ -2,11 +2,12 @@ import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import type { UsageProviderKind } from "@t3tools/contracts";
 import { useLayoutEffect, useRef, useState } from "react";
 
-import type { DailyTotals, HourlyTotals } from "@t3tools/shared/usageMerge";
+import type { DailyTotals, HourlyTotals, SeriesTotals } from "@t3tools/shared/usageMerge";
 import {
   formatDayShort,
   formatHourShort,
   formatRelativeHourShort,
+  formatSeriesSlot,
   formatTokens,
   formatUsd,
 } from "@t3tools/shared/usageFormat";
@@ -16,11 +17,19 @@ import { observeResize } from "~/lib/observeResize";
 
 const VIEW_WIDTH = 960;
 const VIEW_HEIGHT = 260;
-const TICK_COUNT = 4;
-const PLOT_TOP = 8;
+// Lines use the top; the per-slot volume bars keep their own band below.
+const LINE_TOP = 18;
+const LINE_BOTTOM = 196;
+const VOLUME_TOP = 214;
 const NONE_LOADING: ReadonlySet<UsageProviderKind> = new Set();
 
 export type UsageChartMetric = "tokens" | "cost";
+
+/** What one volume bar covers: "hour", "4 hours", or "day". */
+export function usageChartSlot(resolution: "day" | "hour", series: SeriesTotals | null): string {
+  if (series !== null) return series.stepHours === 1 ? "hour" : `${series.stepHours} hours`;
+  return resolution === "hour" ? "hour" : "day";
+}
 
 interface UsageProviderChartProps {
   readonly providers: readonly UsageProviderKind[];
@@ -32,9 +41,13 @@ interface UsageProviderChartProps {
   readonly metric: UsageChartMetric;
   readonly referenceTime: string | undefined;
   readonly resolution: "day" | "hour";
+  /** Replaces the daily periods when every contributing environment sent one. */
+  readonly series?: SeriesTotals | null;
   readonly timeZone: string;
   readonly hour12: boolean;
 }
+
+type PeriodTotals = Pick<DailyTotals, "byProvider">;
 
 export interface DayColumn {
   readonly bands: readonly {
@@ -50,7 +63,7 @@ interface Point {
 }
 
 function valueFor(
-  totals: DailyTotals | HourlyTotals | undefined,
+  totals: PeriodTotals | undefined,
   provider: UsageProviderKind,
   metric: UsageChartMetric,
 ): number {
@@ -61,7 +74,7 @@ function valueFor(
 
 export function buildPeriodColumns(
   periods: readonly string[],
-  byPeriod: ReadonlyMap<string, DailyTotals | HourlyTotals>,
+  byPeriod: ReadonlyMap<string, PeriodTotals>,
   metric: UsageChartMetric,
 ): readonly DayColumn[] {
   return periods.map((period) => {
@@ -74,180 +87,121 @@ export function buildPeriodColumns(
   });
 }
 
-function monotoneTangents(points: readonly Point[]): readonly number[] {
-  const count = points.length;
-  if (count < 2) return [0];
-
-  const slopes: number[] = [];
-  for (let index = 0; index < count - 1; index += 1) {
-    const dx = (points[index + 1]?.x ?? 0) - (points[index]?.x ?? 0);
-    const dy = (points[index + 1]?.y ?? 0) - (points[index]?.y ?? 0);
-    slopes.push(dx === 0 ? 0 : dy / dx);
-  }
-
-  const tangents: number[] = Array.from({ length: count }, () => 0);
-  tangents[0] = slopes[0] ?? 0;
-  tangents[count - 1] = slopes[count - 2] ?? 0;
-  for (let index = 1; index < count - 1; index += 1) {
-    const previous = slopes[index - 1] ?? 0;
-    const next = slopes[index] ?? 0;
-    tangents[index] = previous * next <= 0 ? 0 : (previous + next) / 2;
-  }
-
-  for (let index = 0; index < count - 1; index += 1) {
-    const slope = slopes[index] ?? 0;
-    if (slope === 0) {
-      tangents[index] = 0;
-      tangents[index + 1] = 0;
-      continue;
-    }
-    const a = (tangents[index] ?? 0) / slope;
-    const b = (tangents[index + 1] ?? 0) / slope;
-    const magnitude = a * a + b * b;
-    if (magnitude > 9) {
-      const scale = 3 / Math.sqrt(magnitude);
-      tangents[index] = scale * a * slope;
-      tangents[index + 1] = scale * b * slope;
-    }
-  }
-
-  return tangents;
-}
-
-interface CurveSegment {
-  readonly from: Point;
-  readonly c1: Point;
-  readonly c2: Point;
-  readonly to: Point;
-}
-
-function smoothCurve(points: readonly Point[]): readonly CurveSegment[] {
-  if (points.length < 2) return [];
-  const tangents = monotoneTangents(points);
-  const segments: CurveSegment[] = [];
-
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const from = points[index];
-    const to = points[index + 1];
-    if (from === undefined || to === undefined) continue;
-    const dx = to.x - from.x;
-    segments.push({
-      from,
-      c1: { x: from.x + dx / 3, y: from.y + ((tangents[index] ?? 0) * dx) / 3 },
-      c2: { x: to.x - dx / 3, y: to.y - ((tangents[index + 1] ?? 0) * dx) / 3 },
-      to,
-    });
-  }
-  return segments;
-}
-
-function curvePath(segments: readonly CurveSegment[]): string {
-  const first = segments[0];
-  if (first === undefined) return "";
-  let path = `M${first.from.x.toFixed(2)},${first.from.y.toFixed(2)}`;
-  for (const segment of segments) {
-    path += ` C${segment.c1.x.toFixed(2)},${segment.c1.y.toFixed(2)} ${segment.c2.x.toFixed(2)},${segment.c2.y.toFixed(2)} ${segment.to.x.toFixed(2)},${segment.to.y.toFixed(2)}`;
-  }
-  return path;
-}
-
-function areaPath(line: string) {
-  return line === "" ? "" : `${line} L${VIEW_WIDTH},${VIEW_HEIGHT} L0,${VIEW_HEIGHT} Z`;
-}
-
-function niceScale(peak: number, count: number): { max: number; ticks: readonly number[] } {
-  if (peak <= 0) return { max: 0, ticks: [0] };
-
-  const rawStep = peak / count;
-  const magnitude = 10 ** Math.floor(Math.log10(rawStep));
-  const normalized = rawStep / magnitude;
-  const step = (normalized > 5 ? 10 : normalized > 2 ? 5 : normalized > 1 ? 2 : 1) * magnitude;
-
-  const max = Math.ceil(peak / step) * step;
-  const ticks: number[] = [];
-  for (let value = 0; value <= max + step * 1e-6; value += step) ticks.push(value);
-  return { max, ticks };
-}
-
-const PLACEHOLDER_TICKS = Array.from({ length: TICK_COUNT + 1 }, (_, index) => index);
-
-function chartScale(
-  columns: readonly DayColumn[],
-  loadingProviders: ReadonlySet<UsageProviderKind>,
-) {
-  // Layered series each start at zero; summing peaks would waste plot height.
-  const peak = columns.reduce(
-    (max, column) => column.bands.reduce((inner, band) => Math.max(inner, band.value), max),
-    0,
-  );
-  return peak === 0 && loadingProviders.size > 0
-    ? { max: TICK_COUNT, ticks: PLACEHOLDER_TICKS, labeled: false }
-    : { ...niceScale(peak, TICK_COUNT), labeled: true };
-}
-
-function valueToY(value: number, max: number) {
-  return max === 0 ? VIEW_HEIGHT : VIEW_HEIGHT - (value / max) * (VIEW_HEIGHT - PLOT_TOP);
+function linePath(points: readonly Point[]): string {
+  return points
+    .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+    .join(" ");
 }
 
 function buildChart(
   periods: readonly string[],
-  byPeriod: ReadonlyMap<string, DailyTotals | HourlyTotals>,
+  byPeriod: ReadonlyMap<string, PeriodTotals>,
   metric: UsageChartMetric,
   providers: readonly UsageProviderKind[],
-  loadingProviders: ReadonlySet<UsageProviderKind>,
 ) {
   const columns = buildPeriodColumns(periods, byPeriod, metric);
-  const scale = chartScale(columns, loadingProviders);
   const stepX = periods.length < 2 ? 0 : VIEW_WIDTH / (periods.length - 1);
-  const paths = providers.map((provider) => {
+  const lines = providers.map((provider) => {
     const slot = PROVIDER_ORDER.indexOf(provider);
-    const line = curvePath(
-      smoothCurve(
-        columns.map((column, periodIndex) => ({
-          x: periodIndex * stepX,
-          y: valueToY(column.bands[slot]?.value ?? 0, scale.max),
-        })),
-      ),
-    );
+    const values = columns.map((column) => column.bands[slot]?.value ?? 0);
+    return { provider, values, total: values.reduce((sum, value) => sum + value, 0) };
+  });
+  const lineMax = Math.max(0, ...lines.flatMap((line) => line.values));
+  const lineY = (value: number) =>
+    lineMax === 0 ? LINE_BOTTOM : LINE_BOTTOM - (value / lineMax) * (LINE_BOTTOM - LINE_TOP);
+  const slotTotals = columns.map((column) =>
+    providers.reduce(
+      (sum, provider) => sum + (column.bands[PROVIDER_ORDER.indexOf(provider)]?.value ?? 0),
+      0,
+    ),
+  );
+  const barMax = Math.max(0, ...slotTotals);
+  const barWidth = Math.max(1, Math.min(stepX * 0.5, 4));
+  const bars = slotTotals.map((value, index) => {
+    const height = barMax === 0 ? 0 : (value / barMax) * (VIEW_HEIGHT - VOLUME_TOP);
     return {
-      provider,
-      loading: loadingProviders.has(provider),
-      total: columns.reduce((sum, column) => sum + (column.bands[slot]?.value ?? 0), 0),
-      line,
-      area: areaPath(line),
+      x: Math.min(Math.max(0, index * stepX - barWidth / 2), VIEW_WIDTH - barWidth),
+      y: VIEW_HEIGHT - height,
+      width: barWidth,
+      height,
     };
   });
 
-  return { columns, scale, stepX, paths: paths.toSorted((a, b) => b.total - a.total) };
+  return {
+    columns,
+    stepX,
+    bars,
+    slotTotals,
+    lines: lines
+      .map((line) => {
+        const points = line.values.map((value, index) => ({ x: index * stepX, y: lineY(value) }));
+        const average = line.values.length === 0 ? 0 : line.total / line.values.length;
+        return { ...line, points, path: linePath(points), average, averageY: lineY(average) };
+      })
+      .toSorted((a, b) => b.total - a.total),
+  };
+}
+
+type ChartLine = ReturnType<typeof buildChart>["lines"][number];
+
+function percentLeft(x: number) {
+  return `${(x / VIEW_WIDTH) * 100}%`;
+}
+
+function percentTop(y: number) {
+  return `${(y / VIEW_HEIGHT) * 100}%`;
+}
+
+function ChartDot({
+  point,
+  color,
+  glow,
+}: {
+  readonly point: Point;
+  readonly color: string;
+  readonly glow: boolean;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={cn(
+        "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-current",
+        glow ? "size-2 chart-glow" : "size-1.5",
+      )}
+      style={{ left: percentLeft(point.x), top: percentTop(point.y), color }}
+    />
+  );
 }
 
 function UsageChartTooltip({
   tooltipRef,
   label,
-  column,
-  providers,
+  index,
+  lines,
+  slotTotal,
   loadingProviders,
   format,
 }: {
   readonly tooltipRef: React.Ref<HTMLDivElement>;
   readonly label: string;
-  readonly column: DayColumn | undefined;
-  readonly providers: readonly UsageProviderKind[];
+  readonly index: number;
+  readonly lines: readonly ChartLine[];
+  readonly slotTotal: number;
   readonly loadingProviders: ReadonlySet<UsageProviderKind>;
   readonly format: (value: number) => string;
 }) {
-  const partial = providers.some((provider) => loadingProviders.has(provider));
+  const partial = lines.some((line) => loadingProviders.has(line.provider));
   return (
     <div
       ref={tooltipRef}
-      className="surface-glass pointer-events-none absolute z-10 min-w-36 max-w-full rounded-xl border border-border/50 px-2.5 py-2 text-xs shadow-lg"
+      className="popup-surface panel-edge pointer-events-none absolute z-10 min-w-40 max-w-full rounded-xl px-2.5 py-2 text-xs"
       style={{
         left: "var(--usage-tooltip-left, 0px)",
         top: "var(--usage-tooltip-top, 0px)",
       }}
     >
       <div className="mb-1 text-muted-foreground">{label}</div>
-      {providers.map((provider) => {
+      {lines.map(({ provider, values }) => {
         const { label: providerLabel, driverKind } = PROVIDER_PRESENTATION[provider];
         return (
           <div key={provider} className="flex items-center justify-between gap-3">
@@ -265,7 +219,7 @@ function UsageChartTooltip({
                 loadingProviders.has(provider) ? "text-muted-foreground" : "text-foreground",
               )}
             >
-              {format(column?.bands.find((band) => band.provider === provider)?.value ?? 0)}
+              {format(values[index] ?? 0)}
             </span>
           </div>
         );
@@ -273,7 +227,7 @@ function UsageChartTooltip({
       <div className="mt-1 flex items-center justify-between gap-3 border-t border-border pt-1">
         <span className="text-muted-foreground">Total</span>
         <span className={cn("tabular-nums", partial ? "text-muted-foreground" : "text-foreground")}>
-          {format(column?.total ?? 0)}
+          {format(slotTotal)}
         </span>
       </div>
     </div>
@@ -282,24 +236,26 @@ function UsageChartTooltip({
 
 function UsageChartPlot({
   periods,
-  columns,
+  lines,
+  bars,
+  slotTotals,
   stepX,
-  providers,
+  marker,
   loadingProviders,
   format,
   formatTooltipPeriod,
   ariaLabel,
-  children,
 }: {
   readonly periods: readonly string[];
-  readonly columns: readonly DayColumn[];
+  readonly lines: readonly ChartLine[];
+  readonly bars: ReturnType<typeof buildChart>["bars"];
+  readonly slotTotals: readonly number[];
   readonly stepX: number;
-  readonly providers: readonly UsageProviderKind[];
+  readonly marker: { readonly index: number; readonly label: string } | null;
   readonly loadingProviders: ReadonlySet<UsageProviderKind>;
   readonly format: (value: number) => string;
   readonly formatTooltipPeriod: (period: string) => string;
   readonly ariaLabel: string;
-  readonly children: React.ReactNode;
 }) {
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
   const plotRef = useRef<HTMLDivElement | null>(null);
@@ -357,45 +313,112 @@ function UsageChartPlot({
   };
 
   const hoveredPeriod = hoverIndex === null ? undefined : periods[hoverIndex];
+  const lineClassName = (provider: UsageProviderKind) =>
+    cn("transition-opacity", loadingProviders.has(provider) && "opacity-40 delay-150");
 
   return (
     <div
       ref={plotRef}
-      className="relative h-56 flex-1"
+      className="relative h-64 w-full"
       onMouseMove={handleMove}
       onMouseLeave={() => {
         hoverPositionRef.current = null;
         setHoverIndex(null);
       }}
     >
+      <div aria-hidden="true" className="chart-dot-grid absolute inset-0" />
+      {lines.map((line) =>
+        line.average > 0 ? (
+          <div
+            key={line.provider}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 border-t border-dotted"
+            style={{
+              top: percentTop(line.averageY),
+              borderColor: `color-mix(in srgb, ${PROVIDER_PRESENTATION[line.provider].color} 55%, transparent)`,
+            }}
+          />
+        ) : null,
+      )}
+      {marker === null ? null : (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-y-0 border-l border-dashed border-foreground/20"
+          style={{ left: percentLeft(marker.index * stepX) }}
+        >
+          <span className="absolute top-0 left-1.5 whitespace-nowrap text-3xs text-muted-foreground tabular-nums">
+            {marker.label}
+          </span>
+        </div>
+      )}
       <svg
-        className="h-full w-full"
+        className="relative h-full w-full"
         viewBox={`0 0 ${VIEW_WIDTH} ${VIEW_HEIGHT}`}
         preserveAspectRatio="none"
         role="img"
         aria-label={ariaLabel}
       >
-        {children}
+        {bars.map((bar, index) =>
+          bar.height === 0 ? null : (
+            <rect
+              // oxlint-disable-next-line react/no-array-index-key -- Bars are positional slots of a fixed window.
+              key={index}
+              x={bar.x}
+              y={bar.y}
+              width={bar.width}
+              height={bar.height}
+              fill="currentColor"
+              shapeRendering="crispEdges"
+              className={index === hoverIndex ? "text-foreground/60" : "text-foreground/20"}
+            />
+          ),
+        )}
         {hoverIndex === null ? null : (
           <line
             x1={hoverIndex * stepX}
             x2={hoverIndex * stepX}
-            y1={PLOT_TOP}
+            y1={0}
             y2={VIEW_HEIGHT}
             stroke="currentColor"
             strokeWidth={1}
-            className="text-muted-foreground"
+            className="text-foreground/25"
             vectorEffect="non-scaling-stroke"
           />
         )}
+        {lines.map(({ provider, path }) => (
+          <path
+            key={provider}
+            d={path}
+            className={lineClassName(provider)}
+            fill="none"
+            stroke={PROVIDER_PRESENTATION[provider].color}
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        ))}
       </svg>
+
+      {lines.map(({ provider, points }) => {
+        const point = hoverIndex === null ? points.at(-1) : points[hoverIndex];
+        return point === undefined ? null : (
+          <ChartDot
+            key={provider}
+            point={point}
+            color={PROVIDER_PRESENTATION[provider].color}
+            glow={hoverIndex === null}
+          />
+        );
+      })}
 
       {hoverIndex === null || hoveredPeriod === undefined ? null : (
         <UsageChartTooltip
           tooltipRef={tooltipRef}
           label={formatTooltipPeriod(hoveredPeriod)}
-          column={columns[hoverIndex]}
-          providers={providers}
+          index={hoverIndex}
+          lines={lines}
+          slotTotal={slotTotals[hoverIndex] ?? 0}
           loadingProviders={loadingProviders}
           format={format}
         />
@@ -414,112 +437,101 @@ export function UsageProviderChart({
   metric,
   referenceTime,
   resolution,
+  series = null,
   timeZone,
   hour12,
 }: UsageProviderChartProps) {
-  const periods = resolution === "hour" ? hours : days;
+  const slotKey = (slot: { readonly day: string; readonly hour: number }) =>
+    `${slot.day}T${slot.hour}`;
   const totals: readonly (DailyTotals | HourlyTotals)[] = resolution === "hour" ? hourly : daily;
-  const byPeriod = new Map(
-    totals.map((entry) => ["hourStart" in entry ? entry.hourStart : entry.day, entry]),
-  );
-  const { columns, scale, paths, stepX } = buildChart(
-    periods,
-    byPeriod,
-    metric,
-    providers,
-    loadingProviders,
-  );
-
-  const toY = (value: number) => valueToY(value, scale.max);
-  const seriesClassName = (loading: boolean) =>
-    cn("transition-opacity", loading && "opacity-40 delay-150");
+  const periods =
+    series === null ? (resolution === "hour" ? hours : days) : series.slots.map(slotKey);
+  const slotByPeriod = new Map(series?.slots.map((slot) => [slotKey(slot), slot]));
+  const byPeriod: ReadonlyMap<string, PeriodTotals> =
+    series === null
+      ? new Map(totals.map((entry) => ["hourStart" in entry ? entry.hourStart : entry.day, entry]))
+      : slotByPeriod;
+  const { lines, bars, slotTotals, stepX } = buildChart(periods, byPeriod, metric, providers);
   const format = metric === "tokens" ? formatTokens : formatUsd;
-  const formatPeriod = (period: string) =>
-    resolution === "hour" ? formatHourShort(period, timeZone, hour12) : formatDayShort(period);
-  const formatTooltipPeriod = (period: string) =>
-    resolution === "hour" && referenceTime !== undefined
+  const slot = usageChartSlot(resolution, series);
+  const formatPeriod = (period: string) => {
+    const seriesSlot = slotByPeriod.get(period);
+    if (seriesSlot !== undefined) return formatDayShort(seriesSlot.day);
+    return resolution === "hour"
+      ? formatHourShort(period, timeZone, hour12)
+      : formatDayShort(period);
+  };
+  const formatTooltipPeriod = (period: string) => {
+    const seriesSlot = slotByPeriod.get(period);
+    if (seriesSlot !== undefined && series !== null) {
+      return formatSeriesSlot(seriesSlot.day, seriesSlot.hour, series.stepHours, hour12);
+    }
+    return resolution === "hour" && referenceTime !== undefined
       ? formatRelativeHourShort(period, referenceTime, timeZone, hour12)
       : formatPeriod(period);
+  };
+  // Series windows end now, so the last slot's day is today.
+  const today = series?.slots.at(-1)?.day;
+  const todayIndex = series?.slots.findIndex((seriesSlot) => seriesSlot.day === today) ?? -1;
+  const marker =
+    todayIndex > 0 && todayIndex < periods.length - 1
+      ? {
+          index: todayIndex,
+          label: `Today ${format(slotTotals.slice(todayIndex).reduce((sum, value) => sum + value, 0))}`,
+        }
+      : null;
+  const middle = periods[Math.floor(periods.length / 2)];
+  const last = periods.at(-1);
+
+  // Average labels live in a gutter beside the plot so they never sit on a line.
+  const averageLabels: { provider: UsageProviderKind; value: number; y: number }[] = [];
+  for (const line of lines.toSorted((a, b) => a.averageY - b.averageY)) {
+    if (line.average <= 0) continue;
+    const previous = averageLabels.at(-1);
+    averageLabels.push({
+      provider: line.provider,
+      value: line.average,
+      y: previous === undefined ? line.averageY : Math.max(line.averageY, previous.y + 16),
+    });
+  }
 
   return (
-    <div className="flex flex-col gap-1">
-      <div className="flex gap-2">
-        <div className="relative h-56 w-14 shrink-0">
-          {scale.labeled
-            ? scale.ticks.map((tick) => (
-                <span
-                  key={tick}
-                  className="absolute right-0 -translate-y-1/2 text-3xs text-muted-foreground tabular-nums"
-                  style={{ top: `${(toY(tick) / VIEW_HEIGHT) * 100}%` }}
-                >
-                  {tick === 0 ? "0" : format(tick)}
-                </span>
-              ))
-            : null}
+    <div className="flex flex-col gap-2">
+      <div className="flex gap-3">
+        <div className="min-w-0 flex-1">
+          <UsageChartPlot
+            periods={periods}
+            lines={lines}
+            bars={bars}
+            slotTotals={slotTotals}
+            stepX={stepX}
+            marker={marker}
+            loadingProviders={loadingProviders}
+            format={format}
+            formatTooltipPeriod={formatTooltipPeriod}
+            ariaLabel={`${metric === "tokens" ? "Processed tokens" : "Cost"} per ${slot} by provider`}
+          />
         </div>
-
-        <UsageChartPlot
-          periods={periods}
-          columns={columns}
-          stepX={stepX}
-          providers={providers}
-          loadingProviders={loadingProviders}
-          format={format}
-          formatTooltipPeriod={formatTooltipPeriod}
-          ariaLabel={`${resolution === "hour" ? "Hourly" : "Daily"} ${metric === "tokens" ? "processed tokens" : "cost"} by provider`}
-        >
-          {scale.ticks.map((tick) => {
-            const y = toY(tick);
-            return (
-              <line
-                key={tick}
-                x1={0}
-                x2={VIEW_WIDTH}
-                y1={y}
-                y2={y}
-                stroke="currentColor"
-                strokeWidth={1}
-                className="text-border"
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-          })}
-
-          {paths.map(({ provider, loading, area }) => (
-            <path
-              key={provider}
-              d={area}
-              className={seriesClassName(loading)}
-              fill={PROVIDER_PRESENTATION[provider].color}
-              fillOpacity={0.12}
-            />
+        <div aria-hidden="true" className="relative h-64 w-20 shrink-0">
+          {averageLabels.map((label) => (
+            <span
+              key={label.provider}
+              className="absolute left-0 -translate-y-1/2 whitespace-nowrap text-3xs tabular-nums uppercase"
+              style={{
+                top: percentTop(label.y),
+                color: PROVIDER_PRESENTATION[label.provider].color,
+              }}
+            >
+              Avg {format(label.value)}
+            </span>
           ))}
-          {paths.map(({ provider, loading, line }) => (
-            <path
-              key={provider}
-              d={line}
-              className={seriesClassName(loading)}
-              fill="none"
-              stroke={PROVIDER_PRESENTATION[provider].color}
-              strokeWidth={2}
-              vectorEffect="non-scaling-stroke"
-            />
-          ))}
-        </UsageChartPlot>
+        </div>
       </div>
 
-      <div className="flex justify-between pl-16 text-3xs text-muted-foreground uppercase">
+      <div className="flex justify-between pe-23 text-3xs text-muted-foreground uppercase">
         <span>{periods[0] === undefined ? "" : formatPeriod(periods[0])}</span>
-        <span>
-          {periods[Math.floor(periods.length / 2)] === undefined
-            ? ""
-            : formatPeriod(periods[Math.floor(periods.length / 2)] ?? "")}
-        </span>
-        <span>
-          {periods[periods.length - 1] === undefined
-            ? ""
-            : formatPeriod(periods[periods.length - 1] ?? "")}
-        </span>
+        <span>{middle === undefined ? "" : formatPeriod(middle)}</span>
+        <span>{last === undefined ? "" : formatPeriod(last)}</span>
       </div>
     </div>
   );

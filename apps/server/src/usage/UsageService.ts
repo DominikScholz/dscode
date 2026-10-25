@@ -724,6 +724,9 @@ export const make = Effect.gen(function* () {
       untilDay: input.untilDay,
       resolution: input.resolution ?? "day",
       ...hourlyWindow,
+      ...(input.seriesStepHours === undefined
+        ? {}
+        : { seriesStepHours: input.seriesStepHours, seriesUntilMs: startedAtMs }),
       rates,
       priceOverrides: createOverrideRateTable(settings.usagePriceOverrides),
       modelAliases: resolveModelAliases(settings.usageModelAliases),
@@ -888,6 +891,7 @@ export const make = Effect.gen(function* () {
       sources,
       pricing: pricing(),
       scanDurationMs: Math.max(0, finishedAtMs - startedAtMs),
+      ...(aggregated.series === null ? {} : { series: aggregated.series }),
     } satisfies UsageSummary;
   });
 
@@ -901,6 +905,7 @@ export const make = Effect.gen(function* () {
       input.resolution ?? "day",
       input.sinceTime ?? null,
       input.untilTime ?? null,
+      input.seriesStepHours ?? null,
       settings,
       input.awaitRefresh === true,
     ]);

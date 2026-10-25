@@ -4,47 +4,75 @@ import type {
   UsageCategoryCost,
   UsageDay,
   UsageResolution,
+  UsageSeries,
+  UsageSeriesStepHours,
   UsageTokenTotals,
 } from "@t3tools/contracts";
 
 import { EMPTY_TOTALS, type UsageRecord } from "@t3tools/provider-core/server/usage";
 import { cacheSavingsUsd, priceUsage, type RateTable } from "./usagePricing.ts";
 
+interface LocalTime {
+  readonly day: string;
+  readonly hour: number;
+}
+
 // en-CA gives ISO-ordered parts in the requested zone; Date getters are host-local.
-function makeDayFormatter(timeZone: string): (timestampMs: number) => string {
+function makeLocalTimeFormatter(timeZone: string): (timestampMs: number) => LocalTime {
+  const options = {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    hourCycle: "h23",
+  } as const;
   let format: Intl.DateTimeFormat;
   try {
-    format = new Intl.DateTimeFormat("en-CA", {
-      timeZone,
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+    format = new Intl.DateTimeFormat("en-CA", { ...options, timeZone });
   } catch {
-    format = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "UTC",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    });
+    format = new Intl.DateTimeFormat("en-CA", { ...options, timeZone: "UTC" });
   }
+  const read = (timestampMs: number): LocalTime => {
+    const parts = format.formatToParts(new Date(timestampMs));
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((entry) => entry.type === type)?.value ?? "";
+    return {
+      day: `${part("year")}-${part("month")}-${part("day")}`,
+      hour: Number(part("hour")) % 24,
+    };
+  };
   // Cache quarter-hour slots to avoid per-record Intl calls; fixed-offset midnight can split slots and needs exact formatting.
-  const days = new Map<number, string | null>();
+  const slots = new Map<number, LocalTime | null>();
   return (timestampMs) => {
     const slot = Math.floor(timestampMs / QUARTER_HOUR_MS);
-    let day = days.get(slot);
-    if (day === undefined) {
-      const first = format.format(new Date(slot * QUARTER_HOUR_MS));
-      const last = format.format(new Date((slot + 1) * QUARTER_HOUR_MS - 1));
-      day = first === last ? first : null;
-      days.set(slot, day);
+    let local = slots.get(slot);
+    if (local === undefined) {
+      const first = read(slot * QUARTER_HOUR_MS);
+      const last = read((slot + 1) * QUARTER_HOUR_MS - 1);
+      local = first.day === last.day && first.hour === last.hour ? first : null;
+      slots.set(slot, local);
     }
-    return day ?? format.format(new Date(timestampMs));
+    return local ?? read(timestampMs);
   };
 }
 
 const QUARTER_HOUR_MS = 15 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+/** 100 days of hourly slots; longer series are omitted and charts fall back to days. */
+const MAX_SERIES_SLOTS = 2400;
+
+interface MutableSeriesRow {
+  readonly totalTokens: number[];
+  readonly costUsd: number[];
+}
+
+interface SeriesState {
+  readonly stepHours: UsageSeriesStepHours;
+  readonly sinceDayMs: number;
+  readonly length: number;
+  readonly rows: Map<string, MutableSeriesRow>;
+}
 
 interface MutableBucket {
   totals: { -readonly [K in keyof UsageTokenTotals]: number };
@@ -70,6 +98,10 @@ export interface AggregateOptions {
   readonly resolution?: UsageResolution;
   readonly sinceTimeMs?: number;
   readonly untilTimeMs?: number;
+  /** Day resolution only. */
+  readonly seriesStepHours?: UsageSeriesStepHours;
+  /** Series end at the slot containing this instant when it falls inside the window. */
+  readonly seriesUntilMs?: number;
 }
 
 export function resolveModelAliases(
@@ -90,6 +122,7 @@ export function resolveModelAliases(
 
 export interface AggregateResult {
   readonly buckets: readonly UsageBucket[];
+  readonly series: UsageSeries | null;
   readonly duplicatesDropped: number;
   readonly outOfWindow: number;
 }
@@ -98,8 +131,11 @@ export interface AggregateResult {
 export class UsageAggregator {
   readonly #buckets = new Map<string, MutableBucket>();
   readonly #seen = new Set<string>();
-  readonly #toDay: (timestampMs: number) => string;
+  readonly #toLocal: (timestampMs: number) => LocalTime;
   readonly #hourlyWindow: { readonly sinceTimeMs: number; readonly untilTimeMs: number } | null;
+  readonly #series: SeriesState | null;
+  #lastSeriesRow: { readonly key: string; readonly row: MutableSeriesRow } | null = null;
+  readonly #seriesDayIndex = new Map<string, number>();
   readonly #options: AggregateOptions;
   #lastBucket: {
     readonly day: string;
@@ -114,7 +150,8 @@ export class UsageAggregator {
 
   constructor(options: AggregateOptions) {
     this.#options = options;
-    this.#toDay = makeDayFormatter(options.timeZone);
+    this.#toLocal = makeLocalTimeFormatter(options.timeZone);
+    this.#series = this.#makeSeries(options);
     if (options.resolution === "hour") {
       if (options.sinceTimeMs === undefined || options.untilTimeMs === undefined) {
         throw new Error("Hourly usage aggregation requires exact time bounds");
@@ -147,7 +184,8 @@ export class UsageAggregator {
       return false;
     }
 
-    const day = this.#toDay(record.timestampMs);
+    const local = this.#toLocal(record.timestampMs);
+    const day = local.day;
     if (
       this.#hourlyWindow === null &&
       (day < this.#options.sinceDay || day > this.#options.untilDay)
@@ -196,7 +234,69 @@ export class UsageAggregator {
     if (priced.costSource === "unpriced") bucket.unpricedRecords += 1;
     if (priced.costSource === "providerReported") bucket.providerReportedRecords += 1;
     if (record.sessionId.length > 0) bucket.sessions.add(record.sessionId);
+
+    const series = this.#series;
+    if (series !== null) {
+      const index = this.#seriesIndex(series, local);
+      if (index >= 0 && index < series.length) {
+        const row = this.#seriesRowFor(series, record.provider, record.model, sourcePath ?? "");
+        // reasoningTokens is a subset of outputTokens and must not be added again.
+        row.totalTokens[index] =
+          (row.totalTokens[index] ?? 0) +
+          record.totals.uncachedInputTokens +
+          record.totals.cachedInputTokens +
+          record.totals.cacheCreationTokens +
+          record.totals.outputTokens;
+        row.costUsd[index] = (row.costUsd[index] ?? 0) + priced.costUsd;
+      }
+    }
     return true;
+  }
+
+  #makeSeries(options: AggregateOptions): SeriesState | null {
+    const stepHours = options.seriesStepHours;
+    if (stepHours === undefined || options.resolution === "hour") return null;
+    const sinceDayMs = Date.parse(`${options.sinceDay}T00:00:00Z`);
+    const untilDayMs = Date.parse(`${options.untilDay}T00:00:00Z`);
+    if (Number.isNaN(sinceDayMs) || Number.isNaN(untilDayMs) || untilDayMs < sinceDayMs) {
+      return null;
+    }
+    const series = { stepHours, sinceDayMs, length: 0, rows: new Map<string, MutableSeriesRow>() };
+    let length = (Math.round((untilDayMs - sinceDayMs) / DAY_MS) + 1) * (24 / stepHours);
+    if (options.seriesUntilMs !== undefined) {
+      const current = this.#seriesIndex(series, this.#toLocal(options.seriesUntilMs));
+      if (current >= 0 && current < length) length = current + 1;
+    }
+    return length <= MAX_SERIES_SLOTS ? { ...series, length } : null;
+  }
+
+  #seriesIndex(series: Pick<SeriesState, "stepHours" | "sinceDayMs">, local: LocalTime): number {
+    let dayIndex = this.#seriesDayIndex.get(local.day);
+    if (dayIndex === undefined) {
+      dayIndex = Math.round((Date.parse(`${local.day}T00:00:00Z`) - series.sinceDayMs) / DAY_MS);
+      this.#seriesDayIndex.set(local.day, dayIndex);
+    }
+    return dayIndex * (24 / series.stepHours) + Math.floor(local.hour / series.stepHours);
+  }
+
+  #seriesRowFor(
+    series: SeriesState,
+    provider: string,
+    model: string,
+    source: string,
+  ): MutableSeriesRow {
+    const key = `${provider}\u0000${model}\u0000${source}`;
+    if (this.#lastSeriesRow?.key === key) return this.#lastSeriesRow.row;
+    let row = series.rows.get(key);
+    if (row === undefined) {
+      row = {
+        totalTokens: Array.from({ length: series.length }, () => 0),
+        costUsd: Array.from({ length: series.length }, () => 0),
+      };
+      series.rows.set(key, row);
+    }
+    this.#lastSeriesRow = { key, row };
+    return row;
   }
 
   // Aliases use the target's rate, replacing provider-specific rateModel.
@@ -298,9 +398,27 @@ export class UsageAggregator {
 
     return {
       buckets,
+      series: this.#finishSeries(),
       duplicatesDropped: this.#duplicatesDropped,
       outOfWindow: this.#outOfWindow,
     };
+  }
+
+  #finishSeries(): UsageSeries | null {
+    const series = this.#series;
+    if (series === null) return null;
+    const rows = [...series.rows].map(([key, row]) => {
+      const [provider = "", model = "", sourcePath = ""] = key.split("\u0000");
+      return {
+        provider: provider as UsageBucket["provider"],
+        model,
+        ...(sourcePath === "" ? {} : { sourcePath }),
+        totalTokens: row.totalTokens,
+        costUsd: row.costUsd.map(roundUsd),
+      };
+    });
+    rows.sort((a, b) => a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model));
+    return { stepHours: series.stepHours, rows };
   }
 }
 

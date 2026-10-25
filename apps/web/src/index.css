@@ -1723,6 +1723,63 @@ html[data-theme-id] [data-app-sidebar] {
   }
 }
 
+/* A wash of --glow-color from a surface's top-left corner, over the panel sheen. */
+@utility surface-glow {
+  background-image:
+    radial-gradient(
+      110% 150% at 0% 0%,
+      color-mix(in srgb, var(--glow-color, var(--primary)) 13%, transparent),
+      transparent 62%
+    ),
+    var(--panel-sheen);
+}
+
+/* A blue-grey wash in the UI's tint over a whole window, settling into the canvas. */
+@utility window-glow {
+  --window-glow: color-mix(in oklab, var(--primary) 55%, var(--surface-tint));
+  background-image:
+    radial-gradient(
+      75% 60% at 0% 0%,
+      color-mix(in srgb, var(--window-glow) 6%, transparent),
+      transparent 75%
+    ),
+    radial-gradient(
+      55% 45% at 100% 0%,
+      color-mix(in srgb, var(--window-glow) 2%, transparent),
+      transparent 70%
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--surface-tint) 3%, transparent),
+      transparent 60%
+    );
+}
+
+/* A chart point's soft halo, in the element's text color. */
+@utility chart-glow {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 14px 2px color-mix(in srgb, currentColor 45%, transparent);
+}
+
+/* The faint dot field behind charts, fading out toward the plot's edges. */
+@utility chart-dot-grid {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 16%, transparent) 0.7px,
+    transparent 1px
+  );
+  background-size: 10px 10px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
+  mask-composite: intersect;
+}
+
 /* A 1px ring painted with --panel-edge-gradient, for an absolutely positioned
    layer that fills its surface (the mask cuts out everything inside 1px). */
 @utility panel-edge-ring {

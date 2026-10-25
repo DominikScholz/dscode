@@ -960,6 +960,16 @@ describe("UsageService", () => {
             hourly.reduce((sum, b) => sum + b.records, 0),
             3,
           );
+          assert.isUndefined(first.series);
+          const withSeries = yield* service.readSummary({ ...window, seriesStepHours: 1 });
+          const museRows = withSeries.series?.rows.filter((row) => row.provider === "muse") ?? [];
+          assert.strictEqual(
+            museRows.reduce(
+              (sum, row) => sum + row.totalTokens.reduce((rowSum, value) => rowSum + value, 0),
+              0,
+            ),
+            360,
+          );
           const appended = encodeUnknownJsonString(entry("appended", "child"));
           const file = NodePath.join(child, "session.jsonl");
           yield* Effect.promise(() => NodeFSP.appendFile(file, appended.slice(0, -10)));

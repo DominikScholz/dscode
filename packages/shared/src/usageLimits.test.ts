@@ -17,6 +17,8 @@ import {
   collectLimitNotices,
   collectLimitPools,
   elapsedShare,
+  limitProjection,
+  limitUsageCurve,
   paceOf,
   paceRemainingPercent,
   usesChatGptSharing,
@@ -57,6 +59,60 @@ describe("pace", () => {
     expect(paceOf(window, now)).toBe("under");
     expect(paceOf({ ...window, usedPercent: 62 }, now)).toBe("on");
     expect(paceOf({ ...window, usedPercent: 80 }, now)).toBe("ahead");
+  });
+
+  it("projects the average pace to the reset, with the run-out time and the even pace", () => {
+    const steady = limitProjection(window, now);
+    const fast = limitProjection({ ...window, usedPercent: 90 }, now);
+
+    // Three hours in at 40%: about 67% by the reset, with 30% an hour left to spend.
+    expect(steady?.projectedPercent).toBeCloseTo(66.67, 2);
+    expect(steady?.runsOutAt).toBeNull();
+    // That pace empties the quota 4.5 hours from now, 2.5 hours after the reset.
+    expect(steady?.exhaustsAt).toBe(now + 4.5 * 3_600_000);
+    expect(limitProjection({ ...window, usedPercent: 0 }, now)?.exhaustsAt).toBeNull();
+    expect(steady?.evenPercentPerHour).toBe(30);
+    // At 30% an hour the last 10% lasts 20 minutes.
+    expect(fast?.runsOutAt).toBe(now + 20 * 60_000);
+    expect(limitProjection({ ...window, usedPercent: 100 }, now)?.runsOutAt).toBe(now);
+    expect(limitProjection({ ...window, resetsAt: undefined }, now)).toBeNull();
+  });
+
+  it("scales local usage onto the reported percentage, flat while idle and partial at the edges", () => {
+    const hour = 3_600_000;
+    const start = Date.parse("2026-09-03T00:00:00.000Z");
+    const curve = limitUsageCurve({
+      startMs: start + 0.5 * hour,
+      nowMs: start + 4.25 * hour,
+      usedPercent: 40,
+      slotMs: hour,
+      slots: [
+        { startMs: start, value: 2 },
+        { startMs: start + 2 * hour, value: 1 },
+        { startMs: start + 4 * hour, value: 2 },
+      ],
+    });
+
+    // Half the first slot predates the window; the last slot only runs to now.
+    expect(curve?.map(({ atMs, percent }) => [(atMs - start) / hour, percent])).toEqual([
+      [0.5, 0],
+      [0.5, 0],
+      [1, 10],
+      [2, 10],
+      [3, 20],
+      [4, 20],
+      [4.25, 40],
+      [4.25, 40],
+    ]);
+    expect(
+      limitUsageCurve({
+        startMs: start,
+        nowMs: start + hour,
+        usedPercent: 40,
+        slotMs: hour,
+        slots: [],
+      }),
+    ).toBeNull();
   });
 });
 

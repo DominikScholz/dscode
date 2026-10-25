@@ -1,5 +1,10 @@
 // @effect-diagnostics globalDate:off -- Usage windows are calendar days in the viewer's zone, derived from wall-clock "now" via Intl.
-import { UsageDay, type UsageResolution, type UsageSummaryInput } from "@t3tools/contracts";
+import {
+  UsageDay,
+  type UsageResolution,
+  type UsageSeriesStepHours,
+  type UsageSummaryInput,
+} from "@t3tools/contracts";
 
 import type { UsageContractMismatch } from "./usageMerge.ts";
 
@@ -161,7 +166,7 @@ export function formatHourShort(hourStart: string, timeZone?: string, hour12 = t
   return formatHour(zonedHourFormat, instant, hour12);
 }
 
-export function formatDateTimeShort(instant: string, timeZone?: string, hour12 = true): string {
+function formatDateTimeShort(instant: string, timeZone?: string, hour12 = true): string {
   const date = new Date(instant);
   if (Number.isNaN(date.getTime())) return instant;
   const dateHourFormat = dateTimeFormatter("en-US", {
@@ -205,6 +210,7 @@ export function makeWindow(
   days: number,
   now = new Date(),
   resolution: UsageResolution = "day",
+  seriesStepHours?: UsageSeriesStepHours,
 ): UsageSummaryInput {
   let timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   let format: Intl.DateTimeFormat;
@@ -249,5 +255,55 @@ export function makeWindow(
     untilDay: UsageDay.make(untilDay),
     timeZone,
     resolution,
+    ...(seriesStepHours === undefined ? {} : { seriesStepHours }),
   };
+}
+
+function zoneOffsetMs(instantMs: number, timeZone: string): number {
+  const parts = dateTimeFormatter("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(instantMs));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    Number(parts.find((entry) => entry.type === type)?.value ?? 0);
+  const wallAsUtc = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour") % 24,
+    part("minute"),
+    part("second"),
+  );
+  return wallAsUtc - Math.floor(instantMs / 1000) * 1000;
+}
+
+/** The instant a local wall-clock hour starts; a skipped spring-forward hour maps to the hour after. */
+export function zonedHourStartMs(day: string, hour: number, timeZone: string): number {
+  const [year = 1970, month = 1, dayOfMonth = 1] = day.split("-").map(Number);
+  const wallAsUtc = Date.UTC(year, month - 1, dayOfMonth, hour);
+  const firstGuess = wallAsUtc - zoneOffsetMs(wallAsUtc, timeZone);
+  return wallAsUtc - zoneOffsetMs(firstGuess, timeZone);
+}
+
+function formatWallHour(hour: number, hour12: boolean): string {
+  if (!hour12) return `${String(hour).padStart(2, "0")}:00`;
+  return `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+/** Series slots are wall-clock hours already, so no zone conversion applies. */
+export function formatSeriesSlot(
+  day: string,
+  hour: number,
+  stepHours: number,
+  hour12 = true,
+): string {
+  const start = formatWallHour(hour, hour12);
+  if (stepHours === 1) return `${formatDayShort(day)}, ${start}`;
+  return `${formatDayShort(day)}, ${start}–${formatWallHour((hour + stepHours) % 24, hour12)}`;
 }
