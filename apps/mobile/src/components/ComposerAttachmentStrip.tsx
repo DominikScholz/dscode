@@ -95,12 +95,7 @@ export function ComposerAttachmentThumbnail(props: ComposerAttachmentThumbnailPr
 
 const PREVIEW_CACHE_DIRECTORY = "t3-composer-previews";
 
-/**
- * Fabric re-parses an image source URL on every layout pass of the node, and a
- * multi-megabyte data URL makes each Fabric commit slow enough that concurrent
- * UI-thread commits (the question card's coverage animation) win the race every
- * time until the renderer aborts.
- */
+/** Fabric re-parses URLs each layout; large data URLs can stall and abort commits. */
 const INLINE_PREVIEW_FALLBACK_MAX_CHARS = 256_000;
 
 async function materializeDataUrlPreview(id: string, dataUrl: string): Promise<string | null> {
@@ -347,6 +342,8 @@ export function ComposerAttachmentStrip(props: ComposerAttachmentStripProps) {
                 onPressDocument={props.onPressDocument}
               />
               <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Remove ${attachment.name}`}
                 className="absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55"
                 style={{
                   top: removeButtonPlacement === "gutter" ? 0 : 4,

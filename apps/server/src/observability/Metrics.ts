@@ -63,6 +63,18 @@ export const serverEventLoopDelayMax = Metric.gauge("t3_server_event_loop_delay_
   attributes: { unit: "ms" },
 });
 
+export const runsTotal = Metric.counter("t3_runs_total", {
+  description: "Runs that finished, by outcome. A later rollback does not count again.",
+});
+
+export const runDuration = Metric.timer("t3_run_duration", {
+  description: "Wall time of a run, from when it started to its terminal status.",
+});
+
+export const runQueueWait = Metric.timer("t3_run_queue_wait", {
+  description: "Time a run waited between being requested and starting.",
+});
+
 export const gitCommandsTotal = Metric.counter("t3_git_commands_total", {
   description: "Total git commands executed by the server runtime.",
 });
@@ -159,8 +171,7 @@ const recordMetrics =
     }
   });
 
-// Durations come from the monotonic clock, so wall-clock corrections cannot skew them, and
-// metrics are recorded in an exit finalizer, so interrupted work is counted as "interrupt".
+// Monotonic timing ignores clock corrections; exit finalizers count interruptions.
 const withMetricsImpl = <A, E, R>(
   effect: Effect.Effect<A, E, R>,
   options: WithMetricsOptions,

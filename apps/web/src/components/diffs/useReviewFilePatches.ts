@@ -111,6 +111,8 @@ export function useReviewFilePatches({
           hunks: [],
           additionLines: [],
           deletionLines: [],
+          additionCharacterCount: 0,
+          deletionCharacterCount: 0,
           splitLineCount: 0,
           unifiedLineCount: 0,
           isPartial: true,
@@ -159,7 +161,6 @@ export function useReviewFilePatches({
   };
 }
 
-// The refresh effect keys on the identity of these queries.
 function reviewFileQueries({
   environmentId,
   cwd,
@@ -213,7 +214,6 @@ function sortedReviewFiles(source: ReviewDiffPreviewSource | null) {
 
 type ReviewPatchTarget = Parameters<typeof reviewEnvironment.diffFilePatch>[0];
 
-// Derived atoms parse each query result once, even when another file finishes loading.
 const parsedPatchAtom = Atom.family((key: string) => {
   const [theme, target] = JSON.parse(key) as ["light" | "dark", ReviewPatchTarget];
   return Atom.map(reviewEnvironment.diffFilePatch(target), (result) =>
@@ -233,7 +233,6 @@ const parsedPatchAtom = Atom.family((key: string) => {
   );
 });
 
-// Keyed by theme and query targets so every render with the same files reads the same atom.
 const reviewPatchesAtom = Atom.family((key: string) => {
   const [theme, entries] = JSON.parse(key) as [
     "light" | "dark",

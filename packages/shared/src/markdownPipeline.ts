@@ -1,3 +1,4 @@
+import type { Paragraph, PhrasingContent, Root, RootContent } from "mdast";
 import type { Processor } from "unified";
 import { isWindowsAbsolutePath } from "./path.ts";
 import type { PluggableList } from "unified";
@@ -66,8 +67,7 @@ function rehypePreserveBareAnchorPlaceholders() {
     let rawTextTag: string | undefined;
     const visit = (node: MarkdownImageHastNode) => {
       if (node.type === "raw" && typeof node.value === "string") {
-        // Raw blocks can contain several tags. Consume whole tags, quoted attributes,
-        // and comments so text resembling a closing anchor cannot pair a placeholder.
+        // Scan whole tags, attributes, and comments so embedded closing-anchor text cannot match a placeholder.
         const tags = /<!--[\s\S]*?(?:-->|$)|<\/?[A-Za-z](?:[^"'<>]|"[^"]*"|'[^']*')*>/g;
         let offset = 0;
         while (rawTextTag !== "plaintext") {
@@ -167,6 +167,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS: PluggableList = [
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
+  remarkBreakAroundImageLines,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
 ];
@@ -177,6 +178,7 @@ export const CHAT_MARKDOWN_REMARK_PLUGINS_WITH_BREAKS: PluggableList = [
   remarkGithubAlerts,
   remarkNormalizeListItemIndentation,
   remarkCodexDirectives,
+  remarkBreakAroundImageLines,
   remarkBreaks,
   remarkPreserveCodeMeta,
   remarkNormalizeLinksAndTagInlineCode,
@@ -188,6 +190,61 @@ export const CHAT_MARKDOWN_REHYPE_PLUGINS: PluggableList = [
   rehypePreserveImageSourceMeta,
   [rehypeSanitize, CHAT_MARKDOWN_SANITIZE_SCHEMA],
 ];
+
+const isImageNode = (node: PhrasingContent | undefined): boolean =>
+  node?.type === "image" ||
+  node?.type === "imageReference" ||
+  ((node?.type === "link" || node?.type === "linkReference") &&
+    node.children.length === 1 &&
+    isImageNode(node.children[0]));
+const endsLine = (node: PhrasingContent | undefined) =>
+  node === undefined ||
+  node.type === "break" ||
+  (node.type === "text" && /\n[ \t]*$/.test(node.value));
+const startsLine = (node: PhrasingContent | undefined) =>
+  node === undefined ||
+  node.type === "break" ||
+  (node.type === "text" && /^[ \t]*\n/.test(node.value));
+
+function breakLinesAroundImages(paragraph: Paragraph) {
+  const children = paragraph.children;
+  const ownsLine = (index: number) =>
+    isImageNode(children[index]) &&
+    endsLine(children[index - 1]) &&
+    startsLine(children[index + 1]);
+  paragraph.children = children.flatMap((child, index): PhrasingContent[] => {
+    if (child.type !== "text") return [child];
+    const afterImage = ownsLine(index - 1);
+    const beforeImage = ownsLine(index + 1);
+    if (!afterImage && !beforeImage) return [child];
+    const parts: PhrasingContent[] = [];
+    let value = child.value;
+    if (afterImage) {
+      value = value.replace(/^[ \t]*\n/, "");
+      parts.push({ type: "break" });
+    }
+    const breakAfter = beforeImage && /\n[ \t]*$/.test(value);
+    if (breakAfter) value = value.replace(/[ \t]*\n[ \t]*$/, "");
+    if (value) parts.push({ type: "text", value });
+    if (breakAfter) parts.push({ type: "break" });
+    return parts;
+  });
+}
+
+/**
+ * Agents label screenshots with a line like `**Palette**` right above the image. CommonMark
+ * joins those lines into one paragraph, which puts the image inline beside its label. An
+ * image alone on its source line keeps that line; prose and inline badges still wrap.
+ */
+function remarkBreakAroundImageLines() {
+  return (tree: Root) => {
+    const visit = (node: Root | RootContent) => {
+      if (node.type === "paragraph") breakLinesAroundImages(node);
+      else if ("children" in node) node.children.forEach(visit);
+    };
+    visit(tree);
+  };
+}
 
 type MarkdownAstNode = {
   type?: string;
@@ -260,7 +317,6 @@ function keepWindowsPathDestination(this: DestinationCompileContext, token: unkn
     node.url = isWindowsAbsolutePath(authored) && !authored.includes("&") ? authored : decoded;
 }
 
-// A drive path that has not reached whitespace yet: `C:`, `C:\Users\me`, `C:/work`.
 const UNFINISHED_DRIVE_PATH = /(?:^|\W)[A-Za-z]:(?:[\\/]\S*)?$/;
 
 interface EscapeCompileContext {
@@ -278,11 +334,8 @@ function keepWindowsPathEscape(this: EscapeCompileContext) {
 }
 
 /**
- * CommonMark reads the `\.` in `C:\me\.t3\shot.png` as an escape. Every backslash in a
- * Windows path is a separator, so link, image, and definition destinations that are
- * Windows paths keep the text as written, and so do escapes inside drive paths in prose.
- * Prose paths end at whitespace: past that, nothing tells a path from a sentence, and
- * `C:\x and \*this\*` must still read `*this*`.
+ * CommonMark treats backslashes as escapes; preserve them as separators in Windows destinations
+ * and drive-path prose. Prose paths end at whitespace so later escapes still work.
  */
 function remarkKeepWindowsPaths(this: Processor) {
   const data = this.data();

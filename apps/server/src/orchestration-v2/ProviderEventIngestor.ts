@@ -9,6 +9,8 @@ import {
   type OrchestrationV2Subagent,
   type OrchestrationV2ThreadProjection,
   type ModelSelection,
+  type OrchestrationV2Actor,
+  type OrchestrationV2CreationSource,
   type RuntimeMode,
   type ProviderInteractionMode,
   ProviderInstanceId,
@@ -25,6 +27,7 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
+import * as SqlError from "effect/sql/SqlError";
 
 import { AgentScope } from "@t3tools/shared/AgentScope";
 import { isTemporaryWorktreeBranch } from "@t3tools/shared/git";
@@ -67,6 +70,14 @@ export class ProviderEventPublishError extends Schema.TaggedError<ProviderEventP
   }
 }
 
+// A write that outlasts busy_timeout at BEGIN IMMEDIATE fails before anything
+// commits, and the sink publishes only after a commit, so repeating the whole
+// write is safe. Failing it would fail the run over a brief lock.
+const isLockTimeout = (error: EventSink.EventSinkV2Error) =>
+  SqlError.isSqlError(error.cause) && error.cause.reason._tag === "LockTimeoutError";
+const retryLockTimeout = <A, R>(write: Effect.Effect<A, EventSink.EventSinkV2Error, R>) =>
+  Effect.retry(write, { while: isLockTimeout, times: 2 });
+
 export const ProviderEventIngestorV2Error = Schema.Union([
   ProviderEventNormalizeError,
   ProviderEventPublishError,
@@ -77,6 +88,19 @@ export interface ProviderTurnAnalyticsContext {
   readonly modelSelection: ModelSelection;
   readonly runtimeMode?: RuntimeMode;
   readonly interactionMode?: ProviderInteractionMode;
+  readonly origin?: ProviderTurnOrigin;
+}
+
+/**
+ * Where the run's starting message came from. Most turns start without a
+ * person (provider continuations, agent sends, delegated subagents), so
+ * reports need this to tell user turns apart.
+ */
+export interface ProviderTurnOrigin {
+  readonly createdBy: OrchestrationV2Actor;
+  readonly creationSource: OrchestrationV2CreationSource;
+  readonly scheduled: boolean;
+  readonly subagent: boolean;
 }
 
 export class ProviderTurnAnalytics extends Context.Reference<{
@@ -126,6 +150,7 @@ function providerTurnAnalyticsProperties(input: {
     ...(effort ? { effort } : {}),
     ...(input.context?.runtimeMode ? { runtimeMode: input.context.runtimeMode } : {}),
     ...(input.context?.interactionMode ? { interactionMode: input.context.interactionMode } : {}),
+    ...input.context?.origin,
     ...(input.providerTurn.startedAt && input.providerTurn.completedAt
       ? {
           durationMs: Math.max(
@@ -390,12 +415,7 @@ export const layer: Layer.Layer<
       },
     );
 
-    /**
-     * A native subagent's thread starts on the parent's model when the provider
-     * names the real one later (a Claude agent file's model arrives with the
-     * subagent's first reply). Thread commands rewrite the whole thread row
-     * under the thread's lock, so this read and write take it too.
-     */
+    /** Providers may reveal native subagent models late; lock full-row updates against concurrent thread commands. */
     const syncSubagentThreadModel = Effect.fn("ProviderEventIngestor.syncSubagentThreadModel")(
       function* (input: ProviderEventIngestInput, subagent: OrchestrationV2Subagent) {
         const { childThreadId, model } = subagent;
@@ -434,18 +454,13 @@ export const layer: Layer.Layer<
               },
               occurredAt: now,
             });
-            return yield* eventSink.write({ events: [event] });
+            return yield* eventSink.write({ events: [event] }).pipe(retryLockTimeout);
           }),
         );
       },
     );
 
-    /**
-     * Retire the runs that fell off its active branch with the same run,
-     * root-node, and checkpoint updates CheckpointRollbackService writes for a
-     * T3 revert. The run reporting the rewind performed it and stays, so it
-     * keeps lastRunOrdinal.
-     */
+    /** Retire rewound runs like CheckpointRollbackService; retain the reporting run and its lastRunOrdinal. */
     const rollBackRewoundRuns = Effect.fn("ProviderEventIngestor.rollBackRewoundRuns")(function* (
       input: ProviderEventIngestInput,
       rewind: {
@@ -751,7 +766,7 @@ export const layer: Layer.Layer<
                   ...input.writeIfProviderThreadOwner,
                   events,
                 })
-                .pipe(Effect.mapError(mapWriteError));
+                .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
               return ownerResult.storedEvents;
             }
             if (input.writeIfRunCurrent === undefined) {
@@ -761,7 +776,7 @@ export const layer: Layer.Layer<
                   ...(input.commandId === undefined ? {} : { commandId: input.commandId }),
                   events,
                 })
-                .pipe(Effect.mapError(mapWriteError));
+                .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
             }
             const result = yield* eventSink
               .writeIfRunCurrent({
@@ -771,7 +786,7 @@ export const layer: Layer.Layer<
                 ...input.writeIfRunCurrent,
                 events,
               })
-              .pipe(Effect.mapError(mapWriteError));
+              .pipe(retryLockTimeout, Effect.mapError(mapWriteError));
             return result.storedEvents;
           },
           (effect, input) =>

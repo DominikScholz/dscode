@@ -1,3 +1,4 @@
+import { sourceControlClients } from "@t3tools/client-runtime/source-control-clients";
 import * as Dialog from "../components/ui/Dialog";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -6,6 +7,7 @@ import {
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
 import type { AtomCommandResult } from "@t3tools/client-runtime/state/runtime";
+import { threadFamilyRead, type ThreadFamilyRead } from "@t3tools/client-runtime/state/threads";
 import { deriveThreadTitleSeed } from "@t3tools/client-runtime/operations";
 import {
   AuthOrchestrationOperateScope,
@@ -65,7 +67,7 @@ import {
   type ThreadOutboxCommandStage,
   type ThreadOutboxFailureAction,
 } from "./thread-outbox-model";
-import { environmentThreadShells, threadEnvironment } from "./threads";
+import { environmentThreadShells, threadEnvironment, threadFamilies } from "./threads";
 import {
   appendComposerDraftAttachments,
   composerDraftsAtom,
@@ -263,9 +265,7 @@ export async function completeQueuedMessageDelivery(
         error,
       });
     });
-    // The editor may have taken the entry while startTurn was in flight; its
-    // unsaved edits have not bumped the revision yet, so the CAS alone would
-    // let removal win and the editor would lose them once it saves.
+    // Editors can acquire entries during startTurn without bumping revisions; CAS alone would lose unsaved edits.
     if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[queuedMessage.messageId]) {
       return "edited";
     }
@@ -339,10 +339,7 @@ export async function recoverEditedCreationAfterDelivery(
   }
   const draftKey = scopedThreadKey(kept.environmentId, kept.threadId);
   try {
-    // Merge before removing: the draft's reference keeps the removal sweep
-    // from deleting the attachment files. allowOverflow mirrors the
-    // send-failure restore; the send path refuses over-cap drafts, so the
-    // state stays recoverable.
+    // Merge before removal to retain file ownership; allow overflow and let send guards require trimming.
     await mergeComposerDraftContent(draftKey, {
       text: kept.text,
       context: kept.context,
@@ -367,8 +364,7 @@ export async function recoverEditedCreationAfterDelivery(
       ...(kept.runtimeMode !== undefined ? { runtimeMode: kept.runtimeMode } : {}),
       ...(kept.interactionMode !== undefined ? { interactionMode: kept.interactionMode } : {}),
     });
-    // The append only schedules a debounced write; the queue entry is the
-    // only durable copy until the draft lands, so flush before removing.
+    // Flush before removal: append only schedules persistence, leaving the queue as the sole durable copy.
     await flushComposerDrafts();
   } catch (error) {
     console.warn("[thread-outbox] could not hand an edited pending task to the composer", error);
@@ -439,12 +435,7 @@ export async function restoreRejectedQueuedMessage(
         attachments: queuedMessage.attachments,
       });
     } finally {
-      // Snapshots for the rollbacks below: undoComposerDraftMerge restores
-      // the original draft only while it is untouched, and otherwise takes
-      // out just what this recovery inserted so edits typed during the awaits
-      // survive. Captured in a finally because mergeComposerDraftContent
-      // publishes before its persistence await: even its failure leaves the
-      // merged content in the draft.
+      // Capture rollback in finally because merge publishes even on persistence failure; undo must preserve concurrent edits.
       mergedDraft = getComposerDraftSnapshot(draftKey);
       rollback = { snapshot: originalDraft, merged: mergedDraft };
     }
@@ -494,8 +485,7 @@ export async function restoreRejectedQueuedMessage(
       await undoComposerDraftMerge(draftKey, originalDraft, restoredDraft);
       return "deferred";
     }
-    // The queued message is gone; from here the draft owns the content and
-    // must never be rolled back.
+    // After queue removal, the draft owns content and must never roll back.
     rollback = null;
     if (queuedMessage.creation) {
       withdrawError();
@@ -524,10 +514,7 @@ export async function restoreRejectedQueuedMessage(
   }
 }
 
-/**
- * The key derives from the message id so a retry after a mid-recovery failure lands on the same
- * draft instead of minting another.
- */
+/** Derive keys from message ids so failed recovery retries reuse the same draft. */
 function recoveryDraftKey(queuedMessage: QueuedThreadMessage): string {
   return queuedMessage.creation
     ? restoredNewTaskDraftKey(queuedMessage.messageId)
@@ -613,6 +600,16 @@ export function useThreadOutboxDrain(): void {
   const retryNotBeforeRef = useRef(new Map<MessageId, number>());
   const retryTimersRef = useRef(new Map<MessageId, ReturnType<typeof setTimeout>>());
   const acknowledgedExistingThreadMessageIdsRef = useRef(new Set<MessageId>());
+  // Targets the shell may have left out hold their thread family until they leave the queue, so
+  // the row stays readable through dispatch.
+  const familyMountsRef = useRef(new Map<MessageId, () => void>());
+  useEffect(
+    () => () => {
+      for (const release of familyMountsRef.current.values()) release();
+      familyMountsRef.current.clear();
+    },
+    [],
+  );
   const blockedRecoverySubscriptionsRef = useRef(
     new Map<
       MessageId,
@@ -997,11 +994,16 @@ export function useThreadOutboxDrain(): void {
         if (failure?.action === "restore")
           return restoreQueuedMessage(persistedMessage, failure.message);
         if (!AsyncResult.isSuccess(checkout)) return false;
-        if (!checkout.value.worktreePath || !checkout.value.isOnPullRequestHead)
+        if (!checkout.value.worktreePath || !checkout.value.isOnPullRequestHead) {
+          const { shortLabel } = (
+            sourceControlClients.findByChangeRequestUrl(creation.pullRequestReference) ??
+            sourceControlClients.get(undefined)
+          ).changeRequest;
           return restoreQueuedMessage(
             persistedMessage,
-            "The PR worktree has local changes and could not update to the PR head. Resolve them before trying again.",
+            `The ${shortLabel} worktree has local changes and could not update to the ${shortLabel} head. Resolve them before trying again.`,
           );
+        }
         workspace = {
           ...creation,
           workspaceMode: "local",
@@ -1061,8 +1063,7 @@ export function useThreadOutboxDrain(): void {
     [makeDeliveryHelpers, preparePullRequest, restoreQueuedMessage, startTurn],
   );
 
-  // Subscribed, not read once: the shell often lands before the outcome is recorded, and a
-  // non-reactive read would leave that entry uncollected because `threads` never changes again.
+  // Subscribe to outcomes; they may arrive after the last shell update, leaving read-once entries uncollected.
   useEffect(() => {
     for (const [threadKey, outcome] of Object.entries(creationOutcomes)) {
       if (
@@ -1094,6 +1095,12 @@ export function useThreadOutboxDrain(): void {
     for (const messageId of acknowledgedExistingThreadMessageIdsRef.current) {
       if (!queuedMessageIds.has(messageId)) {
         acknowledgedExistingThreadMessageIdsRef.current.delete(messageId);
+      }
+    }
+    for (const [messageId, release] of familyMountsRef.current) {
+      if (!queuedMessageIds.has(messageId)) {
+        release();
+        familyMountsRef.current.delete(messageId);
       }
     }
 
@@ -1147,7 +1154,7 @@ export function useThreadOutboxDrain(): void {
         continue;
       }
 
-      const thread = findThread(threads, nextQueuedMessage);
+      let thread = findThread(threads, nextQueuedMessage);
       if (thread && scopedThreadKey(thread.environmentId, thread.id) !== threadKey) {
         continue;
       }
@@ -1157,17 +1164,66 @@ export function useThreadOutboxDrain(): void {
         (candidate) => candidate.environmentId === nextQueuedMessage.environmentId,
       );
       const shellStatus = shellStatuses.get(nextQueuedMessage.environmentId) ?? "empty";
+      const serverConfig = serverConfigs.get(nextQueuedMessage.environmentId);
+      let familyRead: ThreadFamilyRead | undefined;
+      if (
+        thread === undefined &&
+        creation === undefined &&
+        serverConfig?.shellThreadFamilies === true
+      ) {
+        // The family keeps the row readable through dispatch once it loads; the current shell
+        // generation's read decides whether the thread is gone.
+        if (!familyMountsRef.current.has(nextQueuedMessage.messageId)) {
+          familyMountsRef.current.set(
+            nextQueuedMessage.messageId,
+            threadFamilies.mount(
+              appAtomRegistry,
+              nextQueuedMessage.environmentId,
+              nextQueuedMessage.threadId,
+            ),
+          );
+        }
+        familyRead = threadFamilyRead(
+          appAtomRegistry.get(
+            threadFamilies.familyAtom(nextQueuedMessage.environmentId, nextQueuedMessage.threadId),
+          ),
+        );
+        if (familyRead === "settled") {
+          // The rows from this render can lag the family that just settled; decide from the
+          // merged rows as they are now.
+          thread = findThread(
+            appAtomRegistry.get(environmentThreadShells.threadShellsAtom),
+            nextQueuedMessage,
+          );
+        } else if (familyRead === "failed") {
+          threadFamilies.refresh(
+            appAtomRegistry,
+            nextQueuedMessage.environmentId,
+            nextQueuedMessage.threadId,
+          );
+        }
+      }
       const deliveryAction = resolveThreadOutboxDeliveryAction({
         isCreation: creation !== undefined,
         threadExists: thread !== undefined,
         shellStatus,
         environmentConnected: environment?.connectionState === "connected",
         threadBusy: threadRuntimeIsActive(thread?.runtime),
+        ...(familyRead === undefined ? {} : { familyRead }),
       });
+      if (
+        deliveryAction === "wait" &&
+        shellStatus === "live" &&
+        familyRead !== undefined &&
+        familyRead !== "settled"
+      ) {
+        // An empty family read changes no merged row, so nothing else would wake the drain.
+        scheduleQueuedMessageRetry(nextQueuedMessage.messageId);
+        continue;
+      }
       if (deliveryAction === "send" && !operableEnvironments.has(nextQueuedMessage.environmentId)) {
         continue;
       }
-      const serverConfig = serverConfigs.get(nextQueuedMessage.environmentId);
       const dispatchStep = resolveThreadOutboxDispatchStep({
         deliveryAction,
         fileAttachments: nextQueuedMessage.attachments.filter(
@@ -1237,17 +1293,12 @@ export function useThreadOutboxDrain(): void {
             return false;
           },
         );
-      // Enqueues publish optimistically before their durable write settles.
-      // Confirm the write landed (and the message wasn't rolled back) before
-      // sending, so a failed write can never chase an already-delivered turn.
+      // Confirm durability before sending; optimistic enqueue can still roll back on write failure.
       const delivery = confirmThreadOutboxMessageQueued(nextQueuedMessage).then((queued) => {
         if (!queued) {
           return true;
         }
-        // The guards evaluated before the confirmation await are stale by now: the user may
-        // have opened this message in the editor. Re-read that guard and defer to the next
-        // drain pass (returning true skips the failure/backoff path) rather than sending a
-        // payload being edited.
+        // Re-check editor ownership after confirmation; return true to defer without failure backoff.
         if (appAtomRegistry.get(editingQueuedMessageIdsAtom)[nextQueuedMessage.messageId]) {
           return true;
         }
@@ -1270,11 +1321,7 @@ export function useThreadOutboxDrain(): void {
         }
         return deliveryAction === "remove"
           ? creation !== undefined
-            ? // A creation entry that survived its delivery cleanup either
-              // holds edits (recover them) or the delivered payload (a
-              // recovered duplicate the user can delete). Restart loses any
-              // in-memory distinction, and losing edits is the worse failure,
-              // so recovery is unconditional here.
+            ? // After restart, always recover delivered creations; lost in-memory state cannot distinguish edits from duplicate payloads.
               recoverEditedCreationAfterDelivery(nextQueuedMessage)
             : removeQueuedMessage("[thread-outbox] failed to remove message for a missing thread")
           : creation !== undefined

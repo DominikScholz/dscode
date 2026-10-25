@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from "react";
 import { View } from "react-native";
 
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
+import { NativeInspectorContent } from "../../native/NativeInspectorContent";
 
 export type ThreadInspectorMode = "route" | "git" | "files";
 
@@ -33,7 +34,9 @@ function InspectorContentPane(props: {
       <RenderErrorBoundary
         resetKeys={props.resetKeys}
         renderFallback={(fallback) => (
-          <RenderFailureView {...fallback} title="The inspector couldn't be displayed" />
+          <NativeInspectorContent>
+            <RenderFailureView {...fallback} title="The inspector couldn't be displayed" />
+          </NativeInspectorContent>
         )}
       >
         {props.children}
@@ -65,9 +68,7 @@ export function ThreadInspectorContentStack(props: {
       return;
     }
 
-    // The file tree is expensive to detach because UIKit rebuilds its focus
-    // graph. Keep both chat inspectors alive after the opening animation so a
-    // later Files/Git switch only changes visibility.
+    // Keep both inspectors alive after opening; detaching the file tree makes UIKit rebuild its expensive focus graph.
     const alternateMode = props.mode === "files" ? "git" : "files";
     const timeout = setTimeout(() => {
       setMountedModes((current) => {

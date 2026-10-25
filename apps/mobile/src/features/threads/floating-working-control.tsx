@@ -48,8 +48,7 @@ const CONTROL_SEPARATION = (CONTROL_ROW_GAP + CONTROL_HEIGHT) / 2;
 const LABEL_ENTERING = FadeIn.duration(160).delay(80).reduceMotion(ReduceMotion.System);
 const LABEL_EXITING = FadeOut.duration(100).reduceMotion(ReduceMotion.System);
 
-// Expo reapplies glass after native layout and window reattachment, when UIKit
-// can otherwise leave the label visible but lose the material behind it.
+// Expo reapplies glass after layout or reattachment, restoring material UIKit can lose behind visible labels.
 const UniwindGlassView = withUniwind(GlassView, {
   style: { fromClassName: "className" },
 });
@@ -58,9 +57,7 @@ const UniwindGlassContainer = withUniwind(GlassContainer, {
 });
 const AnimatedGlassView = Animated.createAnimatedComponent(UniwindGlassView);
 
-// The segment widths feed labelWidth, and labelWidth moves the segments. Pixel
-// rounding then flips a segment's width by one physical pixel per layout, which
-// re-ellipsizes a truncated label every frame. Sub-point changes are ignored.
+// Segment widths feed back into labelWidth; ignore sub-point changes to avoid rounding-driven ellipsis loops.
 function settleWidth(next: number) {
   return (current: number) => (Math.abs(current - next) < 1 ? current : next);
 }
@@ -84,6 +81,11 @@ export function FloatingWorkingControl(props: {
   const { width: windowWidth } = useWindowDimensions();
   const [overlayWidth, setOverlayWidth] = useState(windowWidth);
   const [queueWidth, setQueueWidth] = useState(0);
+  const [actionWidth, setActionWidth] = useState(0);
+  const action =
+    props.status?.kind === "background" || props.status?.kind === "lifecycle"
+      ? props.status.action
+      : null;
   const [agentsWidth, setAgentsWidth] = useState(0);
   const hasQueue = props.queuedCount > 0;
   const hasPreview = props.devicePreview !== null || props.browserPreview !== null;
@@ -95,6 +97,7 @@ export function FloatingWorkingControl(props: {
     Math.min(overlayWidth, windowWidth) -
       CONTROL_HEIGHT -
       32 -
+      (action !== null ? actionWidth : 0) -
       (hasQueue ? queueWidth : 0) -
       (hasAgents ? agentsWidth : 0) -
       (hasPreview ? previewWidth : 0),
@@ -116,10 +119,7 @@ export function FloatingWorkingControl(props: {
     opacity: separationProgress.value,
   }));
 
-  // Animate an in-flow sizer so native glass receives real layout updates.
-  // Measure labels in a separate, fixed-width host: measuring against the
-  // animated capsule constrains the incoming text to each intermediate width
-  // and repeatedly retargets the animation as it grows.
+  // Animate an in-flow sizer for native glass layout. Measure labels at fixed width to avoid repeated animation retargeting.
   const capsuleWidth = useSharedValue<number | null>(null);
   const measuredWidthRef = useRef<number | null>(null);
   const handleLabelLayout = (event: LayoutChangeEvent) => {
@@ -156,8 +156,11 @@ export function FloatingWorkingControl(props: {
     hasQueue ||
     (props.devicePreview !== null && props.browserPreview !== null);
   const statusInteractive =
-    props.status?.kind === "connection" || props.status?.kind === "child-input";
-  const capsuleInteractive = statusInteractive || hasQueue || hasAgents || hasPreview;
+    props.status?.kind === "connection" ||
+    props.status?.kind === "child-input" ||
+    props.status?.kind === "background";
+  const capsuleInteractive =
+    statusInteractive || action !== null || hasQueue || hasAgents || hasPreview;
   const statusContent =
     props.status !== null ? (
       <View
@@ -186,6 +189,26 @@ export function FloatingWorkingControl(props: {
   const capsuleContent = (
     <View className="flex-row items-center">
       {statusContent}
+      {action !== null ? (
+        <View
+          onLayout={(event) => setActionWidth(settleWidth(event.nativeEvent.layout.width))}
+          className="h-11 flex-row items-center"
+        >
+          <View className="h-4 w-px bg-border" />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={action.accessibilityLabel}
+            accessibilityState={{ disabled: action.disabled }}
+            disabled={action.disabled}
+            onPress={action.onPress}
+            className={`h-11 items-center justify-center px-3 active:opacity-70 ${action.disabled ? "opacity-50" : ""}`}
+          >
+            <Text className="font-t3-medium text-xs text-foreground" numberOfLines={1}>
+              {action.label}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {hasPreview ? (
         <View
           className="h-11 flex-row items-center"
@@ -209,7 +232,7 @@ export function FloatingWorkingControl(props: {
           onLayout={(event) => setAgentsWidth(settleWidth(event.nativeEvent.layout.width))}
           className="h-11 flex-row items-center gap-1.5 px-3 active:opacity-70"
         >
-          {hasStatus || hasPreview ? <View className="mr-1 h-4 w-px bg-border" /> : null}
+          {hasStatus || hasPreview ? <View className="absolute left-0 h-4 w-px bg-border" /> : null}
           <SymbolView name="person.2" size={13} tintColorClassName="accent-foreground-muted" />
           <Text className="font-t3-medium text-xs tabular-nums" numberOfLines={1}>
             {agents.label}
@@ -227,7 +250,7 @@ export function FloatingWorkingControl(props: {
           className="h-11 flex-row items-center gap-2 px-3 active:opacity-70"
         >
           {hasStatus || hasPreview || hasAgents ? (
-            <View className="mr-1 h-4 w-px bg-border" />
+            <View className="absolute left-0 h-4 w-px bg-border" />
           ) : null}
           <SymbolView name="list.number" size={13} tintColorClassName="accent-foreground-muted" />
           <Text className="shrink font-t3-medium text-xs tabular-nums" numberOfLines={1}>
@@ -404,16 +427,38 @@ function FloatingStatusLabel(props: {
       </StatusLabelRow>
     );
   }
+  if (props.status.kind === "lifecycle") {
+    return (
+      <StatusLabelRow
+        key="lifecycle"
+        accessibilityLabel={props.status.label}
+        className="gap-2"
+        onLayout={props.onLayout}
+      >
+        <SymbolView
+          name={props.status.state === "settled" ? "checkmark.circle" : "clock"}
+          size={13}
+          tintColorClassName="foreground"
+          type="monochrome"
+        />
+        <Text className="shrink font-t3-medium text-xs text-foreground" numberOfLines={1}>
+          {props.status.label}
+        </Text>
+      </StatusLabelRow>
+    );
+  }
   if (props.status.kind === "background") {
     return (
       <StatusLabelRow
         key="background"
         accessibilityLabel={props.status.accessibilityLabel}
+        accessibilityRole="button"
+        onPress={props.status.onPress}
         className="gap-2"
         onLayout={props.onLayout}
       >
         <SymbolView
-          name={props.status.waiting ? { ios: "bolt", android: "bolt" } : "terminal"}
+          name={props.status.waiting ? "person.2" : "terminal"}
           size={13}
           tintColorClassName="foreground"
           type="monochrome"

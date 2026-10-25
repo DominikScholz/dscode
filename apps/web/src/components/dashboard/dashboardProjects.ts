@@ -22,12 +22,9 @@ export interface DashboardProject<TGroup> {
 }
 
 /**
- * Counts each project's threads by the sidebar's sections and files the
- * project under the first section it has threads in: active (waiting on you),
- * working, snoozed, then settled, which also takes projects without threads.
- * Thread sections match the sidebar: snoozing outranks settling, each only on
- * environments that support it, and pinned threads are active. Each section
- * lists the most recently active projects first; ties keep the incoming order.
+ * Files each project under its first non-empty sidebar section (active, working,
+ * snoozed, settled; settled also takes empty projects), using the sidebar's own
+ * section rules. Sections list the most recently active projects first.
  */
 export function summarizeDashboardProjects<
   TGroup extends {

@@ -1,6 +1,7 @@
 import { Button } from "../../components/ui/Button";
 import { SubagentStatusDot } from "./SubagentStatusDot";
 import { ThreadSubagentGroup } from "./thread-subagent-group";
+import { ProposedPlanCard } from "./ProposedPlanCard";
 import {
   WorkLogLabel,
   WorkLogBlock,
@@ -435,16 +436,14 @@ function workRowSymbolName(icon: ThreadFeedActivity["icon"]): WorkContentIcon {
   }
 }
 
-// Entering fades only for rows created moments ago: rows remount whenever the
-// list scrolls them back into view, and old rows must not replay an entrance.
+// Animate only fresh rows; virtualization remounts old rows during scrolling.
 const FRESH_ROW_WINDOW_MS = 3_000;
 function isFreshRow(createdAt: string): boolean {
   const timestamp = Date.parse(createdAt);
   return Number.isFinite(timestamp) && Date.now() - timestamp < FRESH_ROW_WINDOW_MS;
 }
 
-// The minimum matches min-h-8 below. Exact sizing is disabled when native
-// accessibility scaling can make the single-line text taller than that minimum.
+// Match min-h-8; disable exact sizing when native accessibility scaling can exceed it.
 const WORK_ROW_HEIGHT = THREAD_WORK_ROW_MIN_HEIGHT;
 const WORK_ROW_GAP = 1;
 const WORK_LOG_BOTTOM_MARGIN = 3.5;
@@ -483,6 +482,7 @@ interface ThreadWorkLogProps {
   readonly activities: ReadonlyArray<ThreadFeedActivity>;
   readonly anchorKey: string;
   readonly environmentId: EnvironmentId;
+  readonly workspaceRoot?: string | null | undefined;
   readonly copiedRowId: string | null;
   readonly expandedRows: Readonly<Record<string, boolean>>;
   readonly rowSizing: ReturnType<typeof deriveThreadWorkLogSizing>;
@@ -519,6 +519,18 @@ export function ThreadWorkLog(props: ThreadWorkLogProps) {
 
   if (props.activities.length === 0) {
     return null;
+  }
+
+  const plan = props.activities[0]?.projectedItem.item;
+  if (plan?.type === "proposed_plan") {
+    return (
+      <ProposedPlanCard
+        environmentId={props.environmentId}
+        workspaceRoot={props.workspaceRoot}
+        markdown={plan.markdown}
+        renderMarkdown={props.renderReasoning}
+      />
+    );
   }
 
   if (props.activities[0]?.projectedItem.item.type === "subagent") {
@@ -670,11 +682,8 @@ function ThreadWorkGroupList(props: {
     finishPendingAppend();
     rememberPosition();
   });
-  // The native ScrollView reports its content size a frame or more after
-  // LegendList has laid the rows out, so a detail toggle rendered the group
-  // at its old height while the rows below already moved. Read the size
-  // LegendList computes on the JS thread instead; it settles in the same
-  // commit as the row measurement that changed it.
+  // Native ScrollView reports size after LegendList lays out rows. Use LegendList's JS size
+  // so group height and row measurements settle in the same commit.
   useLayoutEffect(() => {
     const list = listRef.current;
     if (!list) return;
@@ -696,6 +705,7 @@ function ThreadWorkGroupList(props: {
 
   return (
     <View style={{ height, overflow: "hidden" }}>
+      {/* oxlint-disable-next-line t3code/require-registered-list-scroll -- Nested in a fixed-height card inside the thread feed, which owns the header's scroll view. */}
       <AnimatedLegendList
         ref={listRef}
         data={props.activities}
@@ -703,8 +713,7 @@ function ThreadWorkGroupList(props: {
         estimatedItemSize={props.rowSizing.estimatedRowHeight + WORK_ROW_GAP}
         getFixedItemSize={getFixedItemSize}
         initialScrollIndex={initialScrollIndex}
-        // Bootstrap overscan is only 50px. An offset inside expanded detail can
-        // otherwise leave its own row unmeasured until after scroll restoration.
+        // 50px bootstrap overscan may leave expanded details unmeasured until after scroll restoration.
         alwaysRender={
           restoringPosition && initialPosition ? { keys: [initialPosition.rowId] } : undefined
         }
@@ -874,7 +883,6 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
 ) {
   const { row, expanded } = props;
   const navigation = useNavigation();
-  // Command rows stream their output, including the final output, from the server.
   const streamsOutput =
     useCommandOutputStreaming(props.environmentId) &&
     row.projectedItem.item.type === "command_execution";
@@ -1048,8 +1056,7 @@ const ThreadWorkLogRow = function ThreadWorkLogRow(
         accessibilityState={canExpand ? { expanded } : undefined}
         onPress={() => {
           if (notifiedSubagentThreadId !== undefined) {
-            // Push, not navigate: navigate reuses this Thread route, so back
-            // would skip the parent thread and land on Home (matches #15068).
+            // Push rather than navigate so Back returns to the parent thread instead of Home.
             navigation.dispatch(
               StackActions.push("Thread", {
                 environmentId: String(props.environmentId),
@@ -1289,6 +1296,7 @@ export function ThreadWorkGroupToggle(props: {
   readonly hasFailure: boolean;
   readonly shimmer: boolean;
   readonly thought?: string | undefined;
+  readonly trailing?: ReactNode;
   readonly onToggle: () => void;
 }) {
   const statusLabel = props.hasFailure ? `${props.summary}, tool call failed` : props.summary;
@@ -1321,49 +1329,54 @@ export function ThreadWorkGroupToggle(props: {
           </Text>
         </Pressable>
       ) : null}
-      <WorkLogPressable
-        accessibilityRole="button"
-        accessibilityState={{ expanded: props.expanded }}
-        accessibilityLabel={accessibilityLabel}
-        accessibilityHint={`Double tap to ${props.expanded ? "hide" : "show"} ${props.hiddenCount} tool ${props.hiddenCount === 1 ? "call" : "calls"}.`}
-        onPress={() => {
-          void Haptics.selectionAsync();
-          props.onToggle();
-        }}
-        rowSizing={props.rowSizing}
-      >
-        {props.shimmer ? (
-          <ShimmeringWorkContent
-            key={props.rowSizing.textSizeKey}
-            environmentId={props.environmentId}
-            icon={icon}
-            iconSubtleColor={props.iconSubtleColor}
-            label={props.summary}
-            showIcon
-            themeAppearance={props.themeAppearance}
-            toolIcon={props.toolIcon}
-          />
-        ) : (
-          <>
-            <WorkLogIconSlot>
-              <ToolActivityIconView
+      <View className="flex-row items-center">
+        <View className="min-w-0 flex-1">
+          <WorkLogPressable
+            accessibilityRole="button"
+            accessibilityState={{ expanded: props.expanded }}
+            accessibilityLabel={accessibilityLabel}
+            accessibilityHint={`Double tap to ${props.expanded ? "hide" : "show"} ${props.hiddenCount} tool ${props.hiddenCount === 1 ? "call" : "calls"}.`}
+            onPress={() => {
+              void Haptics.selectionAsync();
+              props.onToggle();
+            }}
+            rowSizing={props.rowSizing}
+          >
+            {props.shimmer ? (
+              <ShimmeringWorkContent
+                key={props.rowSizing.textSizeKey}
                 environmentId={props.environmentId}
-                icon={props.toolIcon}
-                fallback={icon}
-                fallbackColor={props.iconSubtleColor}
+                icon={icon}
+                iconSubtleColor={props.iconSubtleColor}
+                label={props.summary}
+                showIcon
                 themeAppearance={props.themeAppearance}
+                toolIcon={props.toolIcon}
               />
-            </WorkLogIconSlot>
-            <WorkLogLabel key={props.rowSizing.textSizeKey}>{props.summary}</WorkLogLabel>
-          </>
-        )}
-        <ThreadDisclosureChevron
-          expanded={props.expanded}
-          collapsedDirection="down"
-          size={11}
-          tintColor={props.iconSubtleColor}
-        />
-      </WorkLogPressable>
+            ) : (
+              <>
+                <WorkLogIconSlot>
+                  <ToolActivityIconView
+                    environmentId={props.environmentId}
+                    icon={props.toolIcon}
+                    fallback={icon}
+                    fallbackColor={props.iconSubtleColor}
+                    themeAppearance={props.themeAppearance}
+                  />
+                </WorkLogIconSlot>
+                <WorkLogLabel key={props.rowSizing.textSizeKey}>{props.summary}</WorkLogLabel>
+              </>
+            )}
+            <ThreadDisclosureChevron
+              expanded={props.expanded}
+              collapsedDirection="down"
+              size={11}
+              tintColor={props.iconSubtleColor}
+            />
+          </WorkLogPressable>
+        </View>
+        {props.trailing}
+      </View>
     </WorkLogBlock>
   );
 }
@@ -1590,14 +1603,17 @@ function ToolActivityImage(props: {
         <View
           style={[
             StyleSheet.absoluteFill,
-            props.themeAppearance === "light" ? { filter: [{ brightness: 0.6 }] } : undefined,
+            props.themeAppearance === "light" ? { filter: [{ brightness: 0.7 }] } : undefined,
           ]}
         >
           <Image
             source={props.source}
             cachePolicy="memory-disk"
             contentFit="contain"
-            style={[StyleSheet.absoluteFill, { opacity: loaded ? 0.7 : 0 }]}
+            style={[
+              StyleSheet.absoluteFill,
+              { opacity: loaded ? (props.themeAppearance === "dark" ? 0.7 : 1) : 0 },
+            ]}
             onLoad={() => setLoaded(true)}
             onError={() => setFailed(true)}
           />

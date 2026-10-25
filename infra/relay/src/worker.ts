@@ -118,6 +118,10 @@ export const layer = Api.make(
         date: "2026-05-22",
         flags: ["nodejs_compat"],
       },
+      // Requests run several Postgres queries in sequence. At the user's edge
+      // each one paid the round trip to the database (~300 ms from JNB); next
+      // to PlanetScale `us-west` the request pays that distance once.
+      placement: { region: "aws:us-west-2" },
       domain: relayPublicDomain,
     })),
     Effect.orDie,
@@ -161,10 +165,7 @@ export const layer = Api.make(
     const cloudMintPrivateKey = yield* cloudMintKeyPair.privateKey;
     const cloudMintPublicKey = yield* cloudMintKeyPair.publicKey;
     const hyperdrive = yield* Cloudflare.Hyperdrive.Connect(yield* RelayDb.RelayHyperdrive);
-    // Named prepared statements collide behind Hyperdrive's transaction-mode
-    // pool: sql-pg < 4.0.0-rc.117 names them `effect1..N` per connection, and
-    // inside a transaction a Bind can reach another request's statement
-    // (#14070, Effect-TS/effect#8320). Unnamed statements cannot collide.
+    // Named statements collide behind Hyperdrive transaction pooling (Effect-TS/effect#8320); use unnamed statements.
     const db = yield* Drizzle.Postgres(hyperdrive.connectionString, undefined, {
       prepare: false,
     });
@@ -180,8 +181,7 @@ export const layer = Api.make(
     const legacyTunnelGraceMinutes = Option.getOrUndefined(
       yield* RelayConfiguration.legacyTunnelGraceMinutesConfig,
     );
-    // Keys are endpoint keys or hashes over them, which already differ per
-    // stage, so stages sharing an account cannot collide in these namespaces.
+    // Endpoint keys and their hashes differ by stage, including in shared accounts.
     const hookRateLimit = yield* Cloudflare.RateLimit("HOOK_RATE_LIMIT", {
       namespaceId: 1001,
       simple: {
@@ -467,10 +467,7 @@ export const layer = Api.make(
         Layer.provideMerge(Cloudflare.DNS.ReadWriteDnsHttp),
         Layer.provideMerge(Cloudflare.Workers.RateLimitBinding),
         Layer.provideMerge(HookInboxObject.layer),
-        // The worker runtime opens its own HTTP span around ours. Ours carries
-        // the route, header redaction and webhook URL redaction, and drops a
-        // webhook sender's traceparent, so the runtime's span is off for every
-        // request rather than duplicating it.
+        // Disable the duplicate runtime span; ours applies route/header/token redaction and rejects sender traceparent.
         Layer.provideMerge(
           Alchemy.Telemetry.layer(Layer.succeed(HttpMiddleware.TracerDisabledWhen)(() => true)),
         ),

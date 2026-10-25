@@ -1,5 +1,3 @@
-"use client";
-
 import { FILL_PREVIEW_VIEWPORT, type ScopedThreadRef } from "@t3tools/contracts";
 import { previewPdfAssetUrl } from "@t3tools/shared/preview";
 import { useEnvironmentHttpBaseUrl } from "~/state/environments";
@@ -318,10 +316,7 @@ function DeviceMiniPlayer({
   );
 }
 
-/**
- * Native clipping and the DOM frame use the same radius so their separately
- * composited edges stay aligned.
- */
+/** Match native clipping and DOM radii to align their separately composited edges. */
 function MiniPlayerShell({
   threadRef,
   miniPlayer,
@@ -345,8 +340,7 @@ function MiniPlayerShell({
 }) {
   const canvas = useChatCanvas();
   const gestureRef = useRef<PointerGesture | null>(null);
-  // Touch has no hover, so tapping the handle toggles the pill instead. The
-  // toggle waits for the tap's click, which would otherwise land on the pill.
+  // Touch toggles the pill after the tap's click so that click cannot land on the newly opened pill.
   const [pillOpen, setPillOpen] = useState(false);
   const handleTappedRef = useRef(false);
   const handleRef = useRef<HTMLDivElement | null>(null);

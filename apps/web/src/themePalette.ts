@@ -23,9 +23,9 @@ import {
 export { EMBER_THEME, GROVE_THEME, IRIS_THEME, OCEAN_THEME, T3_CHAT_THEME, THEME_COLOR_ROLES };
 export type { ThemeAppearance, ThemeColorRole, ThemeColors, ThemeDefinition, ThemeVariants };
 
-export const T3_CHAT_THEME_ID = "t3-chat" as const;
+const T3_CHAT_THEME_ID = "t3-chat" as const;
 const GROVE_THEME_ID = "grove" as const;
-export const OCEAN_THEME_ID = "ocean" as const;
+const OCEAN_THEME_ID = "ocean" as const;
 const EMBER_THEME_ID = "ember" as const;
 const IRIS_THEME_ID = "iris" as const;
 export const THEME_FILE_VERSION = 1 as const;
@@ -55,10 +55,7 @@ export type ThemeFile = Readonly<{
   managed?: boolean;
 }>;
 
-/**
- * The environment's palettes are not saved: they are republished by the server
- * on every change and would go stale the moment the machine's theme moved on.
- */
+// Do not persist server-published palettes; they become stale when the environment theme changes.
 let environmentThemeDefinitions: ReadonlyArray<ThemeDefinition> = [];
 
 const customThemeListeners = new Set<() => void>();
@@ -151,8 +148,7 @@ function parseStoredThemeVariants(
   const variants: Partial<Record<ThemeAppearance, ThemeColors>> = {};
   for (const [appearance, colors] of Object.entries(value)) {
     if (!isThemeAppearance(appearance)) return null;
-    // A variant matching the base appearance would be shadowed by the base
-    // colors; drop it so the theme round-trips through parseThemeFile.
+    // Base colors shadow a matching variant; drop it for parseThemeFile round-trips.
     if (appearance === baseAppearance) continue;
     const parsedColors = parseStoredThemeColors(colors, appearance);
     if (!parsedColors) return null;
@@ -244,11 +240,7 @@ export function getEnvironmentThemes(): ReadonlyArray<ThemeDefinition> {
   return environmentThemeDefinitions;
 }
 
-/**
- * Returns whether anything changed, structurally: config snapshots arrive as
- * fresh arrays on every reconnect, and a repaint for identical colors is the
- * kind of wasted work users of this product notice.
- */
+/** Returns structural change; reconnects recreate arrays with identical colors. */
 export function setEnvironmentThemes(themes: ReadonlyArray<ThemeDefinition>): boolean {
   if (Equal.equals(environmentThemeDefinitions, themes)) return false;
   environmentThemeDefinitions = themes;
@@ -345,8 +337,7 @@ function parseThemeColor(value: unknown): ParsedThemeColor | null {
   const lightness = color.l ?? 0;
   const chroma = color.c ?? 0;
   const hue = color.h ?? 0;
-  // CSS missing components behave as zero outside interpolation. Culori omits
-  // a `none` alpha from its parsed object, so distinguish it from omitted alpha.
+  // Missing CSS components are zero; Culori omits none alpha, so distinguish it from absent alpha.
   const alpha = /\/\s*none\s*\)$/i.test(input) ? 0 : (color.alpha ?? 1);
   if (![lightness, chroma, hue, alpha].every(Number.isFinite)) return null;
   return {
@@ -558,6 +549,25 @@ function solveOklchLightness(
   return { ...base, L: direction === "lighter" ? high : low };
 }
 
+/**
+ * Moves only the lightness, so a color that is too dim on `surface` keeps its
+ * hue instead of collapsing to black or white.
+ */
+export function readableThemeColorOn(color: string, surface: string, minContrast: number): string {
+  const parsedColor = parseThemeColor(color);
+  const parsedSurface = parseThemeColor(surface);
+  if (!parsedColor || !parsedSurface) return color;
+  const surfaceRgb = themeOklchToRgb(parsedSurface.color);
+  if (themeContrastRatio(themeOklchToRgb(parsedColor.color), surfaceRgb) >= minContrast) {
+    return color;
+  }
+  const direction = themeRelativeLuminance(surfaceRgb) < 0.179 ? "lighter" : "darker";
+  const solved = solveOklchLightness(parsedColor.color, surfaceRgb, minContrast, direction);
+  // Return the 8-bit color the solver measured: the unrounded OKLCH can round
+  // to a neighbor just under the target once it is stored and read back.
+  return themeRgbToHexColor(themeOklchToRgb(solved));
+}
+
 const STANDARD_STATUS_COLORS = {
   light: {
     error: "#fb2c36",
@@ -620,8 +630,7 @@ export function createVividThemeColors(
   const accentRgb = parseThemeRgbColor(accentValue, { r: 168, g: 67, b: 112 });
   const canvas = themeRgbToOklch(canvasRgb);
   const accent = themeRgbToOklch(accentRgb);
-  // 0.179 is the relative luminance where white and black text have equal
-  // contrast headroom.
+  // At luminance 0.179, black and white text have equal contrast.
   const dark = themeRelativeLuminance(canvasRgb) < 0.179;
   const hue = accent.C < 0.02 ? canvas.h : accent.h;
   const tintC = Math.min(0.045, Math.max(0.008, accent.C * 0.22));
@@ -1026,11 +1035,7 @@ export function themeAllowsSidebarArtwork(theme: ThemePreference): boolean {
   );
 }
 
-/**
- * Selecting a single-appearance theme as the base preference would clear the
- * light/dark mix and leave the appearance tiles disagreeing with what is on
- * screen, so every path that selects a theme has to make the same call.
- */
+/** Every selection path must check single-appearance themes to keep mix and appearance tiles in sync. */
 export function singleAppearanceOf(theme: ThemeDefinition): ThemeAppearance | null {
   const modes = getThemeModes(theme);
   return modes.length === 1 ? modes[0]! : null;
@@ -1430,9 +1435,7 @@ export function getThemeColorVariable(role: ThemeColorRole): string {
 
 export const THEME_PREVIEW_ID = "__preview";
 
-/**
- * Callers restore the stored theme (refreshTheme) when the draft goes away.
- */
+/** Callers must restore the stored theme with refreshTheme when the draft closes. */
 export function applyThemeColorPreview(colors: ThemeColors, appearance: ThemeAppearance): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;

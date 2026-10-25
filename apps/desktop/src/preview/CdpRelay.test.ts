@@ -15,6 +15,7 @@ const makeTarget = (
 });
 
 // Each relay reply resolves after a few microtasks; one macrotask lets them all land.
+// oxlint-disable-next-line t3code/no-real-time-wait-in-tests -- a zero-delay macrotask boundary, not a wait for time
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 describe("CDP relay", () => {
@@ -103,7 +104,6 @@ describe("CDP relay", () => {
     expect(written).toEqual([]);
     relay.receive(JSON.stringify({ id: 1, method: "Target.setAutoAttach", params: {} }));
     await settle();
-    // Electron passes an empty session id for the page's own events.
     relay.event("Page.loadEventFired", { timestamp: 1 }, "");
     relay.event("Runtime.consoleAPICalled", {}, "iframe-session");
     expect(written.slice(-2)).toEqual([

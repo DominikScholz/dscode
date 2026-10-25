@@ -9,6 +9,7 @@ import {
   TrimmedNonEmptyString,
   type SourceControlRepositoryVisibility,
   type VcsError,
+  type VcsProcessExitFailureKind,
 } from "@t3tools/contracts";
 
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
@@ -350,7 +351,18 @@ function decodeAzureDevOpsJson<S extends Schema.Top>(
   );
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+const classifyAzFailure = (stderr: string): VcsProcessExitFailureKind | null => {
+  const normalized = stderr.toLowerCase();
+  if (normalized.includes("az devops login") || /please run '?az login'?/.test(normalized)) {
+    return "authentication";
+  }
+  return normalized.includes("pull request") &&
+    (normalized.includes("not found") || normalized.includes("does not exist"))
+    ? "not-found"
+    : null;
+};
+
+/** @public */
 export const make = Effect.gen(function* () {
   const { process } = yield* SourceControlHost.SourceControlHost;
 
@@ -361,6 +373,8 @@ export const make = Effect.gen(function* () {
         command: "az",
         args: input.args,
         cwd: input.cwd,
+        classifyFailure: classifyAzFailure,
+        notFoundDetail: "Pull request not found.",
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),
       })
@@ -478,10 +492,7 @@ export const make = Effect.gen(function* () {
       ),
     createRepository: (input) => {
       const repository = parseRepositorySpecifier(input.repository);
-      // Azure Repos access is governed by project/organization permissions.
-      // `az repos create` does not expose a per-repository visibility flag, so
-      // the generic source-control visibility input is intentionally not
-      // translated into CLI args for this provider.
+      // Project/organization permissions control visibility; `az repos create` has no flag.
       return executeJson({
         cwd: input.cwd,
         args: [

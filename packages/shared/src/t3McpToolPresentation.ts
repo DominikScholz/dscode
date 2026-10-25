@@ -22,6 +22,7 @@ export type T3McpToolSummaryAction =
   | "thread-wait"
   | "thread-interrupt"
   | "workflow-stop"
+  | "background-wait"
   | "thread-configuration"
   | "thread-configure"
   | "thread-fork"
@@ -153,6 +154,10 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_workflow_stop: tool(
     ["Stop", "Stopping", "Requested a stop for", "a workflow"],
     "workflow-stop",
+  ),
+  t3_background_wait: tool(
+    ["Update", "Updating", "Updated", "background waits"],
+    "background-wait",
   ),
   t3_thread_interrupt: tool(
     ["Interrupt", "Interrupting", "Requested an interrupt of", "a T3 thread"],
@@ -339,13 +344,7 @@ function normalizeT3McpToolLabel(value: string): string {
   return value.replace(/\s+(?:complete|completed)\s*$/i, "").trim();
 }
 
-/**
- * ACP agents disagree on how the injected T3 server prefixes its tools:
- * `mcp__t3-code__x` (Claude/Cursor), `t3-code.x` (Codex), plus single
- * underscore, colon, slash, dash, and space separators seen from registry
- * agents. The prefix match is deliberately loose because the display-name
- * inventory is the real gate; unknown tools stay on the generic renderer.
- */
+// ACP tool prefixes vary; match loosely but require a known display-name entry.
 function resolveT3McpToolName(value: string): string | null {
   const label = normalizeT3McpToolLabel(value);
   const mcpMatch = /^mcp__(?<server>.+?)__(?<tool>.+)$/i.exec(label);
@@ -368,9 +367,7 @@ function resolveT3McpToolName(value: string): string | null {
   const prefixed = /^(?:mcp[-_]{1,2})?t3[-_ ]?code(?:__|[-_.:/ ])(?<tool>.+)$/i.exec(label);
   const candidate = prefixed?.groups?.tool ?? label;
   if (Object.hasOwn(T3_MCP_TOOLS, candidate)) return candidate;
-  // OpenCode 2 registers one server per thread, `t3-code-<thread>`, and joins
-  // it to the tool with `_`. Thread ids can hold `_` too, so take the longest
-  // known tool name that ends the label.
+  // OpenCode 2 thread prefixes can contain underscores; choose the longest known tool-name suffix.
   if (!/^t3-code-/i.test(label)) return null;
   let longest: string | null = null;
   for (const tool of Object.keys(T3_MCP_TOOLS)) {
@@ -396,10 +393,4 @@ export function resolveT3McpToolPresentation(
 ): T3McpToolPresentation | null {
   const definition = resolveT3McpToolDefinition(toolName);
   return definition === null ? null : { displayName: definition.displayName, logo: "t3-code" };
-}
-
-export function resolveT3McpToolSummaryAction(
-  toolName: string | null | undefined,
-): T3McpToolSummaryAction | null {
-  return resolveT3McpToolDefinition(toolName)?.summaryAction ?? null;
 }

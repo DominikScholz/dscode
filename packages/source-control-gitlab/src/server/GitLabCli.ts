@@ -11,6 +11,7 @@ import {
   TrimmedNonEmptyString,
   type SourceControlRepositoryVisibility,
   type VcsError,
+  type VcsProcessExitFailureKind,
 } from "@t3tools/contracts";
 
 import * as SourceControlHost from "@t3tools/source-control-core/server/SourceControlHost";
@@ -268,7 +269,7 @@ export class GitLabCli extends Context.Service<
       readonly cwd: string;
       readonly args: ReadonlyArray<string>;
       readonly timeoutMs?: number;
-      /** Piped to the child's stdin, for payloads that must never appear in argv. */
+      /** Keeps sensitive payloads out of argv. */
       readonly stdin?: string;
       readonly maxOutputBytes?: number;
     }) => Effect.Effect<SourceControlHost.SourceControlProcessOutput, GitLabCliError>;
@@ -409,7 +410,15 @@ function parseRepositoryPath(repository: string): {
   return { namespacePath, projectPath };
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+// glab prints a missing project or merge request as a bare 404.
+const classifyGlabFailure = (stderr: string): VcsProcessExitFailureKind | null => {
+  const normalized = stderr.toLowerCase();
+  if (normalized.includes("glab auth login")) return "authentication";
+  if (normalized.includes("not found") || normalized.includes("404")) return "not-found";
+  return null;
+};
+
+/** @public */
 export const make = Effect.gen(function* () {
   const { process } = yield* SourceControlHost.SourceControlHost;
 
@@ -423,6 +432,8 @@ export const make = Effect.gen(function* () {
         command: "glab",
         args: input.args,
         cwd: input.cwd,
+        classifyFailure: classifyGlabFailure,
+        notFoundDetail: "Merge request not found.",
         timeoutMs: input.timeoutMs ?? DEFAULT_TIMEOUT_MS,
         ...(input.stdin === undefined ? {} : { stdin: input.stdin }),
         ...(input.maxOutputBytes === undefined ? {} : { maxOutputBytes: input.maxOutputBytes }),

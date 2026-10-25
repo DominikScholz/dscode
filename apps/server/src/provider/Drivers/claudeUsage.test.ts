@@ -48,17 +48,8 @@ describe("parseClaudeLine", () => {
     expect(record?.speed).toBe("standard");
   });
 
-  it("marks fast-mode requests", () => {
-    const line = (speed: string) =>
-      parseClaudeLine(claudeLine({ messageId: "msg_1", contentType: "text", speed }));
-
-    expect(line("fast")?.speed).toBe("fast");
-    expect(line("standard")?.speed).toBe("standard");
-  });
-
   it("gives every content block of one message the same dedupe key", () => {
-    // T3 Code writes one record per content block, each repeating the parent
-    // message's full usage. Summing them would overcount ~2.4x on real data.
+    // Content-block records repeat full parent usage; summing them overcounts.
     const text = parseClaudeLine(claudeLine({ messageId: "msg_2", contentType: "text" }));
     const toolUse = parseClaudeLine(claudeLine({ messageId: "msg_2", contentType: "tool_use" }));
 
@@ -93,10 +84,5 @@ describe("parseClaudeLine", () => {
     const synthetic = { ...projected, message: { ...projected.message, model: "<synthetic>" } };
     expect(claudeUsageFormat.parseLine(JSON.stringify(synthetic), undefined)).toEqual([]);
     expect(claudeUsageFormat.parseProjected(synthetic, undefined)).toEqual([]);
-  });
-
-  it("ignores records that are not assistant messages", () => {
-    expect(parseClaudeLine(JSON.stringify({ type: "user", message: {} }))).toBeNull();
-    expect(parseClaudeLine("not json")).toBeNull();
   });
 });

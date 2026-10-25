@@ -3,12 +3,15 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
-import { VcsProcessExitError } from "@t3tools/contracts";
+import { resolvePullRequestAuthorFilter, VcsProcessExitError } from "@t3tools/contracts";
 import type {
   PullRequestAction,
+  PullRequestActor,
   PullRequestComment,
   PullRequestCommit,
   PullRequestInvolvement,
+  PullRequestLabel,
+  PullRequestListFilters,
   PullRequestListState,
   PullRequestMergeCapabilities,
   PullRequestMergeMethod,
@@ -36,6 +39,7 @@ import {
   decodeNotesJson,
   decodeOwnAwardIdJson,
   decodeProjectMergeCapabilitiesJson,
+  decodeProjectLabelsJson,
   decodeProjectUsersJson,
   decodeRepositoryBlobsJson,
   decodeViewerJson,
@@ -178,9 +182,17 @@ export type GitLabPullRequestCliError =
   | GitLabDiffRefsUnavailableError
   | GitLabViewerUnavailableError;
 
-/** GitLab's own ceiling on `per_page`, so a larger page has to be walked. */
+/** GitLab's `per_page` limit. */
 const MAX_PAGE_SIZE = 100;
 const COMMIT_PAGE_SIZE = 100;
+/**
+ * GitLab 15.7 through 17.10 answer the merge request `/diffs` endpoint with a 500 for any
+ * `per_page` above 30 (fixed in 17.11), so those pages stay at a size every version accepts.
+ * A commit's own diff endpoint never had that bug and keeps the full page.
+ */
+const MERGE_REQUEST_DIFF_PAGE_SIZE = 30;
+const diffPageSize = (commit: string | undefined) =>
+  commit === undefined ? MERGE_REQUEST_DIFF_PAGE_SIZE : MAX_PAGE_SIZE;
 const CONVERSATION_PAGES = 10;
 const DIFF_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 const DIFF_TIMEOUT_MS = 60_000;
@@ -215,6 +227,7 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly limit: number;
       readonly query?: string | undefined;
       readonly cursor?: ProviderListCursor | undefined;
+      readonly filters?: PullRequestListFilters | undefined;
     }) => Effect.Effect<GitLabMergeRequestListBatch, GitLabPullRequestCliError>;
 
     readonly getMergeRequestDetail: (input: {
@@ -276,6 +289,24 @@ export class GitLabPullRequestCli extends Context.Service<
       readonly repository: string;
       readonly number: number;
     }) => Effect.Effect<PullRequestReviewerCandidateList, GitLabPullRequestCliError>;
+
+    readonly listProjectLabels: (input: {
+      readonly cwd: string;
+      readonly repository: string;
+      readonly search?: string | undefined;
+    }) => Effect.Effect<
+      { readonly items: ReadonlyArray<PullRequestLabel>; readonly truncated: boolean },
+      GitLabPullRequestCliError
+    >;
+
+    readonly listProjectUsers: (input: {
+      readonly cwd: string;
+      readonly repository: string;
+      readonly search?: string | undefined;
+    }) => Effect.Effect<
+      { readonly items: ReadonlyArray<PullRequestActor>; readonly truncated: boolean },
+      GitLabPullRequestCliError
+    >;
 
     readonly setReviewerRequest: (input: {
       readonly cwd: string;
@@ -411,6 +442,41 @@ function involvementParams(input: {
   }
 }
 
+/**
+ * GitLab's `labels` asks for every label it names, so only groups of one go to it; a group of
+ * alternatives is left for the service to narrow. A comma would split a name in two, and `None`
+ * and `Any` mean "unlabeled" and "labeled" to GitLab rather than labels of those names.
+ */
+function filterParams(input: {
+  readonly filters?: PullRequestListFilters | undefined;
+  readonly involvement: PullRequestInvolvement;
+  readonly viewer: string;
+}): ReadonlyArray<readonly [string, string]> {
+  const filters = input.filters;
+  if (filters === undefined) return [];
+  const listable = (names: ReadonlyArray<string>) =>
+    names.filter((name) => !name.includes(",") && !/^(?:none|any)$/iu.test(name.trim()));
+  const required = listable(
+    (filters.labels ?? []).flatMap((group) => (group.length === 1 ? group : [])),
+  );
+  const excluded = listable(filters.excludedLabels ?? []);
+  return [
+    ...(required.length === 0 ? [] : [["labels", required.join(",")] as const]),
+    ...(excluded.length === 0 ? [] : [["not[labels]", excluded.join(",")] as const]),
+    ...(filters.author === undefined || input.involvement === "authored"
+      ? []
+      : [
+          [
+            "author_username",
+            resolvePullRequestAuthorFilter(filters.author, input.viewer),
+          ] as const,
+        ]),
+    ...(filters.draft === undefined
+      ? []
+      : [["wip", filters.draft === "only" ? "yes" : "no"] as const]),
+  ];
+}
+
 function diffCursorPage(cursor: string): number | null {
   return /^[1-9][0-9]{0,6}$/.test(cursor) ? Number(cursor) : null;
 }
@@ -436,7 +502,7 @@ function actionArgs(
     case "merge":
       return [
         "merge",
-        // glab turns on auto-merge whenever a pipeline is running. The button means merge now.
+        // glab defaults to auto-merge during a running pipeline.
         "--auto-merge=false",
         "--yes",
         ...(mergeMethod === "squash" ? ["--squash"] : []),
@@ -467,7 +533,7 @@ function actionArgs(
   }
 }
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const gitlab = yield* GitLabCli.GitLabCli;
 
@@ -485,9 +551,7 @@ export const make = Effect.gen(function* () {
         "api",
         input.path,
         ...(input.method === undefined ? [] : ["--method", input.method]),
-        // A raw body from stdin: argv is visible in process listings and is echoed back
-        // inside process-runner failure messages. Unlike `gh`, `glab api --input` sends no
-        // Content-Type at all, and GitLab answers a bodyless content type with HTTP 415.
+        // glab --input keeps payloads out of argv/logs but omits GitLab's required Content-Type.
         ...(input.stdin === undefined
           ? []
           : ["--input", "-", "--header", "Content-Type: application/json"]),
@@ -506,20 +570,17 @@ export const make = Effect.gen(function* () {
     readonly limit: number;
     readonly query?: string | undefined;
     readonly cursor?: ProviderListCursor | undefined;
+    readonly filters?: PullRequestListFilters | undefined;
     readonly page: number;
     readonly collected: ReadonlyArray<GitLabMergeRequestListItem>;
     readonly cursorAdvance: number;
   }): Effect.Effect<GitLabMergeRequestListBatch, GitLabPullRequestCliError> => {
-    // A continuation uses GitLab's offset pagination. Its timestamp filter is inclusive and has
-    // no tie-breaker, so a page where many rows share the boundary would otherwise return the
-    // same prefix forever. `delivered` is the stable offset the service has already handed over.
+    // GitLab's timestamp filter can repeat equal-time pages forever; use offsets.
     const delivered = input.cursor?.delivered ?? 0;
     const perPage = Math.min(input.limit + 1, MAX_PAGE_SIZE);
     const firstPage = Math.floor(delivered / perPage) + 1;
     const skipOnFirstPage = input.page === firstPage ? delivered % perPage : 0;
-    // A page made entirely of malformed rows has no item from which the service can build a
-    // continuation. Bound the walk to the raw span this request asked for rather than recursing
-    // forever on a host that keeps returning full unusable pages.
+    // Bound raw pages to stop recursion on entirely malformed results.
     const lastPage = Math.floor((delivered + input.limit) / perPage) + 1;
     return api({
       cwd: input.cwd,
@@ -527,6 +588,7 @@ export const make = Effect.gen(function* () {
         ["state", stateParam(input.state)],
         ...involvementParams(input),
         ...searchParams(input.query),
+        ...filterParams(input),
         ["order_by", "updated_at"],
         ["sort", "desc"],
         ["per_page", String(perPage)],
@@ -575,7 +637,7 @@ export const make = Effect.gen(function* () {
         }
         const collected = [...input.collected, ...pageItems];
         const consumed = Math.max(0, decoded.success.rawCount - skipOnFirstPage);
-        // Counted before decoding, so a skipped malformed row cannot end paging early.
+        // Count malformed rows to avoid ending pagination early.
         const exhausted = decoded.success.rawCount < perPage;
         if (exhausted) {
           return Effect.succeed({
@@ -615,7 +677,7 @@ export const make = Effect.gen(function* () {
           ? `merge_requests/${input.number}/diffs`
           : `repository/commits/${input.commit}/diff`
       }?${query([
-        ["per_page", String(MAX_PAGE_SIZE)],
+        ["per_page", String(diffPageSize(input.commit))],
         ["page", String(input.page)],
       ])}`,
       maxOutputBytes: DIFF_MAX_OUTPUT_BYTES,
@@ -642,9 +704,7 @@ export const make = Effect.gen(function* () {
         },
       }),
       Effect.flatMap(({ result, legacy }) => {
-        // A byte-truncated response is a JSON prefix, so this page cannot be read at all.
-        // Answering with no cursor would call the diff whole while silently dropping this page
-        // and every one after it, so the read fails and says which page could not be had.
+        // Returning no cursor for byte-truncated JSON would lose subsequent pages.
         if (result.stdoutTruncated) {
           return Effect.fail(
             new GitLabMergeRequestReadError({
@@ -673,10 +733,9 @@ export const make = Effect.gen(function* () {
         const patch = decoded.success.patch;
         // Counted before decoding, so a page whose files all failed to decode still moves on
         // rather than pointing the reader back at the page it just read.
-        const morePages = !legacy && decoded.success.rawCount >= MAX_PAGE_SIZE;
+        const morePages = !legacy && decoded.success.rawCount >= diffPageSize(input.commit);
         return Effect.succeed({
-          // The slice ends on a newline, so a file GitLab gave a header and no hunks for does
-          // not run into the first line of the next slice.
+          // Terminate slices so a hunkless header cannot run into the next slice.
           patch: patch.length === 0 ? patch : patch.replace(/\n?$/, "\n"),
           truncated: decoded.success.truncated,
           nextCursor: morePages ? String(input.page + 1) : null,
@@ -759,8 +818,7 @@ export const make = Effect.gen(function* () {
           );
         }
         const collected = [...input.collected, ...decoded.success.threads];
-        // The raw count again: this endpoint returns the plain notes too, so a full page of
-        // those is not the end of the positioned ones.
+        // Plain notes count toward the page size even when no positioned threads survive decoding.
         if (decoded.success.rawCount < MAX_PAGE_SIZE) {
           return Effect.succeed({ threads: collected, truncated: false });
         }
@@ -872,11 +930,13 @@ export const make = Effect.gen(function* () {
   const projectUsers = (input: {
     readonly cwd: string;
     readonly repository: string;
+    readonly search?: string | undefined;
   }): Effect.Effect<GitLabProjectUsers, GitLabPullRequestCliError> =>
     api({
       cwd: input.cwd,
       path: `projects/${projectPath(input.repository)}/users?${query([
         ["per_page", String(MAX_PAGE_SIZE)],
+        ...searchParams(input.search),
       ])}`,
     }).pipe(
       Effect.flatMap((result) => {
@@ -964,10 +1024,7 @@ export const make = Effect.gen(function* () {
       }),
     );
 
-  /**
-   * GitLab charges the blobs query by how many paths it is handed, and its connection hands back
-   * one page. A hundred at a time keeps each request inside both.
-   */
+  // GitLab charges by path count and returns one connection page; respect both limits.
   const BLOB_PATHS_PER_REQUEST = 100;
 
   const blobsAt = (input: {
@@ -1027,10 +1084,7 @@ export const make = Effect.gen(function* () {
               Effect.map((pages) => {
                 const revisions = new Map<string, string>();
                 for (const { paths, page } of pages) {
-                  // A batch GitLab did not answer says nothing about its paths, so they are left
-                  // out and the caller reads them as versions it could not learn, which leaves
-                  // the marks on them alone. Filling them in as removed would report every file
-                  // a reader has cleared as changed over a project the token cannot see.
+                  // Unanswered paths are unknown; omit them to preserve viewed marks.
                   if (page === null) continue;
                   for (const [path, oid] of page) revisions.set(path, oid);
                   for (const path of paths) {
@@ -1230,14 +1284,47 @@ export const make = Effect.gen(function* () {
         }),
       ),
 
+    listProjectLabels: (input) =>
+      api({
+        cwd: input.cwd,
+        path: `projects/${projectPath(input.repository)}/labels?${query([
+          ["per_page", String(MAX_PAGE_SIZE)],
+          ...searchParams(input.search),
+        ])}`,
+      }).pipe(
+        Effect.flatMap((result) => {
+          const decoded = decodeProjectLabelsJson(result.stdout.trim());
+          return Result.isSuccess(decoded)
+            ? Effect.succeed({
+                items: decoded.success.labels,
+                truncated: decoded.success.rawCount >= MAX_PAGE_SIZE,
+              })
+            : Effect.fail(
+                new GitLabMergeRequestReadError({
+                  command: "glab",
+                  cwd: input.cwd,
+                  operation: "listProjectLabels",
+                  cause: decoded.failure,
+                }),
+              );
+        }),
+      ),
+
+    listProjectUsers: (input) =>
+      projectUsers(input).pipe(
+        Effect.map(({ candidates, rawCount }) => ({
+          items: candidates.map(({ login, name, avatarUrl }) => ({ login, name, avatarUrl })),
+          truncated: rawCount >= MAX_PAGE_SIZE,
+        })),
+      ),
+
     listReviewerCandidates: (input) =>
       Effect.all([mergeRequestDetail(input), projectUsers(input)], { concurrency: 2 }).pipe(
         Effect.map(([mergeRequest, users]) => {
           const author = mergeRequest.author?.login;
           const requested = new Set(mergeRequest.reviewRequestLogins);
           return {
-            // The author is dropped rather than shown unusable: GitLab refuses to make the person
-            // who opened a merge request its reviewer.
+            // GitLab forbids requesting a review from the MR author.
             candidates: users.candidates.flatMap((candidate) =>
               candidate.login === author
                 ? []
@@ -1251,9 +1338,7 @@ export const make = Effect.gen(function* () {
     setReviewerRequest: (input) =>
       mergeRequestDetail(input).pipe(
         Effect.flatMap((mergeRequest) => {
-          // GitLab has no endpoint that adds or removes one reviewer: `reviewer_ids` replaces the
-          // whole set, so the set that is already there is read first and the change applied to
-          // it.
+          // GitLab replaces reviewer_ids wholesale.
           const ids = new Set(mergeRequest.reviewerIds);
           for (const reviewer of input.reviewers) {
             const id = Number(reviewer.id);
@@ -1306,9 +1391,7 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         path: `projects/${projectPath(input.repository)}/merge_requests/${input.number}`,
         method: "PUT",
-        // Only the fields the caller asked to change: GitLab leaves out what it is not sent, and
-        // clears what it is sent empty — so a title corrected on its own must carry no
-        // description at all.
+        // Omitted fields remain unchanged; empty values clear them.
         stdin: JSON.stringify({
           ...(input.title === undefined ? {} : { title: input.title }),
           ...(input.description === undefined ? {} : { description: input.description }),
@@ -1320,8 +1403,7 @@ export const make = Effect.gen(function* () {
         cwd: input.cwd,
         path: `projects/${projectPath(input.repository)}/merge_requests/${input.number}/notes`,
         method: "POST",
-        // A JSON body rather than a `--raw-field`: glab coerces a field that reads as a
-        // literal `true` or a number, and a comment body is text either way.
+        // JSON avoids glab's coercion of numeric/boolean comment bodies.
         stdin: JSON.stringify({ body: input.body }),
       }).pipe(Effect.asVoid),
 

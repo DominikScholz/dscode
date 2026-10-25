@@ -7,15 +7,11 @@ import {
   useState,
 } from "react";
 
-import { isElectron } from "~/env";
 import {
-  getPreviewPanelMaxWidth,
   type PreviewPanelInlineSize,
   usePreviewPanelInlineSize,
 } from "~/hooks/usePreviewPanelInlineSize";
 import { RESIZABLE_WIDTH_PROPERTY } from "~/hooks/useResizableWidth";
-
-export { getPreviewPanelMaxWidth };
 import { cn } from "~/lib/utils";
 
 import { RightPanelResizeHandle } from "./RightPanelResizeHandle";
@@ -27,11 +23,7 @@ interface PreviewPanelShellProps {
   maximized?: boolean;
   inlineSize?: PreviewPanelInlineSize;
   open?: boolean;
-  /**
-   * Callers embedding this shell for a different surface (e.g. the pull
-   * requests page) should pass their own key so resizing one panel doesn't
-   * clobber the other's remembered width.
-   */
+  /** Use a distinct key per surface to keep remembered widths independent. */
   widthStorageKey?: string;
   defaultWidth?: number;
   children: ReactNode;
@@ -61,7 +53,6 @@ function PreviewPanelShellFrame(
     hostRef?: RefObject<HTMLDivElement | null>;
   },
 ) {
-  const useDragRegion = isElectron && props.mode !== "sheet" && props.mode !== "embedded";
   const isInline = props.mode === "inline";
   const collapsible = isInline && props.open !== undefined;
   const open = props.open ?? true;
@@ -70,8 +61,7 @@ function PreviewPanelShellFrame(
   const hostRef = props.hostRef ?? localHostRef;
   const returnedFocus = useRef(false);
   const { width, handlers } = props.inlineSize;
-  // Derive suppression before the layout commits so the browser never creates
-  // a width transition for resize or maximize changes.
+  // Suppress transitions before commit so resize/maximize changes never start width transitions.
   const [layoutTransition, setLayoutTransition] = useState(() => ({
     open,
     width,
@@ -112,8 +102,7 @@ function PreviewPanelShellFrame(
     if (!host || !collapsible) return;
     return () => {
       if (!host.contains(host.ownerDocument.activeElement) && !returnedFocus.current) return;
-      // The toggle moves when the shell unmounts, after an animation or immediately.
-      // Restore focus at its committed location if removal cleared focus to body.
+      // Unmount moves the toggle; restore focus at its committed location if removal sent focus to body.
       queueMicrotask(() => {
         if (host.ownerDocument.activeElement === host.ownerDocument.body) {
           host.ownerDocument.querySelector<HTMLButtonElement>("[data-right-panel-toggle]")?.focus();

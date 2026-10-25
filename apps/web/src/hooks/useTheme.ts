@@ -52,11 +52,7 @@ export function readThemeHalves(): ThemeHalves | null {
   return readStoredThemeHalves();
 }
 
-/**
- * Flows that rebuild the whole mix must capture this before a `setTheme` clears
- * it: a published id resolves only once its set has streamed in, and treating
- * "not resolvable yet" as "absent" silently rewrites that half.
- */
+/** Capture before setTheme clears the mix; unresolved published ids may still be valid. */
 export function readThemeHalvesRaw(): { light?: string; dark?: string } {
   if (typeof window === "undefined") return {};
   return readStoredThemeHalvesRaw();
@@ -71,11 +67,7 @@ function readStoredThemeHalves(): ThemeHalves | null {
   }
 }
 
-/**
- * An environment published id resolves only once its set has streamed in, so a
- * write that merged over the pruned parse would silently erase that half
- * whenever the other one changed before the set arrived.
- */
+// Pruning unresolved published palettes would erase their halves when merging.
 function readStoredThemeHalvesRaw(): { light?: string; dark?: string } {
   try {
     const value: unknown = JSON.parse(
@@ -114,7 +106,7 @@ export class ThemeStorageError extends Schema.TaggedError<ThemeStorageError>()(
   }
 }
 
-export const isThemeStorageError = Schema.is(ThemeStorageError);
+const isThemeStorageError = Schema.is(ThemeStorageError);
 
 export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncError>()(
   "DesktopThemeSyncError",
@@ -128,7 +120,7 @@ export class DesktopThemeSyncError extends Schema.TaggedError<DesktopThemeSyncEr
   }
 }
 
-export const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
+const isDesktopThemeSyncError = Schema.is(DesktopThemeSyncError);
 
 let listeners: Array<() => void> = [];
 let lastSnapshot: ThemeSnapshot | null = null;
@@ -209,7 +201,7 @@ export function readThemePreference(): Theme {
   return DEFAULT_THEME_SNAPSHOT.theme;
 }
 
-export function writeThemePreference(theme: Theme): void {
+function writeThemePreference(theme: Theme): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(STORAGE_KEY, theme);
@@ -354,7 +346,7 @@ function applyTheme(theme: Theme, { suppressTransitions = false, preservePreview
   }
 }
 
-export async function syncDesktopThemePreference(
+async function syncDesktopThemePreference(
   bridge: DesktopThemeBridge,
   theme: Theme,
   followSystem?: boolean,
@@ -368,7 +360,7 @@ export async function syncDesktopThemePreference(
   }
 }
 
-export function syncDesktopTheme(
+function syncDesktopTheme(
   theme: Theme,
   followSystem?: boolean,
   appearanceMode?: ThemePreferenceMode,
@@ -404,8 +396,7 @@ if (typeof document !== "undefined" && typeof window !== "undefined") {
 
 function getSnapshot(): ThemeSnapshot {
   if (typeof window === "undefined") return DEFAULT_THEME_SNAPSHOT;
-  // Reading the preference hits localStorage, so only recompute after a
-  // change was signalled; useTheme consumers call this on every render.
+  // Cache localStorage reads until signalled; useTheme calls this every render.
   if (!snapshotStale && lastSnapshot) return lastSnapshot;
   snapshotStale = false;
   const theme = getStored();
@@ -507,13 +498,9 @@ export function useRenderedAppearance() {
 function setTheme(next: Theme): boolean {
   if (typeof window === "undefined") return false;
   try {
-    // Preserve the current mode before replacing a legacy or inferred theme
-    // preference. Otherwise a fresh System preference is re-inferred from
-    // the new theme's base appearance, which can switch a dark UI to light.
+    // Save the current mode first; inferring it from the new theme can switch dark to light.
     writeAppearanceModePreference(readAppearanceModePreference(getStored()));
-    // Choosing a whole theme replaces any automatic-mode mix. The mix is
-    // captured first so a failed preference write can put it back instead
-    // of erasing it or leaving it attached to the new theme.
+    // A whole theme replaces the mix; retain it to restore on a failed preference write.
     const previousHalvesRaw = window.localStorage.getItem(THEME_HALVES_STORAGE_KEY);
     window.localStorage.removeItem(THEME_HALVES_STORAGE_KEY);
     try {
@@ -646,8 +633,6 @@ export function useTheme() {
     return setAppearanceMode(nextMode);
   };
 
-  // applyTheme reads the appearance mode and halves from storage, so it keys on the
-  // whole snapshot; getSnapshot keeps one object until one of those changes.
   useEffect(() => {
     applyTheme(snapshot.theme);
   }, [snapshot]);

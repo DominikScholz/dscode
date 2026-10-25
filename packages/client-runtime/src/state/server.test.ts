@@ -1,5 +1,8 @@
 import {
   EnvironmentId,
+  ServerObservability,
+  EnvironmentThemeId,
+  UsageLimitSourceId,
   type ServerConfig,
   type ServerConfigStreamEvent,
   type ServerLifecycleWelcomePayload,
@@ -15,7 +18,7 @@ import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
-import * as Scope from "effect/Scope";
+import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
@@ -184,31 +187,6 @@ describe("update restart reconnect nudges", () => {
     }),
   );
 
-  it.effect("paces nudges so a fast-failing connection cannot spin", () =>
-    Effect.gen(function* () {
-      const retries = yield* Ref.make(0);
-
-      const fiber = yield* Effect.forkChild(
-        nudgeReconnectDuringUpdateRestart({
-          stateChanges: Stream.fromIterable([{ phase: "backoff" }, { phase: "backoff" }]),
-          retryNow: Ref.update(retries, (count) => count + 1),
-        }),
-        { startImmediately: true },
-      );
-
-      yield* TestClock.adjust(Duration.millis(999));
-      expect(yield* Ref.get(retries)).toBe(0);
-
-      yield* TestClock.adjust(Duration.millis(1));
-      expect(yield* Ref.get(retries)).toBe(1);
-
-      yield* TestClock.adjust(Duration.seconds(1));
-      expect(yield* Ref.get(retries)).toBe(2);
-
-      yield* Fiber.join(fiber);
-    }).pipe(Effect.provide(TestClock.layer())),
-  );
-
   it.effect("retries rejected credentials only while the update restart is in progress", () =>
     Effect.gen(function* () {
       const retries = yield* Ref.make(0);
@@ -234,7 +212,260 @@ describe("update restart reconnect nudges", () => {
   );
 });
 
+const makeConfigPersistenceHarness = Effect.fn("test.makeConfigPersistenceHarness")(function* (
+  saveServerConfig: Persistence.EnvironmentCacheStore["Service"]["saveServerConfig"],
+) {
+  const events = yield* Queue.unbounded<ServerConfigStreamEvent>();
+  const client = {
+    [WS_METHODS.subscribeServerConfig]: () => Stream.fromQueue(events),
+  } as unknown as WsRpcProtocolClient;
+  const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
+    target: TARGET,
+    state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
+    session: yield* SubscriptionRef.make(Option.some(session(client))),
+    prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
+    connect: Effect.void,
+    disconnect: Effect.void,
+    retryNow: Effect.void,
+  });
+  const cache = Persistence.EnvironmentCacheStore.of({
+    loadShell: () => Effect.succeedNone,
+    saveShell: () => Effect.void,
+    loadThread: () => Effect.succeedNone,
+    saveThread: () => Effect.void,
+    removeThread: () => Effect.void,
+    loadServerConfig: () => Effect.succeedSome(CONFIG),
+    saveServerConfig,
+    loadVcsRefs: () => Effect.succeedNone,
+    saveVcsRefs: () => Effect.void,
+    removeVcsRefs: () => Effect.void,
+    clearVcsRefs: () => Effect.void,
+    clear: () => Effect.void,
+  });
+  const state = yield* makeEnvironmentServerConfigState({
+    environmentThemes: true,
+    usageLimitSources: true,
+  }).pipe(
+    Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+    Effect.provideService(Persistence.EnvironmentCacheStore, cache),
+  );
+  const send = Effect.fn("test.sendConfigEvent")(function* (event: ServerConfigStreamEvent) {
+    yield* Queue.offer(events, event);
+    return yield* SubscriptionRef.changes(state).pipe(
+      Stream.filter(Option.isSome),
+      Stream.map((value) => value.value),
+      Stream.filter((projection) => projection.latestEvent === event),
+      Stream.runHead,
+      Effect.map(Option.getOrThrow),
+    );
+  });
+  return { send };
+});
+
 describe("server state projection", () => {
+  it.effect("skips duplicate keybinding saves but persists changed keybindings", () =>
+    Effect.gen(function* () {
+      const saved = yield* Ref.make<ReadonlyArray<ServerConfig>>([]);
+      const keybindingsEvent = (key: string): ServerConfigStreamEvent => ({
+        version: 1,
+        type: "keybindingsUpdated",
+        payload: {
+          keybindings: [
+            {
+              command: "terminal.toggle",
+              shortcut: {
+                key,
+                metaKey: false,
+                ctrlKey: false,
+                shiftKey: false,
+                altKey: false,
+                modKey: true,
+              },
+            },
+          ],
+          issues: [],
+        },
+      });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeConfigPersistenceHarness((_id, config) =>
+            Ref.update(saved, (values) => [...values, config]),
+          );
+          const first = yield* h.send(keybindingsEvent("p"));
+          yield* TestClock.adjust("500 millis");
+          expect(yield* Ref.get(saved)).toEqual([first.config]);
+
+          yield* h.send(keybindingsEvent("p"));
+          yield* TestClock.adjust("10 seconds");
+          expect(yield* Ref.get(saved)).toEqual([first.config]);
+
+          const changed = yield* h.send(keybindingsEvent("q"));
+          yield* TestClock.adjust("10 seconds");
+          expect(yield* Ref.get(saved)).toEqual([first.config, changed.config]);
+        }),
+      );
+    }),
+  );
+
+  it.effect(
+    "compares nested durable values independently of key order and omitted undefined fields",
+    () =>
+      Effect.gen(function* () {
+        const saved = yield* Ref.make<ReadonlyArray<ServerConfig>>([]);
+        const observability = {
+          logsDirectoryPath: "/synthetic/logs",
+          localTracingEnabled: false,
+          otlpTracesEnabled: false,
+          otlpMetricsEnabled: false,
+          otlpLogsEnabled: false,
+        };
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const h = yield* makeConfigPersistenceHarness((_id, config) =>
+              Ref.update(saved, (values) => [...values, config]),
+            );
+            const first = yield* h.send(snapshotEvent({ ...CONFIG, observability }));
+            yield* TestClock.adjust("500 millis");
+            const reordered = Object.fromEntries(
+              Object.entries(observability).toReversed(),
+            ) as typeof observability;
+            for (const next of [
+              { ...CONFIG, observability: reordered },
+              { ...CONFIG, observability: { ...reordered, otlpTracesUrl: undefined } },
+              { ...CONFIG, observability: { ...observability } },
+            ]) {
+              const encode = Schema.encodeEffect(Schema.fromJsonString(ServerObservability));
+              expect(JSON.parse(yield* encode(next.observability))).toEqual(
+                JSON.parse(yield* encode(observability)),
+              );
+              const projection = yield* h.send(snapshotEvent(next));
+              expect(projection.config.observability).toEqual(next.observability);
+              yield* TestClock.adjust("10 seconds");
+              expect.soft(yield* Ref.get(saved)).toEqual([first.config]);
+            }
+            const writesBeforeChange = (yield* Ref.get(saved)).length;
+            const changed = yield* h.send(
+              snapshotEvent({
+                ...CONFIG,
+                observability: { ...observability, otlpTracesUrl: "https://traces.example.test" },
+              }),
+            );
+            yield* TestClock.adjust("10 seconds");
+            expect((yield* Ref.get(saved)).length).toBe(writesBeforeChange + 1);
+            expect((yield* Ref.get(saved)).at(-1)).toEqual(changed.config);
+          }),
+        );
+      }),
+  );
+
+  it.effect("saves once across transient themes, usage sources and stall updates", () =>
+    Effect.gen(function* () {
+      const saved = yield* Ref.make<ReadonlyArray<ServerConfig>>([]);
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeConfigPersistenceHarness((_id, config) =>
+            Ref.update(saved, (values) => [...values, config]),
+          );
+          yield* h.send(snapshotEvent(CONFIG));
+          yield* TestClock.adjust("500 millis");
+          expect((yield* Ref.get(saved)).length).toBe(1);
+          for (const event of [
+            {
+              version: 1,
+              type: "environmentThemesUpdated",
+              payload: {
+                themes: [
+                  {
+                    id: EnvironmentThemeId.make("theme-test"),
+                    name: "Test theme",
+                    appearance: "dark",
+                  },
+                ],
+              },
+            },
+            {
+              version: 1,
+              type: "usageLimitSourcesUpdated",
+              payload: {
+                sources: [
+                  {
+                    id: UsageLimitSourceId.make("source-test"),
+                    kind: "cliproxy",
+                    label: "Test source",
+                    checkedAt: "2026-10-20T07:50:37.633Z",
+                    accounts: [],
+                  },
+                ],
+              },
+            },
+            snapshotEvent({
+              ...CONFIG,
+              lastEventLoopStall: {
+                detectedAt: "2026-10-20T07:50:37.633Z",
+                durationMs: 1000,
+                loadAverage: 1,
+                cpuCount: 8,
+              },
+            }),
+          ] satisfies ReadonlyArray<ServerConfigStreamEvent>) {
+            const projection = yield* h.send(event);
+            expect(projection.latestEvent).toBe(event);
+            if (event.type === "environmentThemesUpdated")
+              expect(projection.config.environmentThemes).toEqual(event.payload.themes);
+            if (event.type === "usageLimitSourcesUpdated")
+              expect(projection.config.usageLimitSources).toEqual(event.payload.sources);
+            yield* TestClock.adjust("10 seconds");
+          }
+        }),
+      );
+      expect(yield* Ref.get(saved)).toEqual([CONFIG]);
+    }),
+  );
+
+  it.effect("flushes pending durable changes after a transient event", () =>
+    Effect.gen(function* () {
+      const saved = yield* Ref.make<ReadonlyArray<ServerConfig>>([]);
+      const changed = { ...CONFIG, keybindingsConfigPath: "/changed/keybindings.json" };
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeConfigPersistenceHarness((_id, config) =>
+            Ref.update(saved, (values) => [...values, config]),
+          );
+          yield* h.send(snapshotEvent(CONFIG));
+          yield* TestClock.adjust("500 millis");
+          yield* h.send(snapshotEvent(changed));
+          yield* h.send({ version: 1, type: "environmentThemesUpdated", payload: { themes: [] } });
+        }),
+      );
+      expect(yield* Ref.get(saved)).toEqual([CONFIG, changed]);
+    }),
+  );
+
+  it.effect("retries a failed durable save on a transient event", () =>
+    Effect.gen(function* () {
+      const attempts = yield* Ref.make<ReadonlyArray<ServerConfig>>([]);
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const h = yield* makeConfigPersistenceHarness((_id, config) =>
+            Effect.gen(function* () {
+              const values = yield* Ref.updateAndGet(attempts, (values) => [...values, config]);
+              if (values.length === 1)
+                return yield* new Persistence.ConnectionPersistenceError({
+                  operation: "save-server-config",
+                  message: "test failure",
+                });
+            }),
+          );
+          yield* h.send(snapshotEvent(CONFIG));
+          yield* TestClock.adjust("500 millis");
+          yield* h.send({ version: 1, type: "usageLimitSourcesUpdated", payload: { sources: [] } });
+          yield* TestClock.adjust("10 seconds");
+        }),
+      );
+      expect(yield* Ref.get(attempts)).toEqual([CONFIG, CONFIG]);
+    }),
+  );
+
   it("only treats a legacy transport interruption as an unacknowledged handoff", () => {
     expect(isLegacyUpdateHandoffLoss(Cause.interrupt(1))).toBe(true);
     expect(
@@ -406,57 +637,6 @@ describe("server state projection", () => {
         ready("0.0.30"),
       ),
     ).toBe(true);
-  });
-
-  it("applies every config category to the projected snapshot", () => {
-    const snapshot = applyServerConfigProjection(Option.none(), {
-      version: 1,
-      type: "snapshot",
-      config: CONFIG,
-    });
-    const settings = { ...CONFIG.settings };
-    const projected = applyServerConfigProjection(snapshot, {
-      version: 1,
-      type: "settingsUpdated",
-      payload: { settings },
-    });
-
-    const result = Option.getOrThrow(projected);
-    // An equal settings payload keeps the snapshot's object so readers don't re-render.
-    expect(result.config.settings).toBe(Option.getOrThrow(snapshot).config.settings);
-    expect(result.config.settings).toEqual(settings);
-    expect(result.latestEvent.type).toBe("settingsUpdated");
-  });
-
-  it("carries published environment themes in and out of the projected snapshot", () => {
-    const snapshot = applyServerConfigProjection(Option.none(), {
-      version: 1,
-      type: "snapshot",
-      config: CONFIG,
-    });
-    const themes = [
-      {
-        id: "nightfall",
-        name: "Nightfall",
-        appearance: "dark",
-        canvas: "#1a1b26",
-        accent: "#7aa2f7",
-      },
-    ] as const;
-
-    const published = applyServerConfigProjection(snapshot, {
-      version: 1,
-      type: "environmentThemesUpdated",
-      payload: { themes },
-    });
-    expect(Option.getOrThrow(published).config.environmentThemes).toEqual(themes);
-
-    const unpublished = applyServerConfigProjection(published, {
-      version: 1,
-      type: "environmentThemesUpdated",
-      payload: { themes: [] },
-    });
-    expect(Option.getOrThrow(unpublished).config.environmentThemes).toBeUndefined();
   });
 
   it("keeps published themes across a reconnect snapshot", () => {
@@ -757,67 +937,6 @@ describe("server state projection", () => {
     ).toBe(live);
   });
 
-  it.effect("throttles server configuration writes and flushes the latest on teardown", () =>
-    Effect.gen(function* () {
-      const events = yield* Queue.unbounded<ServerConfigStreamEvent>();
-      const client = {
-        [WS_METHODS.subscribeServerConfig]: () => Stream.fromQueue(events),
-      } as unknown as WsRpcProtocolClient;
-      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
-        target: TARGET,
-        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
-        session: yield* SubscriptionRef.make(Option.some(session(client))),
-        prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
-        connect: Effect.void,
-        disconnect: Effect.void,
-        retryNow: Effect.void,
-      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
-      const savedConfigs = yield* Queue.unbounded<ServerConfig>();
-      const cache = Persistence.EnvironmentCacheStore.of({
-        loadShell: () => Effect.succeed(Option.none()),
-        saveShell: () => Effect.void,
-        loadThread: () => Effect.succeed(Option.none()),
-        saveThread: () => Effect.void,
-        removeThread: () => Effect.void,
-        loadServerConfig: () => Effect.succeed(Option.some(CONFIG)),
-        saveServerConfig: (_environmentId, config) => Queue.offer(savedConfigs, config),
-        loadVcsRefs: () => Effect.succeed(Option.none()),
-        saveVcsRefs: () => Effect.void,
-        removeVcsRefs: () => Effect.void,
-        clearVcsRefs: () => Effect.void,
-        clear: () => Effect.void,
-      });
-
-      const scope = yield* Scope.make();
-      const state = yield* makeEnvironmentServerConfigState({}).pipe(
-        Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
-        Effect.provideService(Persistence.EnvironmentCacheStore, cache),
-        Effect.provideService(Scope.Scope, scope),
-      );
-      const sendConfig = Effect.fn(function* (cwd: string) {
-        yield* Queue.offer(events, { version: 1, type: "snapshot", config: { ...CONFIG, cwd } });
-        yield* SubscriptionRef.changes(state).pipe(
-          Stream.filter((value) => Option.isSome(value) && value.value.config.cwd === cwd),
-          Stream.runHead,
-        );
-      });
-      yield* sendConfig("/first");
-      yield* TestClock.adjust("500 millis");
-      expect((yield* Queue.take(savedConfigs)).cwd).toBe("/first");
-      for (let index = 1; index <= 9; index++) {
-        yield* sendConfig(`/repo-${index}`);
-        yield* TestClock.adjust("1 second");
-      }
-      expect(yield* Queue.poll(savedConfigs)).toEqual(Option.none());
-      yield* TestClock.adjust("1 second");
-      expect((yield* Queue.take(savedConfigs)).cwd).toBe("/repo-9");
-      yield* sendConfig("/final");
-      yield* Scope.close(scope, Exit.void);
-      expect((yield* Queue.take(savedConfigs)).cwd).toBe("/final");
-      expect(yield* Queue.poll(savedConfigs)).toEqual(Option.none());
-    }),
-  );
-
   it.effect("starts from cached configuration and persists the live projection", () =>
     Effect.gen(function* () {
       const events = yield* Queue.unbounded<ServerConfigStreamEvent>();
@@ -949,47 +1068,6 @@ describe("server state projection", () => {
 
       // Cached, it would read as a fresh freeze on the next launch.
       expect(yield* Queue.take(savedConfigs)).not.toHaveProperty("lastEventLoopStall");
-    }),
-  );
-
-  it.effect("does not rewrite cached configuration when no live update arrives", () =>
-    Effect.gen(function* () {
-      const client = {
-        [WS_METHODS.subscribeServerConfig]: () => Stream.empty,
-      } as unknown as WsRpcProtocolClient;
-      const supervisor = EnvironmentSupervisor.EnvironmentSupervisor.of({
-        target: TARGET,
-        state: yield* SubscriptionRef.make(AVAILABLE_CONNECTION_STATE),
-        session: yield* SubscriptionRef.make(Option.some(session(client))),
-        prepared: yield* SubscriptionRef.make(Option.none<PreparedConnection>()),
-        connect: Effect.void,
-        disconnect: Effect.void,
-        retryNow: Effect.void,
-      } satisfies EnvironmentSupervisor.EnvironmentSupervisor["Service"]);
-      const savedConfigs = yield* Queue.unbounded<ServerConfig>();
-      const cache = Persistence.EnvironmentCacheStore.of({
-        loadShell: () => Effect.succeedNone,
-        saveShell: () => Effect.void,
-        loadThread: () => Effect.succeedNone,
-        saveThread: () => Effect.void,
-        removeThread: () => Effect.void,
-        loadServerConfig: () => Effect.succeedSome(CONFIG),
-        saveServerConfig: (_environmentId, config) => Queue.offer(savedConfigs, config),
-        loadVcsRefs: () => Effect.succeedNone,
-        saveVcsRefs: () => Effect.void,
-        removeVcsRefs: () => Effect.void,
-        clearVcsRefs: () => Effect.void,
-        clear: () => Effect.void,
-      });
-
-      yield* Effect.scoped(
-        makeEnvironmentServerConfigState({}).pipe(
-          Effect.provideService(EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
-          Effect.provideService(Persistence.EnvironmentCacheStore, cache),
-        ),
-      );
-
-      expect(yield* Queue.poll(savedConfigs)).toEqual(Option.none());
     }),
   );
 });

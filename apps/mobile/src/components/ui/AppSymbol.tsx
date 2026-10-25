@@ -1,14 +1,12 @@
 import type { Icon } from "@tabler/icons-react-native/types";
-/*
- * Keep these as per-icon exports. Importing the package root eagerly registers
- * the entire Tabler icon set in Metro.
- */
+/* Package-root imports eagerly register the entire Tabler icon set in Metro. */
 import IconAdjustmentsHorizontal from "@tabler/icons-react-native/IconAdjustmentsHorizontal";
 import IconAlignLeft from "@tabler/icons-react-native/IconAlignLeft";
 import IconAlertCircle from "@tabler/icons-react-native/IconAlertCircle";
 import IconAlertTriangle from "@tabler/icons-react-native/IconAlertTriangle";
 import IconApps from "@tabler/icons-react-native/IconApps";
 import IconArchive from "@tabler/icons-react-native/IconArchive";
+import IconCalendarClock from "@tabler/icons-react-native/IconCalendarClock";
 import IconArrowBackUp from "@tabler/icons-react-native/IconArrowBackUp";
 import IconArrowDown from "@tabler/icons-react-native/IconArrowDown";
 import IconArrowForwardUp from "@tabler/icons-react-native/IconArrowForwardUp";
@@ -38,10 +36,13 @@ import IconChevronLeft from "@tabler/icons-react-native/IconChevronLeft";
 import IconChevronRight from "@tabler/icons-react-native/IconChevronRight";
 import IconChevronUp from "@tabler/icons-react-native/IconChevronUp";
 import IconCircle from "@tabler/icons-react-native/IconCircle";
+import IconCircleFilled from "@tabler/icons-react-native/IconCircleFilled";
 import IconCircleCheck from "@tabler/icons-react-native/IconCircleCheck";
 import IconCircleDashed from "@tabler/icons-react-native/IconCircleDashed";
 import IconCircleDot from "@tabler/icons-react-native/IconCircleDot";
 import IconCircleXFilled from "@tabler/icons-react-native/IconCircleXFilled";
+import IconMoodPlus from "@tabler/icons-react-native/IconMoodPlus";
+import IconTag from "@tabler/icons-react-native/IconTag";
 import IconTicket from "@tabler/icons-react-native/IconTicket";
 import IconClock from "@tabler/icons-react-native/IconClock";
 import IconCode from "@tabler/icons-react-native/IconCode";
@@ -175,11 +176,15 @@ const ANDROID_ICON_BY_SF_SYMBOL = {
   "checkmark.circle": IconCircleCheck,
   "checkmark.circle.fill": IconCircleCheck,
   circle: IconCircle,
+  "circle.fill": IconCircleFilled,
   "circle.dashed": IconCircleDashed,
   "circle.inset.filled": IconCircleDot,
   "circle.dashed.inset.filled": IconCircleDot,
+  "calendar.badge.clock": IconCalendarClock,
   clock: IconClock,
   timer: IconClock,
+  "face.smiling": IconMoodPlus,
+  tag: IconTag,
   ticket: IconTicket,
   cloud: IconCloud,
   cube: IconBox,

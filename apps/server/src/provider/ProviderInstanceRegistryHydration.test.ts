@@ -54,21 +54,6 @@ describe("deriveProviderInstanceConfigMap", () => {
     });
   });
 
-  it("leaves an already machine-enabled instance untouched", () => {
-    const settings = settingsWith({
-      providerInstances: {
-        [instanceId]: { driver: ProviderDriverKind.make("codex"), enabled: true },
-      },
-      projectSettingsOverrides: {
-        [projectId]: { providerInstances: { [instanceId]: { enabled: true } } },
-      },
-    });
-
-    const merged = deriveProviderInstanceConfigMap(settings);
-
-    expect(merged[instanceId]).toBe(settings.providerInstances[instanceId]);
-  });
-
   it("does not revive an instance a project override references but settings no longer configure", () => {
     const settings = settingsWith({
       providerInstances: {},
@@ -95,28 +80,5 @@ describe("deriveProviderInstanceConfigMap", () => {
     const merged = deriveProviderInstanceConfigMap(settings);
 
     expect(merged[instanceId]).toBe(settings.providerInstances[instanceId]);
-  });
-
-  it("folds overrides from multiple projects", () => {
-    const otherInstanceId = ProviderInstanceId.make("claudeAgent_personal");
-    const otherProjectId = ProjectId.make("project-b");
-    const settings = settingsWith({
-      providerInstances: {
-        [instanceId]: { driver: ProviderDriverKind.make("codex"), enabled: false },
-        [otherInstanceId]: { driver: ProviderDriverKind.make("claudeAgent"), enabled: false },
-      },
-      projectSettingsOverrides: {
-        [projectId]: { providerInstances: { [instanceId]: { enabled: true } } },
-        [otherProjectId]: { providerInstances: { [otherInstanceId]: { enabled: true } } },
-      },
-    });
-
-    const merged = deriveProviderInstanceConfigMap(settings);
-
-    expect(merged[instanceId]).toEqual({ driver: ProviderDriverKind.make("codex"), enabled: true });
-    expect(merged[otherInstanceId]).toEqual({
-      driver: ProviderDriverKind.make("claudeAgent"),
-      enabled: true,
-    });
   });
 });

@@ -1,5 +1,3 @@
-"use client";
-
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
   AuthPreviewOperateScope,
@@ -156,10 +154,7 @@ function AuthorizedBrowserWebview(props: ComponentProps<typeof HostedBrowserWebv
   return canOperatePreview ? <HostedBrowserWebview {...props} profileId={profileId} /> : null;
 }
 
-/**
- * It is latched once settings load: Electron fixes the partition when the guest attaches, so a
- * later settings change must not move a live tab.
- */
+// Latch after hydration: Electron fixes the partition when the guest attaches.
 function useTabProfileId(profileId: string | undefined): string | undefined {
   const hydrated = useClientSettingsHydrated();
   const defaultProfileId = useBrowserDefaults().profileId;

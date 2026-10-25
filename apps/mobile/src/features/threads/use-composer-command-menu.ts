@@ -50,7 +50,11 @@ import { useEffect, useRef, useState } from "react";
 import type { ComposerEditorSelection } from "../../components/ComposerEditor";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
-import { useComposerPathSearch, useComposerPullRequestSearch } from "../../state/queries";
+import {
+  useComposerPathSearch,
+  useComposerPullRequestSearch,
+  useThreadSearch,
+} from "../../state/queries";
 import type { ComposerCommandItem } from "./ComposerCommandPopover";
 import { matchesSlashSkillQuery } from "./composerSlashSkillSearch";
 
@@ -205,6 +209,8 @@ export function useComposerCommandMenu({
   readonly onUsageLimits?: () => void;
 }) {
   const [selection, setSelection] = useState(() => composerSelectionAtEnd(draftMessage));
+  // Thread mentions rank by recency as of when the composer mounted.
+  const [now] = useState(() => Date.now());
   const previousOwnerKeyRef = useRef(ownerKey);
   const onSelectionChange = (nextSelection: ComposerEditorSelection) => {
     setSelection(nextSelection);
@@ -244,8 +250,7 @@ export function useComposerCommandMenu({
     selectedProviderStatus,
     projectCwd,
   );
-  // The last scan this composer asked for. A request inside the TTL is not
-  // repeated, so a client clock ahead of the server's cannot loop rescans.
+  // Record client request time to enforce TTL even when the client clock runs ahead of the server.
   const workspaceRefreshKeyRef = useRef<{ key: string; requestedAt: number } | null>(null);
   const [workspaceRefreshRetry, setWorkspaceRefreshRetry] = useState<{
     key: string;
@@ -343,6 +348,12 @@ export function useComposerCommandMenu({
     cwd: trigger?.kind === "path" ? projectCwd : null,
     query: trigger?.kind === "path" ? trigger.query : null,
   });
+  // Mounts older settled threads matching the mention, which shells may leave out.
+  useThreadSearch(
+    trigger?.kind === "path" && environmentId ? [environmentId] : [],
+    trigger?.kind === "path" ? trigger.query : "",
+    { titlesOnly: true },
+  );
   const pullRequestSearch = useComposerPullRequestSearch({
     environmentId,
     projectId: pullRequestProjectId,
@@ -500,6 +511,7 @@ export function useComposerCommandMenu({
             environmentId,
             excludeThreadId: currentThreadId,
             query: trigger.query,
+            now,
           })
         : [];
       return [

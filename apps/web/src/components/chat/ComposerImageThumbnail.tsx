@@ -1,8 +1,10 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
 
-import { createComposerImageThumbnail } from "../../lib/imageCompression";
+import {
+  createComposerImageThumbnail,
+  readComposerImageThumbnail,
+} from "../../lib/imageCompression";
 
-/** Keep full-resolution image decoding out of composer rerenders. */
 export const ComposerImageThumbnail = memo(function ComposerImageThumbnail({
   file,
   alt,
@@ -24,6 +26,6 @@ export const ComposerImageThumbnail = memo(function ComposerImageThumbnail({
       active = false;
     };
   }, [file]);
-  const src = preview?.file === file ? preview.src : null;
+  const src = preview?.file === file ? preview.src : (readComposerImageThumbnail(file) ?? null);
   return src ? <img src={src} alt={alt} className={className} /> : fallback;
 });

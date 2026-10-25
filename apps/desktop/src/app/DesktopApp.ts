@@ -147,7 +147,7 @@ const handleFatalStartupError = Effect.fn("desktop.startup.handleFatalStartupErr
 const fatalStartupCause = <E>(stage: string, cause: Cause.Cause<E>) =>
   handleFatalStartupError(stage, Cause.pretty(cause)).pipe(Effect.andThen(Effect.failCause(cause)));
 
-export const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
+const stopAllPoolInstances = Effect.fn("desktop.app.stopAllPoolInstances")(
   function* (): Effect.fn.Return<void, never, DesktopBackendPool.DesktopBackendPool> {
     const pool = yield* DesktopBackendPool.DesktopBackendPool;
     const instances = yield* pool.list;
@@ -339,11 +339,7 @@ const scopedProgram = Effect.scoped(
     const rendererHistory = yield* DesktopRendererHistory.DesktopRendererHistory;
 
     yield* Effect.addFinalizer(() =>
-      // Stop every backend in the pool, not just the primary. The
-      // electronApp.quit() path can race ahead of the layer-scope
-      // cascade, so leaving the WSL instance for its parent scope
-      // finalizer means it gets hard-killed by the OS instead of
-      // receiving SIGTERM + grace.
+      // Quit can outrun layer finalizers; stop pooled backends here so they receive SIGTERM before OS teardown.
       stopAllPoolInstances().pipe(
         Effect.ensuring(rendererHistory.shutdown),
         Effect.ensuring(shutdown.markComplete),

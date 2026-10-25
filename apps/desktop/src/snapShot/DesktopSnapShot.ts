@@ -211,7 +211,6 @@ export class DesktopSnapShotSetupError extends Schema.TaggedError<DesktopSnapSho
       Schema.Literals(["preview-config", "apply-config"]),
     ]),
     reason: Schema.Literals(["unsupported-session", "setup-failed", "shortcut-permissions"]),
-    /** The part of the macOS test capture that failed, and how. */
     step: Schema.optional(Schema.Literals(["find-window", "capture-window"])),
     status: Schema.optional(Schema.Literals(["missing", "timed-out", "exited", "failed"])),
     exitCode: Schema.optional(Schema.Number),
@@ -266,10 +265,6 @@ export class DesktopSnapShotSetupError extends Schema.TaggedError<DesktopSnapSho
   }
 }
 
-/**
- * How a macOS capture command ended, read from the child process error's own fields.
- * What the command printed stays in the error's `cause`.
- */
 function macCommandFailure(cause: unknown) {
   const failure = Predicate.isObject(cause) ? cause : {};
   if ("killed" in failure && failure.killed === true) return { status: "timed-out" } as const;
@@ -289,11 +284,11 @@ function captureMode(platform: NodeJS.Platform): DesktopSnapShotState["mode"] {
   return platform === "darwin" || platform === "win32" ? "direct" : "unavailable";
 }
 
-export function shouldAnimateSnapShot(settings: SnapShotSystemAnimationSettings): boolean {
+function shouldAnimateSnapShot(settings: SnapShotSystemAnimationSettings): boolean {
   return settings.shouldRenderRichAnimation && !settings.prefersReducedMotion;
 }
 
-export function snapShotThumbnailSize(active: ActiveWindow | undefined): Electron.Size {
+function snapShotThumbnailSize(active: ActiveWindow | undefined): Electron.Size {
   if (!active) return { width: 2_560, height: 1_600 };
   return {
     width: Math.min(Math.max(active.bounds.width, 1), MAX_CAPTURE_WIDTH),
@@ -301,7 +296,7 @@ export function snapShotThumbnailSize(active: ActiveWindow | undefined): Electro
   };
 }
 
-export function snapShotIconDataUrl(
+function snapShotIconDataUrl(
   ...icons: ReadonlyArray<Electron.NativeImage | null | undefined>
 ): string | undefined {
   const icon = icons.find((candidate): candidate is Electron.NativeImage =>
@@ -324,7 +319,7 @@ async function appFileIcon(
   return Electron.app.getFileIcon(path, { size: "normal" }).catch(() => undefined);
 }
 
-export async function iconDataUrl(
+async function iconDataUrl(
   source: { readonly appIcon?: Electron.NativeImage | null },
   active: ActiveWindow | undefined,
   platform: NodeJS.Platform,
@@ -665,7 +660,7 @@ export class SnapShotFlash {
   }
 }
 
-export function snapShotFlashBounds(
+function snapShotFlashBounds(
   active: ActiveWindow | undefined,
   platform: NodeJS.Platform,
 ): Electron.Rectangle {
@@ -903,8 +898,7 @@ export const make = Effect.gen(function* () {
     const imageTempPath = path.join(captureDirectory, `${id}.tmp.png`);
 
     return yield* Effect.gen(function* () {
-      // Retire feedback before reading screen pixels, so a rapid capture cannot
-      // photograph the previous capture's overlay.
+      // Retire feedback before capture so rapid captures cannot photograph the previous overlay.
       closeLinuxFeedback();
       flash.dispose();
       transition.dispose();
@@ -1033,8 +1027,7 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.withSpan("desktop.snapShot.capture"));
 
   const captureFromShortcut = Effect.gen(function* () {
-    // Repeated shortcuts must not tear down a moving capture and start another
-    // renderer. Drop them while the flight runs, just as during pixel acquisition.
+    // Repeated shortcuts must not replace a capture during its flight.
     if (shortcutSuppressed || transition.isAnimating) return;
     shortcutVerified = true;
     const now = yield* Clock.currentTimeNanos;
@@ -1140,9 +1133,7 @@ export const make = Effect.gen(function* () {
       transition.dispose();
       closeLinuxFeedback();
     }
-    // Every client-settings save lands here. Only the fields that decide which
-    // shortcut listener runs may tear it down; a font-size change must not
-    // uninstall a global keyboard hook or drop an approved portal session.
+    // Unrelated settings saves must not uninstall the keyboard hook or drop an approved portal session.
     const shortcutInputsChanged =
       settings.snapShotEnabled !== previousSettings.snapShotEnabled ||
       settings.snapShotIncludeAccessibility !== previousSettings.snapShotIncludeAccessibility ||

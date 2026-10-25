@@ -1,3 +1,7 @@
+import { SafeAreaInsetsContext, useSafeAreaInsets } from "react-native-safe-area-context";
+import { AdaptiveWorkspaceContext, useAdaptiveWorkspaceLayout } from "./adaptive-workspace-context";
+import { createDeferredNavigation } from "./deferred-navigation";
+import { uuidv4 } from "../../lib/uuid";
 import type {
   EnvironmentProject,
   EnvironmentThreadShell,
@@ -5,16 +9,10 @@ import type {
 import { EnvironmentId, ThreadId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
+import { NavigationContext, NavigationRouteContext, useNavigation } from "@react-navigation/native";
 import {
-  CommonActions,
-  NavigationContext,
-  NavigationRouteContext,
-  StackActions,
-  useNavigation,
-} from "@react-navigation/native";
-import {
-  createContext,
   use,
+  useDeferredValue,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -22,7 +20,8 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { Platform, useWindowDimensions, View } from "react-native";
+import { Keyboard, Platform, useWindowDimensions, View } from "react-native";
+import { KeyboardController, useKeyboardState } from "react-native-keyboard-controller";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -39,17 +38,14 @@ import {
   type VerticalHinge,
   deriveWorkspacePaneLayout,
   isPrimarySidebarPinned,
-  type FileInspectorPaneLayout,
-  type Layout,
+  isWorkspaceListPath,
   type WorkspaceAuxiliaryPaneRole,
-  type WorkspacePaneLayout,
 } from "../../lib/layout";
-import {
-  resolveThreadSelectionNavigationAction,
-  resolveThreadSelectionOverlayState,
-} from "../../lib/adaptive-navigation";
 import { scopedThreadKey } from "../../lib/scopedEntities";
 import type { ThreadListFilters } from "../../persistence/mobile-preferences";
+import { appAtomRegistry } from "../../state/atom-registry";
+import { useProjects } from "../../state/entities";
+import { environmentThreadShells } from "../../state/threads";
 import { mobilePreferencesAtom } from "../../state/preferences";
 import {
   DEFAULT_MOBILE_PROJECT_GROUPING_SETTINGS,
@@ -65,15 +61,25 @@ import {
   ANDROID_WORKSPACE_RAIL_WIDTH,
 } from "../workspace/AndroidWorkspaceNavigation";
 import { AndroidWorkspaceSidebar } from "../workspace/AndroidWorkspaceSidebar";
-import { useAndroidWorkspaceSelection } from "../workspace/useAndroidWorkspaceSelection";
+import {
+  selectWorkspaceDetail,
+  type WorkspaceDetail,
+  type WorkspaceDetailSheet,
+} from "../workspace/workspace-detail-selection";
+import { startOpeningDetail } from "../workspace/useSelectWorkspaceDetail";
+import { useWorkspaceTabs } from "../workspace/WorkspaceTabsContext";
 import { HomeListOptionsProvider } from "../home/home-list-options";
+import { newTaskDestination } from "../threads/new-task-project-selection";
 import { usePendingTaskListActions } from "../home/usePendingTaskListActions";
 import { ThreadNavigationSidebar } from "../threads/ThreadNavigationSidebar";
 import { useOpenThreadPullRequests } from "../threads/use-open-thread-pull-requests";
 import { RenderErrorBoundary, RenderFailureView } from "../../components/RenderErrorBoundary";
 import { WORKSPACE_PANE_TIMING } from "./workspace-pane-animation";
 import { WorkspaceInspectorPane } from "./workspace-inspector-pane";
-import { WorkspaceContentWidthContext } from "./workspace-content-width";
+import {
+  WorkspaceContentWidthContext,
+  WorkspaceSettledContentWidthContext,
+} from "./workspace-content-width";
 import {
   NativeWorkspaceModeContext,
   NativeWorkspaceInspectorContext,
@@ -82,51 +88,18 @@ import {
 import { useNativeLayoutMetrics } from "../../native/native-layout-metrics";
 import { AndroidHingeObserver } from "../../native/AndroidHingeObserver";
 import { WindowHingeContext } from "../../native/window-hinge-context";
+import { useAndroidWorkspaceRoot } from "../workspace/AndroidWorkspaceTabsProvider";
+import { openSettings } from "../settings/settings-navigation";
+import { dispatchRootStackReset, rootStackState } from "../../lib/root-stack-reset";
+import {
+  currentWorkspaceSelections,
+  workspaceSelectionCheck,
+} from "../workspace/workspace-selection-store";
+import { workspaceTabNavigationState } from "../workspace/workspace-tab-navigation";
+import type { WorkspaceTab } from "../workspace/workspace-tabs-state";
+import { workspaceRoutesOf } from "./workspace-overlay-routes";
 
-interface AdaptiveWorkspaceContextValue {
-  readonly layout: Layout;
-  readonly panes: WorkspacePaneLayout;
-  readonly fileInspector: FileInspectorPaneLayout;
-  readonly primarySidebarSearchQuery: string;
-  readonly selectThread: (thread: EnvironmentThreadShell) => void;
-  readonly activateAuxiliaryPaneRole: (role: WorkspaceAuxiliaryPaneRole) => () => void;
-  readonly registerWorkspaceInspector: (render: () => ReactNode) => () => void;
-  readonly setPrimarySidebarSearchQuery: (query: string) => void;
-  readonly showAuxiliaryPane: (role: WorkspaceAuxiliaryPaneRole) => void;
-  readonly toggleAuxiliaryPane: () => void;
-  readonly togglePrimarySidebar: () => void;
-  readonly setAuxiliaryPaneWidth: (width: number) => void;
-}
-
-const compactLayout = deriveLayout({ width: 0, height: 0 });
-const compactPanes = deriveWorkspacePaneLayout({
-  layout: compactLayout,
-  viewportWidth: 0,
-  primarySidebarPreferredVisible: true,
-  auxiliaryPanePreferredVisible: true,
-});
-const compactFileInspector = deriveFileInspectorPaneLayout({
-  layout: compactLayout,
-  viewportWidth: 0,
-});
-const AdaptiveWorkspaceContext = createContext<AdaptiveWorkspaceContextValue>({
-  layout: compactLayout,
-  panes: compactPanes,
-  fileInspector: compactFileInspector,
-  primarySidebarSearchQuery: "",
-  selectThread: () => undefined,
-  activateAuxiliaryPaneRole: () => () => undefined,
-  registerWorkspaceInspector: () => () => undefined,
-  setPrimarySidebarSearchQuery: () => undefined,
-  showAuxiliaryPane: () => undefined,
-  toggleAuxiliaryPane: () => undefined,
-  togglePrimarySidebar: () => undefined,
-  setAuxiliaryPaneWidth: () => undefined,
-});
-
-export function useAdaptiveWorkspaceLayout(): AdaptiveWorkspaceContextValue {
-  return use(AdaptiveWorkspaceContext);
-}
+export { useAdaptiveWorkspaceLayout };
 
 export function useAdaptiveWorkspacePaneRole(role: WorkspaceAuxiliaryPaneRole) {
   const { activateAuxiliaryPaneRole } = useAdaptiveWorkspaceLayout();
@@ -134,16 +107,7 @@ export function useAdaptiveWorkspacePaneRole(role: WorkspaceAuxiliaryPaneRole) {
   useFocusEffect(() => activateAuxiliaryPaneRole(role));
 }
 
-/**
- * The column renders BESIDE the navigator — outside any screen — so the
- * registering screen's navigation and route contexts are captured here and
- * re-provided around the portal content.
- *
- * Registration is FOCUS-scoped, driven by navigation events rather than the
- * screen's own render cycle: react-native-screens freezes blurred screens, so a
- * cleanup that depends on the blurred subtree re-rendering never runs and would
- * leak the pane into the next route.
- */
+/** Capture inspector navigation contexts. Register on focus events because frozen blurred screens may never clean up. */
 export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefined) {
   const { registerWorkspaceInspector } = useAdaptiveWorkspaceLayout();
   const navigation = use(NavigationContext);
@@ -163,8 +127,6 @@ export function useRegisterWorkspaceInspector(render: (() => ReactNode) | undefi
   const focusedRef = useRef(false);
   const deactivateRef = useRef<(() => void) | null>(null);
 
-  // An effect event reads this render's pane without making the focus
-  // subscription re-run (and deactivate) every time the pane closure changes.
   const syncRegistration = useEffectEvent(() => {
     if (!focusedRef.current || wrappedRender === undefined) {
       deactivateRef.current?.();
@@ -239,9 +201,12 @@ function AdaptiveWorkspaceLayoutContent(
   const nativeMetrics = useNativeLayoutMetrics();
   const { width: viewportWidth, height } = nativeMetrics ?? windowDimensions;
   const pathname = props.pathname;
-  // Android's Settings tab is a full workspace page: the rail stays, the sidebar and
-  // auxiliary panes hide.
-  const workspacePage = Platform.OS === "android" && pathname.startsWith("/settings");
+  const workspace = useWorkspaceTabs();
+  // Settings and Usage occupy the workspace rather than a list/detail pair.
+  const androidSettingsOpen = useAndroidWorkspaceRoot()?.settingsOpen ?? false;
+  const safeAreaInsets = useSafeAreaInsets();
+  const workspacePage =
+    Platform.OS === "android" && (androidSettingsOpen || workspace?.state.selectedTab === "usage");
   const navigation = useNavigation();
   const activeRoleOwner = useRef<symbol | null>(null);
   const [primarySidebarPreferredVisible, setPrimarySidebarPreferredVisible] = useState(true);
@@ -262,16 +227,50 @@ function AdaptiveWorkspaceLayoutContent(
   // re-renders on any layout state change, and the inspector registration then loops: each
   // re-register re-renders its screen, which hands over a new inspector renderer.
   const baseLayout = useMemo(
-    () => deriveLayout({ width: viewportWidth, height, nativeMetrics }),
-    [height, viewportWidth, nativeMetrics],
+    () => deriveLayout({ width: viewportWidth, height, nativeMetrics, nativeWorkspace }),
+    [height, viewportWidth, nativeMetrics, nativeWorkspace],
   );
+  // The overlay sidebar closes when a page opens from it, and stays open on a list or on the
+  // page a tab switch opened (`keepOpenFor`, set by that switch).
+  const [overlaySidebar, setOverlaySidebar] = useState({
+    active: baseLayout.primarySidebarOverlaysContent,
+    pathname,
+    visible: isWorkspaceListPath(pathname),
+    keepOpenFor: null as string | null,
+  });
+  if (
+    overlaySidebar.active !== baseLayout.primarySidebarOverlaysContent ||
+    (overlaySidebar.active && overlaySidebar.pathname !== pathname)
+  ) {
+    setOverlaySidebar({
+      active: baseLayout.primarySidebarOverlaysContent,
+      pathname,
+      visible:
+        isWorkspaceListPath(pathname) ||
+        (overlaySidebar.keepOpenFor !== null &&
+          overlaySidebar.keepOpenFor === props.workspaceRouteKey),
+      keepOpenFor: null,
+    });
+  }
+  const preferredSidebarVisible = baseLayout.primarySidebarOverlaysContent
+    ? overlaySidebar.visible
+    : primarySidebarPreferredVisible;
   const primarySidebarPinned = isPrimarySidebarPinned({
     pathname,
     nativeWorkspace,
     usesSplitView: baseLayout.usesSplitView,
   });
+  const [composerEditing, setComposerEditing] = useState(false);
+  const softKeyboardVisible = useKeyboardState((state) => state.isVisible);
+  // Keyed on the soft keyboard, not focus: a hardware keyboard leaves room for the sidebar, and
+  // Back closes the keyboard while the editor keeps focus. Deferred so the composer commits its
+  // keyboard render first; relaying out in the same commit held it behind the keyboard.
+  const composerKeyboardActive = useDeferredValue(
+    Platform.OS === "android" && baseLayout.usesSplitView && composerEditing && softKeyboardVisible,
+  );
   const showPrimarySidebar =
-    !workspacePage && (primarySidebarPinned || primarySidebarPreferredVisible);
+    !workspacePage &&
+    (primarySidebarPinned || (preferredSidebarVisible && !composerKeyboardActive));
   const shouldRenderNavigationRail = Platform.OS === "android" && baseLayout.usesSplitView;
   const navigationRailWidth =
     shouldRenderNavigationRail && (showPrimarySidebar || workspacePage)
@@ -303,7 +302,7 @@ function AdaptiveWorkspaceLayoutContent(
         viewportWidth: width,
         preferredWidth: fileInspectorPreferredWidth ?? undefined,
         reservedLeadingWidth:
-          shouldRenderPrimarySidebar && showPrimarySidebar
+          shouldRenderPrimarySidebar && showPrimarySidebar && !layout.primarySidebarOverlaysContent
             ? (layout.listPaneWidth ?? 0) + (layout.listPaneGap ?? 0)
             : 0,
       }),
@@ -363,8 +362,7 @@ function AdaptiveWorkspaceLayoutContent(
     setWorkspaceInspector({ render, active: true });
 
     return () => {
-      // During a push/replace the outgoing screen deactivates AFTER the
-      // incoming screen registered — only the current owner may deactivate.
+      // Outgoing screens deactivate after incoming registration; only the current owner may deactivate.
       if (workspaceInspectorOwner.current !== owner) {
         return;
       }
@@ -387,22 +385,36 @@ function AdaptiveWorkspaceLayoutContent(
       setFocusedAuxiliaryPaneRole(null);
     };
   };
+  const setPrimarySidebarVisible = (visible: boolean) => {
+    if (layout.primarySidebarOverlaysContent) {
+      setOverlaySidebar((current) => ({ ...current, visible }));
+    } else {
+      setPrimarySidebarPreferredVisible(visible);
+    }
+  };
   const togglePrimarySidebar = () => {
     if (primarySidebarPinned) {
       return;
+    }
+    // A sidebar the keyboard set aside returns with the keyboard; the user's preference stays
+    // intact. One the user had hidden still opens.
+    if (composerKeyboardActive) {
+      void KeyboardController.dismiss();
+      if (primarySidebarPreferredVisible) return;
     }
     if (!panes.primarySidebarVisible && panes.primarySidebarSuppressedByAuxiliary) {
       setFileInspectorPreferredVisible(false);
       setPrimarySidebarPreferredVisible(true);
       return;
     }
-    setPrimarySidebarPreferredVisible((current) => !current);
+    setPrimarySidebarVisible(!preferredSidebarVisible);
   };
   const revealPrimarySidebar = () => {
+    if (composerKeyboardActive) void KeyboardController.dismiss();
     if (panes.primarySidebarSuppressedByAuxiliary) {
       setFileInspectorPreferredVisible(false);
     }
-    setPrimarySidebarPreferredVisible(true);
+    setPrimarySidebarVisible(true);
   };
   const handleToggleSidebarCommand = () => {
     togglePrimarySidebar();
@@ -446,33 +458,108 @@ function AdaptiveWorkspaceLayoutContent(
     }
     setSupplementaryPanePreferredWidth(nextWidth);
   };
-  const handleOpenSettings = () => {
-    navigation.navigate("SettingsSheet", {
-      screen: "SettingsContent",
-      params: { screen: "Settings" },
-    });
+  /**
+   * The one way to open a workspace tab: replaces the workspace with the tab's list and, when the
+   * window has columns, the page it last showed, keeping any sheet on top. An overlay sidebar
+   * stays open over that page.
+   */
+  const openWorkspaceTab = (
+    tab: WorkspaceTab | "settings",
+    options?: { readonly columns?: boolean },
+  ) => {
+    const state = rootStackState(navigation);
+    if (!state) return;
+    const { workspace, overlays } = workspaceRoutesOf(state.routes.slice(0, state.index + 1));
+    const next = workspaceTabNavigationState(
+      { ...state, routes: workspace },
+      tab,
+      currentWorkspaceSelections(),
+      {
+        columns: Platform.OS === "ios" && (options?.columns ?? layout.usesSplitView),
+        check: workspaceSelectionCheck,
+        overlays,
+      },
+    );
+    if (layout.primarySidebarOverlaysContent) {
+      const opened = next.routes.at(-1 - overlays.length)?.key ?? null;
+      setOverlaySidebar((current) => ({ ...current, visible: true, keepOpenFor: opened }));
+    }
+    dispatchRootStackReset(navigation, state, next);
   };
+  const handleOpenSettings = () => openWorkspaceTab("settings");
 
+  const deferredThreadSelection = useMemo(() => createDeferredNavigation(), []);
+  /** The one way to show a page in the detail column; see `selectWorkspaceDetail`. */
+  function handleSelectDetail(detail: WorkspaceDetail, sheet?: WorkspaceDetailSheet) {
+    deferredThreadSelection.run(() => {
+      if (Platform.OS === "android") Keyboard.dismiss();
+      setFileInspectorPreferredVisible(false);
+      if (layout.primarySidebarOverlaysContent) setPrimarySidebarVisible(false);
+      workspace?.dispatch({
+        type: "select",
+        tab: detail.name === "Thread" ? "threads" : "pullRequests",
+      });
+      startOpeningDetail(detail);
+      navigation.dispatch(selectWorkspaceDetail(detail, sheet));
+    });
+  }
+  const handleSelectThreadRoute = (params: ReactNavigation.RootParamList["Thread"]) =>
+    handleSelectDetail({ name: "Thread", params });
+
+  const projects = useProjects();
+  const compactAndroidSettings =
+    Platform.OS === "android" && androidSettingsOpen && !layout.usesSplitView;
+  // Reads the open page when pressed, so the layout context doesn't change on every navigation.
   const handleStartNewTask = () => {
-    navigation.navigate("NewTaskSheet", { screen: "NewTask" });
+    const state = rootStackState(navigation);
+    const currentRoute = workspaceRoutesOf(
+      state?.routes.slice(0, state.index + 1) ?? [],
+    ).workspace.at(-1);
+    const params =
+      currentRoute?.name === "Thread"
+        ? (currentRoute.params as ReactNavigation.RootParamList["Thread"])
+        : undefined;
+    const first = (value: string | string[] | undefined) =>
+      Array.isArray(value) ? value[0] : value;
+    const thread = appAtomRegistry
+      .get(environmentThreadShells.navigationThreadShellsAtom)
+      .find(
+        (candidate) =>
+          candidate.environmentId === first(params?.environmentId) &&
+          candidate.id === first(params?.threadId),
+      );
+    const draft = params?.draft;
+    const draftEnvironmentId = first(draft?.environmentId);
+    const draftProjectId = first(draft?.projectId);
+    const currentProject = thread
+      ? { environmentId: thread.environmentId, id: thread.projectId }
+      : projects.find(
+          (project) =>
+            project.environmentId === draftEnvironmentId && project.id === draftProjectId,
+        );
+    handleSelectThreadRoute(
+      newTaskDestination(layout.usesSplitView, projects, currentProject, uuidv4()),
+    );
   };
 
-  // Minted here (root stack navigation) so the sidebar pane stays free of
-  // navigation hooks — on iOS it renders inside an independent nav tree.
+  useHardwareKeyboardCommand("newTask", () => {
+    handleStartNewTask();
+    return true;
+  });
+
+  // Create at root: the iOS sidebar renders in an independent navigation tree.
   const handleOpenEnvironmentSettings = () => {
-    navigation.navigate("SettingsSheet", {
-      screen: "SettingsContent",
-      params: { screen: "SettingsEnvironments" },
-    });
+    openSettings(navigation, "SettingsEnvironments");
   };
 
   const handleOpenThreadPullRequests = useOpenThreadPullRequests();
-  const { openPendingTask: handleOpenPendingTask } = usePendingTaskListActions();
+  const { openPendingTask: handleOpenPendingTask } =
+    usePendingTaskListActions(handleSelectThreadRoute);
 
   const handleNewThreadOnBranch = (thread: EnvironmentThreadShell) => {
-    navigation.navigate("NewTaskSheet", {
-      screen: "NewTaskDraft",
-      params: {
+    handleSelectThreadRoute({
+      draft: {
+        requestId: uuidv4(),
         environmentId: String(thread.environmentId),
         projectId: String(thread.projectId),
         branch: thread.branch,
@@ -482,9 +569,9 @@ function AdaptiveWorkspaceLayoutContent(
   };
 
   const handleNewThreadInProject = (project: EnvironmentProject) => {
-    navigation.navigate("NewTaskSheet", {
-      screen: "NewTaskDraft",
-      params: {
+    handleSelectThreadRoute({
+      draft: {
+        requestId: uuidv4(),
         environmentId: String(project.environmentId),
         projectId: String(project.id),
         title: project.title,
@@ -499,12 +586,10 @@ function AdaptiveWorkspaceLayoutContent(
   const contentTargetWidth = layout.usesSplitView
     ? Math.max(0, panes.contentPaneWidth - inspectorColumnTargetWidth)
     : null;
-  const [contentSizing, setContentSizing] = useState({
+  const [listPaneSizing, setListPaneSizing] = useState({
     viewportWidth,
     workspacePage,
-    target: contentTargetWidth,
     sidebarVisible: panes.primarySidebarVisible,
-    width: contentTargetWidth,
     listPaneTarget: layout.listPaneWidth,
     listPaneFloor: layout.listPaneWidth,
     listPaneCeiling: layout.listPaneWidth,
@@ -512,69 +597,79 @@ function AdaptiveWorkspaceLayoutContent(
   });
   if (
     Platform.OS === "android" &&
-    (contentSizing.viewportWidth !== viewportWidth ||
-      contentSizing.workspacePage !== workspacePage ||
-      contentSizing.target !== contentTargetWidth ||
-      contentSizing.sidebarVisible !== panes.primarySidebarVisible ||
-      contentSizing.listPaneTarget !== layout.listPaneWidth)
+    (listPaneSizing.viewportWidth !== viewportWidth ||
+      listPaneSizing.workspacePage !== workspacePage ||
+      listPaneSizing.sidebarVisible !== panes.primarySidebarVisible ||
+      listPaneSizing.listPaneTarget !== layout.listPaneWidth)
   ) {
-    // A workspace page swaps the sidebar in the same frame, so nothing animates to wait for.
-    const sameViewport =
-      contentSizing.viewportWidth === viewportWidth &&
-      contentSizing.workspacePage === workspacePage;
-    const openingSidebar =
-      sameViewport && !contentSizing.sidebarVisible && panes.primarySidebarVisible;
     // A book-posture hinge resizes the visible list pane instead of revealing it.
     const resizingSidebar =
-      sameViewport &&
-      contentSizing.sidebarVisible &&
+      listPaneSizing.viewportWidth === viewportWidth &&
+      listPaneSizing.workspacePage === workspacePage &&
+      listPaneSizing.sidebarVisible &&
       panes.primarySidebarVisible &&
-      contentSizing.listPaneTarget !== layout.listPaneWidth;
-    const keepWide =
-      (openingSidebar || resizingSidebar) &&
-      contentSizing.width !== null &&
-      contentTargetWidth !== null;
-    setContentSizing({
+      listPaneSizing.listPaneTarget !== layout.listPaneWidth;
+    setListPaneSizing({
       viewportWidth,
       workspacePage,
-      target: contentTargetWidth,
       sidebarVisible: panes.primarySidebarVisible,
-      // Clip the wide navigator while the sidebar opens or widens, then reflow once at the
-      // end. Narrowing it first exposes an empty strip before the sidebar arrives.
-      width: keepWide
-        ? Math.max(contentSizing.width ?? 0, contentTargetWidth ?? 0)
-        : contentTargetWidth,
       listPaneTarget: layout.listPaneWidth,
-      // While a hinge resizes the list, its width follows the pane edge within this span. A
-      // retarget mid-animation widens the span, since the edge is still somewhere inside it.
+      // Retargets widen the list-width span because the animated hinge edge may still be inside it.
       listPaneFloor: resizingSidebar
-        ? Math.min(contentSizing.listPaneFloor ?? 0, layout.listPaneWidth ?? 0)
+        ? Math.min(listPaneSizing.listPaneFloor ?? 0, layout.listPaneWidth ?? 0)
         : layout.listPaneWidth,
       listPaneCeiling: resizingSidebar
-        ? Math.max(contentSizing.listPaneCeiling ?? 0, layout.listPaneWidth ?? 0)
+        ? Math.max(listPaneSizing.listPaneCeiling ?? 0, layout.listPaneWidth ?? 0)
         : layout.listPaneWidth,
-      revision: contentSizing.revision + 1,
+      revision: listPaneSizing.revision + 1,
     });
   }
-  const settleContentWidth = (revision: number) => {
-    setContentSizing((current) =>
+  const settleListPane = (revision: number) => {
+    setListPaneSizing((current) =>
       current.revision !== revision ||
-      (current.width === current.target &&
-        current.listPaneFloor === current.listPaneTarget &&
+      (current.listPaneFloor === current.listPaneTarget &&
         current.listPaneCeiling === current.listPaneTarget)
         ? current
         : {
             ...current,
-            width: current.target,
             listPaneFloor: current.listPaneTarget,
             listPaneCeiling: current.listPaneTarget,
           },
     );
   };
-  const listPaneFloor = contentSizing.listPaneFloor ?? 0;
-  const listPaneCeiling = contentSizing.listPaneCeiling ?? 0;
-  const contentSettledWidth = Platform.OS === "android" ? contentSizing.width : contentTargetWidth;
-  const contentRevision = contentSizing.revision;
+  const listPaneFloor = listPaneSizing.listPaneFloor ?? 0;
+  const listPaneCeiling = listPaneSizing.listPaneCeiling ?? 0;
+  const listPaneRevision = listPaneSizing.revision;
+  // Android lays the content out at its new width as soon as a pane toggles, then holds it
+  // against the edge that stays put while the other one slides, so nothing reflows after the
+  // panes land. A sliding sidebar uncovers the strip it is about to fill, or covers the content
+  // until it is gone.
+  const contentLeftTarget =
+    navigationRailWidth +
+    (shouldRenderPrimarySidebar && !workspacePage && panes.primarySidebarVisible
+      ? (layout.listPaneWidth ?? 0) + (layout.listPaneGap ?? 0)
+      : 0);
+  const [contentAnchor, setContentAnchor] = useState({
+    viewportWidth,
+    left: contentLeftTarget,
+    inspector: inspectorColumnTargetWidth,
+    end: false,
+  });
+  if (
+    Platform.OS === "android" &&
+    (contentAnchor.viewportWidth !== viewportWidth ||
+      contentAnchor.left !== contentLeftTarget ||
+      contentAnchor.inspector !== inspectorColumnTargetWidth)
+  ) {
+    setContentAnchor({
+      viewportWidth,
+      left: contentLeftTarget,
+      inspector: inspectorColumnTargetWidth,
+      end:
+        contentAnchor.viewportWidth === viewportWidth &&
+        contentAnchor.inspector === inspectorColumnTargetWidth,
+    });
+  }
 
   const renderedSidebarWidth = useSharedValue(
     panes.primarySidebarVisible ? (layout.listPaneWidth ?? 0) + (layout.listPaneGap ?? 0) : 0,
@@ -598,7 +693,7 @@ function AdaptiveWorkspaceLayoutContent(
     // The content beside it already took its final width when the page closed.
     renderedSidebarWidth.set(
       withTiming(targetWidth, snap ? { duration: 0 } : WORKSPACE_PANE_TIMING, (finished) => {
-        if (finished && Platform.OS === "android") runOnJS(settleContentWidth)(contentRevision);
+        if (finished && Platform.OS === "android") runOnJS(settleListPane)(listPaneRevision);
       }),
     );
   }, [
@@ -609,8 +704,8 @@ function AdaptiveWorkspaceLayoutContent(
     panes.primarySidebarVisible,
     renderedSidebarWidth,
     renderedRailWidth,
-    settleContentWidth,
-    contentRevision,
+    settleListPane,
+    listPaneRevision,
     workspacePage,
   ]);
   const railAnimatedStyle = useAnimatedStyle(() => ({ width: renderedRailWidth.value }));
@@ -629,9 +724,7 @@ function AdaptiveWorkspaceLayoutContent(
     width: renderedSidebarWidth.value,
   }));
 
-  // The navigator (native header + markdown feed) lays out ONCE per pane toggle
-  // instead of re-measuring on every animation frame — the animating columns
-  // merely clip/reveal it over a matching background.
+  // Clip the navigator at its settled width so native headers and markdown reflow only once per pane toggle.
   const renderedInspectorWidth = useSharedValue(inspectorColumnTargetWidth);
   const renderedContentWidth = useDerivedValue(() =>
     Math.max(
@@ -643,47 +736,11 @@ function AdaptiveWorkspaceLayoutContent(
     ),
   );
 
-  const selectAndroidWorkspace = useAndroidWorkspaceSelection();
   const handleSelectThread = (thread: EnvironmentThreadShell) => {
-    const params = {
+    handleSelectThreadRoute({
       environmentId: String(thread.environmentId),
       threadId: String(thread.id),
-    };
-    if (Platform.OS === "android") {
-      setFileInspectorPreferredVisible(false);
-      selectAndroidWorkspace({ name: "Thread", params });
-      return;
-    }
-    const navigationAction = resolveThreadSelectionNavigationAction({
-      usesSplitView: layout.usesSplitView,
-      pathname,
     });
-    const overlayState = resolveThreadSelectionOverlayState({
-      state: navigation.getState(),
-      workspaceRouteKey: props.workspaceRouteKey,
-      action: navigationAction,
-      params,
-    });
-    if (overlayState !== null) {
-      setFileInspectorPreferredVisible(false);
-      navigation.dispatch(CommonActions.reset(overlayState));
-      return;
-    }
-    if (navigationAction === "set-params") {
-      const nextThreadKey = scopedThreadKey(thread.environmentId, thread.id);
-      if (nextThreadKey === selectedThreadKey) {
-        return;
-      }
-      setFileInspectorPreferredVisible(false);
-      navigation.navigate("Thread", params);
-      return;
-    }
-    if (navigationAction === "replace") {
-      setFileInspectorPreferredVisible(false);
-      navigation.dispatch(StackActions.replace("Thread", params));
-      return;
-    }
-    navigation.navigate("Thread", params);
   };
 
   const contextValue = {
@@ -691,14 +748,20 @@ function AdaptiveWorkspaceLayoutContent(
     panes,
     fileInspector,
     primarySidebarSearchQuery,
-    selectThread: handleSelectThread,
+    startNewTask: handleStartNewTask,
+    deferThreadSelectionUntil: deferredThreadSelection.waitFor,
+    selectDetail: handleSelectDetail,
     activateAuxiliaryPaneRole,
     registerWorkspaceInspector,
     setPrimarySidebarSearchQuery,
     showAuxiliaryPane,
     toggleAuxiliaryPane,
     togglePrimarySidebar,
+    setPrimarySidebarVisible,
+    openWorkspaceTab,
     setAuxiliaryPaneWidth,
+    composerKeyboardActive,
+    setComposerEditing,
   };
 
   if (nativeWorkspace) {
@@ -796,18 +859,38 @@ function AdaptiveWorkspaceLayoutContent(
               <View
                 collapsable={false}
                 style={
-                  contentSettledWidth !== null
+                  contentTargetWidth !== null
                     ? {
                         flex: 1,
-                        width: contentSettledWidth,
+                        width: contentTargetWidth,
+                        alignSelf: contentAnchor.end ? "flex-end" : "flex-start",
                       }
                     : { flex: 1 }
                 }
               >
+                {/* Android holds the content still, so its floating controls keep its width. */}
                 <WorkspaceContentWidthContext
-                  value={layout.usesSplitView ? renderedContentWidth : null}
+                  value={
+                    layout.usesSplitView && Platform.OS !== "android" ? renderedContentWidth : null
+                  }
                 >
-                  {props.children}
+                  <WorkspaceSettledContentWidthContext
+                    value={
+                      Platform.OS === "android" && layout.usesSplitView ? contentTargetWidth : null
+                    }
+                  >
+                    {/* Compact Settings keeps the bottom navigation under all of its pages. */}
+                    <SafeAreaInsetsContext
+                      value={
+                        compactAndroidSettings ? { ...safeAreaInsets, bottom: 0 } : safeAreaInsets
+                      }
+                    >
+                      <View className="flex-1">{props.children}</View>
+                    </SafeAreaInsetsContext>
+                    {compactAndroidSettings ? (
+                      <AndroidWorkspaceNavigation onNewThread={handleStartNewTask} />
+                    ) : null}
+                  </WorkspaceSettledContentWidthContext>
                 </WorkspaceContentWidthContext>
               </View>
             </View>
@@ -828,6 +911,7 @@ function AdaptiveWorkspaceLayoutContent(
                 style={railOverlay ? { right: 0 } : { width: navigationRailWidth }}
               >
                 <AndroidWorkspaceNavigation
+                  onNewThread={handleStartNewTask}
                   rail
                   onSelect={revealPrimarySidebar}
                   onOverlayChange={setRailOverlay}

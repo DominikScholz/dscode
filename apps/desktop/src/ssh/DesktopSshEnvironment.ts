@@ -87,7 +87,7 @@ function unexpectedPasswordPromptError(error: never): never {
   throw new Error(`Unhandled desktop SSH password prompt error: ${String(error)}`);
 }
 
-export function toSshPasswordPromptError(
+function toSshPasswordPromptError(
   cause: DesktopSshPasswordPrompts.DesktopSshPasswordPromptRequestError,
 ): SshPasswordPromptError {
   let message: string;
@@ -125,7 +125,7 @@ const makePasswordPrompt = (
     prompts.request(request).pipe(Effect.mapError(toSshPasswordPromptError)),
 });
 
-/** @public Service construction is part of the canonical Effect module API. */
+/** @public */
 export const make = Effect.gen(function* () {
   const manager = yield* SshTunnel.SshEnvironmentManager;
   const prompts = yield* DesktopSshPasswordPrompts.DesktopSshPasswordPrompts;

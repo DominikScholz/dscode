@@ -1,7 +1,7 @@
 import type { AssetResource } from "@t3tools/contracts";
 import {
   AssetAttachmentNotFoundError,
-  AssetGitHubMediaUrlValidationError,
+  AssetSourceControlMediaUrlValidationError,
   AssetPreviewTypeValidationError,
   AssetProjectFaviconInspectionError,
   AssetProjectFaviconNotFoundError,
@@ -13,6 +13,7 @@ import {
   AssetWorkspacePathValidationError,
   AssetWorkspaceResolutionError,
   AssetWorkspaceRootNormalizationError,
+  SOURCE_CONTROL_MEDIA_ASSET,
   ThreadId,
   ToolActivityNativeAppReference,
   TurnItemId,
@@ -30,12 +31,12 @@ import {
   readImageDimensions,
   type ImageDimensions,
 } from "@t3tools/shared/imageDimensions";
-import { githubMediaFetchUrl, githubMediaFileName } from "@t3tools/shared/githubMedia";
 import { MCP_APP_MAX_HTML_BYTES } from "@t3tools/shared/mcpApp";
 import {
   isProjectFaviconPath,
   PROJECT_FAVICON_FALLBACK_MARKER,
 } from "@t3tools/shared/projectFavicon";
+import { isNetworkPath } from "@t3tools/shared/path";
 import { MAX_TOOL_OUTPUT_IMAGE_BASE64_LENGTH, toolOutputImages } from "@t3tools/shared/toolOutput";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
@@ -60,8 +61,10 @@ import * as ServerConfig from "../config.ts";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import { expandHomePath } from "@t3tools/provider-core/server/pathExpansion";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
+import { isWithinRoot } from "../workspace/KnownWorkspaces.ts";
 import * as WorkspacePaths from "../workspace/WorkspacePaths.ts";
 import * as NativeAppIconResolver from "./NativeAppIconResolver.ts";
+import { sourceControlDefinitions } from "../sourceControl/sourceControlDefinitions.ts";
 import { extractIcnsPng } from "./icns.ts";
 import { openMediaFile, readMediaFileHeader, type OpenMediaFile } from "./MediaFile.ts";
 import * as HostProcess from "@t3tools/shared/HostProcess";
@@ -75,8 +78,7 @@ const HTML_ATTACHMENT_TOKEN_BUCKET_MS = 30 * 60 * 1000;
 const PROJECT_FAVICON_VERSION_PREFIX = "v";
 const PROJECT_FAVICON_ICNS_MIN_SIZE = 96;
 const INLINE_VIDEO_MIME_TYPE_PATTERN = /^video\/[\w!#$&^.+-]+$/i;
-// The extension comes from the attachment id the server assigned, never from
-// the client's mime type.
+// Use server-assigned attachment extensions, never client MIME types.
 const INLINE_PREVIEW_MIME_TYPES: Record<string, string> = {
   pdf: "application/pdf",
   html: "text/html",
@@ -158,8 +160,8 @@ const AssetClaimsSchema = Schema.Union([
   }),
   Schema.Struct({
     version: Schema.Literal(1),
-    kind: Schema.Literal("github-media"),
-    /** Already narrowed to a GitHub media host at mint time; the signature is what keeps it there. */
+    kind: Schema.Literal(SOURCE_CONTROL_MEDIA_ASSET),
+    /** A host's `fetchUrl`, narrowed at mint time; the signature is what keeps it there. */
     url: Schema.String,
     cwd: Schema.String,
     expiresAt: Schema.Number,
@@ -187,7 +189,7 @@ export type ResolvedAsset =
       readonly mimeType: string;
     }
   | {
-      readonly kind: "github-media";
+      readonly kind: "source-control-media";
       readonly url: string;
       readonly cwd: string;
       readonly expiresAt: number;
@@ -222,8 +224,7 @@ const optionOnNotFound = <A, R>(
 
 export const readMcpAppHtml = Effect.fn("AssetAccess.readMcpAppHtml")(function* (filePath: string) {
   const fileSystem = yield* FileSystem.FileSystem;
-  // Stored snapshots also contain a bounded CSP meta tag (up to 32 domains
-  // per directive). Bound the read even if the attachment grows after minting.
+  // Allow space for stored CSP tags, but bound reads if the attachment grows after minting.
   const limit = MCP_APP_MAX_HTML_BYTES + 128 * 1024;
   const chunks = yield* Stream.runCollect(fileSystem.stream(filePath, { bytesToRead: limit + 1 }));
   const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
@@ -251,7 +252,7 @@ const readToolOutputImage = Effect.fn("AssetAccess.readToolOutputImage")(functio
     : { mimeType: image.mimeType, bytes: Buffer.from(image.data, "base64") };
 });
 
-/** Serves an `.icns` favicon as its embedded PNG, since browsers cannot draw it. */
+// Browsers cannot draw .icns; serve its embedded PNG.
 const projectFaviconAsset = Effect.fn("AssetAccess.projectFaviconAsset")(function* (
   filePath: string,
 ) {
@@ -326,17 +327,13 @@ const resolveCanonicalWorkspaceFileForRequest = (input: {
 
 const HEADER_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp"]);
 
-/** From the identity-checked, non-blocking handle the caller already holds. */
 const readImageDimensionsFromOpenFile = (filePath: string, file: OpenMediaFile) =>
   readMediaFileHeader(filePath, file, IMAGE_DIMENSIONS_HEADER_BYTES).pipe(
     Effect.map(readImageDimensions),
     Effect.orElseSucceed((): ImageDimensions | null => null),
   );
 
-/**
- * Opens through `openMediaFile` so a path swapped for a FIFO cannot block the
- * request; a regular open would wait for a writer that never comes.
- */
+// Non-blocking open prevents swapped-in FIFOs from hanging the request.
 const readImageDimensionsFromHeader = (filePath: string) =>
   openMediaFile(filePath).pipe(
     Effect.flatMap((file) =>
@@ -349,11 +346,27 @@ const readImageDimensionsFromHeader = (filePath: string) =>
 const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMediaFileAsset")(
   function* (input: {
     readonly requestedPath: string;
+    readonly workspaceRoot: string | undefined;
     readonly resource: AssetResource;
     readonly expiresAt: number;
   }) {
     const path = yield* Path.Path;
-    const canonicalFile = yield* resolveCanonicalFile(input.requestedPath).pipe(
+    // Resolving a network path makes Windows sign in to its host with the
+    // user's NTLM credentials, so only the thread's own project may be on a share.
+    // Windows reads a `\\?\` path as written, `..` included, so the lookup gets
+    // the resolved path this check approved.
+    const requestedPath = path.resolve(input.requestedPath);
+    if (
+      isNetworkPath(input.requestedPath) &&
+      (input.workspaceRoot === undefined ||
+        !isWithinRoot(path, requestedPath, path.resolve(input.workspaceRoot)))
+    ) {
+      return yield* new AssetWorkspaceAssetNotFoundError({
+        resource: input.resource,
+        checkedPath: input.requestedPath,
+      });
+    }
+    const canonicalFile = yield* resolveCanonicalFile(requestedPath).pipe(
       Effect.mapError(
         (cause) => new AssetWorkspaceAssetInspectionError({ resource: input.resource, cause }),
       ),
@@ -378,6 +391,7 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
                 : Effect.succeed(null),
               (dimensions) => ({
                 identity: { device: file.info.dev.toString(), inode: file.info.ino.toString() },
+                fileRevision: `${file.info.dev}:${file.info.ino}:${file.info.size}:${file.info.mtimeNs}:${file.info.ctimeNs}`,
                 dimensions,
               }),
             ),
@@ -402,6 +416,7 @@ const finalizeAbsoluteMediaFileAsset = Effect.fn("AssetAccess.finalizeAbsoluteMe
         expiresAt: input.expiresAt,
       },
       fileName: path.basename(canonicalFile),
+      fileRevision: opened.fileRevision,
       imageDimensions: opened.dimensions,
     };
   },
@@ -504,6 +519,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
   let fileName: string;
   let sourcePath: string | undefined;
   let imageDimensions: ImageDimensions | null = null;
+  let fileRevision: string | undefined;
 
   switch (input.resource._tag) {
     case "media-file": {
@@ -524,12 +540,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       }
       const finalized = yield* finalizeAbsoluteMediaFileAsset({
         requestedPath,
+        workspaceRoot: input.workspaceRoot,
         resource: input.resource,
         expiresAt,
       });
       claims = finalized.claims;
       fileName = finalized.fileName;
       imageDimensions = finalized.imageDimensions;
+      fileRevision = finalized.fileRevision;
       break;
     }
     case "workspace-file": {
@@ -566,12 +584,14 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       if (path.isAbsolute(hostPath)) {
         const finalized = yield* finalizeAbsoluteMediaFileAsset({
           requestedPath: hostPath,
+          workspaceRoot: draftWorkspaceRoot,
           resource: input.resource,
           expiresAt,
         });
         claims = finalized.claims;
         fileName = finalized.fileName;
         imageDimensions = finalized.imageDimensions;
+        fileRevision = finalized.fileRevision;
         break;
       }
       const workspaceRoot = yield* workspacePaths.normalizeWorkspaceRoot(draftWorkspaceRoot).pipe(
@@ -778,19 +798,19 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
       fileName = "native-app-icon.png";
       break;
     }
-    case "github-media": {
-      const fetchUrl = githubMediaFetchUrl(input.resource.url);
-      if (fetchUrl === null) {
-        return yield* new AssetGitHubMediaUrlValidationError({});
+    case SOURCE_CONTROL_MEDIA_ASSET: {
+      const media = sourceControlDefinitions.mediaUrl(input.resource.url);
+      if (media === null) {
+        return yield* new AssetSourceControlMediaUrlValidationError({});
       }
       claims = {
         version: 1,
-        kind: "github-media",
-        url: fetchUrl,
+        kind: SOURCE_CONTROL_MEDIA_ASSET,
+        url: media.fetchUrl,
         cwd: input.resource.cwd,
         expiresAt,
       };
-      fileName = githubMediaFileName(fetchUrl);
+      fileName = media.fileName;
       break;
     }
   }
@@ -813,9 +833,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     claims = { ...claims, expiresAt };
   }
   if (claims.kind === "attachment" && claims.mimeType === "text/html") {
-    // HTML pages never change, so mints in the same window sign the same URL and a reload
-    // can answer it from the browser cache. Images keep a new URL per mint, since their
-    // load-error retries rely on one.
+    // Stable URLs let immutable HTML reloads hit the cache; image retries need fresh URLs.
     expiresAt =
       Math.ceil(expiresAt / HTML_ATTACHMENT_TOKEN_BUCKET_MS) * HTML_ATTACHMENT_TOKEN_BUCKET_MS;
     claims = { ...claims, expiresAt };
@@ -827,6 +845,7 @@ export const issueAssetUrl = Effect.fn("AssetAccess.issueAssetUrl")(function* (i
     expiresAt,
     ...(sourcePath !== undefined ? { sourcePath } : {}),
     ...(imageDimensions !== null ? { imageDimensions } : {}),
+    ...(fileRevision !== undefined ? { fileRevision } : {}),
   };
 });
 
@@ -900,9 +919,9 @@ export const resolveAsset = Effect.fn("AssetAccess.resolveAsset")(function* (
     return faviconPath === claims.filePath ? yield* projectFaviconAsset(faviconPath) : null;
   }
 
-  if (claims.kind === "github-media") {
+  if (claims.kind === SOURCE_CONTROL_MEDIA_ASSET) {
     return {
-      kind: "github-media",
+      kind: "source-control-media",
       url: claims.url,
       cwd: claims.cwd,
       expiresAt: claims.expiresAt,

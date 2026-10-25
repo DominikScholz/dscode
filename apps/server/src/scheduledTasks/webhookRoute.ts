@@ -17,7 +17,7 @@ import * as ScheduledTaskService from "./ScheduledTaskService.ts";
 /** The relay enforces the same cap. */
 export const WEBHOOK_MAX_BODY_BYTES = 1024 * 1024;
 
-/** Response header naming what happened to the request; the relay records it. */
+// The relay records this outcome header.
 const WEBHOOK_OUTCOME_HEADER = "x-t3-hook-outcome";
 
 const json = (status: number, body: Record<string, string>, outcome: string) =>
@@ -118,7 +118,7 @@ export const layer = HttpApiBuilder.group(
         case "disabled":
           return json(409, { error: "hook_disabled" }, "disabled");
         case "rate_limited":
-          return json(429, { error: "rate_limited" }, result.outcome);
+          return json(429, { error: result.outcome }, result.outcome);
         case "expired":
           return json(410, { error: "delivery_too_old" }, "expired");
         case "error":

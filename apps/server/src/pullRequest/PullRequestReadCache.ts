@@ -24,15 +24,14 @@ import * as ServerConfig from "../config.ts";
 import { forkParked } from "../serverActivation.ts";
 
 const CONCURRENT_READS = 512;
-// Persistence prefixes every entry key with the store id, so each entry file
-// name starts with it. The scope `revisions` file does not.
+// Entry filenames have the store-id prefix; the scope revisions file does not.
 const STORE_ID = "pr-v2";
 const ENTRY_FILE_NAME = new RegExp(`^${STORE_ID}[0-9a-f]{64}$`);
 /**
  * A file untouched for a day is long expired; the day only leaves slack for
  * clock changes.
  */
-export const ENTRY_FILE_MAX_AGE = Duration.days(1);
+const ENTRY_FILE_MAX_AGE = Duration.days(1);
 type ReadError = PullRequestOperationError | PullRequestUnavailableError;
 const revisionCodec = Schema.fromJsonString(
   Schema.Record(
@@ -179,33 +178,33 @@ export const make = Effect.gen(function* () {
  * The persisted cache drops an expired entry only when it is read again, so
  * files for PRs nobody reopens would otherwise stay forever.
  */
-export const pruneExpiredEntryFiles = Effect.fn("PullRequestReadCache.pruneExpiredEntryFiles")(
-  function* (directory: string) {
-    const fileSystem = yield* FileSystem.FileSystem;
-    const path = yield* Path.Path;
-    const cutoff = (yield* Clock.currentTimeMillis) - Duration.toMillis(ENTRY_FILE_MAX_AGE);
-    const entries = (yield* fileSystem.readDirectory(directory)).filter((name) =>
-      ENTRY_FILE_NAME.test(name),
+const pruneExpiredEntryFiles = Effect.fn("PullRequestReadCache.pruneExpiredEntryFiles")(function* (
+  directory: string,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const cutoff = (yield* Clock.currentTimeMillis) - Duration.toMillis(ENTRY_FILE_MAX_AGE);
+  const entries = (yield* fileSystem.readDirectory(directory)).filter((name) =>
+    ENTRY_FILE_NAME.test(name),
+  );
+  const [, failures] = yield* Effect.partition(entries, (name) => {
+    const entryPath = path.join(directory, name);
+    return fileSystem.stat(entryPath).pipe(
+      Effect.flatMap((info) =>
+        Option.exists(info.mtime, (mtime) => mtime.getTime() < cutoff)
+          ? fileSystem.remove(entryPath)
+          : Effect.void,
+      ),
+      Effect.catchReason("PlatformError", "NotFound", () => Effect.void),
     );
-    const [, failures] = yield* Effect.partition(entries, (name) => {
-      const entryPath = path.join(directory, name);
-      return fileSystem.stat(entryPath).pipe(
-        Effect.flatMap((info) =>
-          Option.exists(info.mtime, (mtime) => mtime.getTime() < cutoff)
-            ? fileSystem.remove(entryPath)
-            : Effect.void,
-        ),
-        Effect.catchReason("PlatformError", "NotFound", () => Effect.void),
-      );
+  });
+  if (failures.length > 0) {
+    yield* Effect.logWarning("Failed to prune some PR cache files", {
+      failed: failures.length,
+      cause: failures[0],
     });
-    if (failures.length > 0) {
-      yield* Effect.logWarning("Failed to prune some PR cache files", {
-        failed: failures.length,
-        cause: failures[0],
-      });
-    }
-  },
-);
+  }
+});
 
 export const layer = Layer.unwrap(
   Effect.gen(function* () {

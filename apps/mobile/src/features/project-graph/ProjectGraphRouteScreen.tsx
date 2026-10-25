@@ -5,7 +5,8 @@ import { useMobileProjectGroupingSettings } from "../../state/project-grouping";
 import { useEnvironments } from "../../state/environments";
 import { ProjectFavicon } from "../../components/ProjectFavicon";
 import { relativeTime } from "../../lib/time";
-import { useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { StackActions, useNavigation, type StaticScreenProps } from "@react-navigation/native";
+import { openSettings } from "../settings/settings-navigation";
 import { scopeProjectRef } from "@t3tools/client-runtime/environment";
 import {
   canCloseGraphWorktree,
@@ -354,10 +355,12 @@ function ProjectGraph({
   const selectRow = (row: Row) => {
     setHighlighted(row.id);
     if (row.thread) {
-      navigation.navigate("Thread", {
-        environmentId: row.thread.environmentId,
-        threadId: row.thread.id,
-      });
+      navigation.dispatch(
+        StackActions.push("Thread", {
+          environmentId: row.thread.environmentId,
+          threadId: row.thread.id,
+        }),
+      );
     } else if (row.collapsed) setExpanded((value) => toggle(value, row.id));
     else if (row.settledThreads && row.ref)
       setExpandedSettled((value) => toggle(value, row.ref!.id));
@@ -610,10 +613,7 @@ function ProjectGraph({
               disabled={!group}
               onPress={() => {
                 setOptionsOpen(false);
-                navigation.navigate("SettingsSheet", {
-                  screen: "SettingsContent",
-                  params: { screen: "SettingsProjectOverview", params: { projectKey: group?.key } },
-                });
+                openSettings(navigation, "SettingsProjectOverview", { projectKey: group?.key });
               }}
             />
           </View>

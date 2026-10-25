@@ -50,9 +50,7 @@ function Surface({
         surfaceColors,
         "relative isolate border-0 bg-transparent shadow-none [--chat-composer-attached-tint:transparent]",
         variantColors[variant],
-        // The mask cut-off (1rem) bleeds one pixel past the seam (1rem + 1px): Chromium
-        // drops the last device-pixel row of a filtered backdrop when the cut-off lands
-        // off the device-pixel grid, and the composer's surface starts exactly there.
+        // Bleed the mask 1px past the seam to cover Chromium's fractional-pixel backdrop loss.
         placement === "attached"
           ? "[--chat-composer-attachment-overlap:calc(1rem+1px)] before:rounded-t-3xl before:squircle before:mask-t-from-transparent before:mask-t-from-4 before:mask-t-to-black before:mask-t-to-4"
           : "[--chat-composer-attachment-overlap:0px] before:rounded-3xl before:squircle",
@@ -160,13 +158,18 @@ function Root({
         density === "comfortable" && "[--composer-banner-padding-block:--spacing(1.25)]",
         density === "spacious" && "px-3 [--composer-banner-padding-block:--spacing(3)]",
         width === "content" ? "w-fit max-w-full flex-none" : "@container",
-        "[&>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-se-xl",
-        "[&>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>:last-child>[data-slot=button]:last-of-type]:rounded-se-xl",
-        "[&>:first-child>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-se-xl",
-        placement === "floating" && [
-          "[&>[data-composer-banner-row]:only-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-ee-xl",
-          "[&>[data-composer-banner-row]:only-child>[data-slot=composer-banner-actions]>:last-child>[data-slot=button]:last-of-type]:rounded-ee-xl",
+        // A corner button nests inside the banner's radius only when the padding
+        // is tight; spacious padding already leaves the default radius concentric.
+        density !== "spacious" && [
+          "[&>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-se-xl",
+          "[&>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>:last-child>[data-slot=button]:last-of-type]:rounded-se-xl",
+          "[&>:first-child>[data-composer-banner-row]:first-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-se-xl",
         ],
+        placement === "floating" &&
+          density !== "spacious" && [
+            "[&>[data-composer-banner-row]:only-child>[data-slot=composer-banner-actions]>[data-slot=button]:last-child]:rounded-ee-xl",
+            "[&>[data-composer-banner-row]:only-child>[data-slot=composer-banner-actions]>:last-child>[data-slot=button]:last-of-type]:rounded-ee-xl",
+          ],
         className,
       )}
       data-slot="composer-banner"

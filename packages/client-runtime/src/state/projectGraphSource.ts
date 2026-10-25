@@ -12,13 +12,9 @@ export interface ProjectGraphSourceCandidate {
 }
 
 /**
- * The environment to read a project's Git graph from. An explicit choice wins.
- * Otherwise a project whose server cannot build graphs borrows a connected
- * server that can and runs on the same machine, since it reads the same
- * checkout path from disk. Servers do not report a machine identity, so the
- * same machine means the same host in both connection URLs (every loopback name
- * counts as one host) and the same OS, which keeps a WSL backend off a Windows
- * checkout. Unknown capabilities keep the project's own server.
+ * An explicit choice wins. Otherwise a server that can't build graphs borrows one on
+ * the same machine: same URL host (loopback names match) and same OS, so WSL stays
+ * off Windows checkouts. Unknown capabilities keep the project's own server.
  */
 export function resolveProjectGraphSource(input: {
   readonly owner: EnvironmentId;

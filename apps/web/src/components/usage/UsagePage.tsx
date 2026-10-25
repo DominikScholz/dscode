@@ -137,10 +137,7 @@ function usageLoading(
   };
 }
 
-/**
- * The model whose detail dialog is open. It lives outside UsagePage so opening
- * or closing the dialog renders only its host, not the whole usage page.
- */
+/** Keep dialog selection outside UsagePage so opening/closing rerenders only its host. */
 const selectedUsageModelKeyAtom = Atom.make<string | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("usage:selected-model-key"),
@@ -224,7 +221,9 @@ export function UsagePage() {
   const refreshingUsage = isRefreshing && !showingLimits;
   const showingKept = shown !== null && shown.window !== window;
   const presentations = useAtomValue(environmentPresentations.presentationsAtom);
-  const providersByEnvironment = useAtomValue(environmentPresentations.providersByEnvironmentAtom);
+  const presentationsWithProviders = useAtomValue(
+    environmentPresentations.presentationsWithProvidersAtom,
+  );
   const cursorAccessEnvironments = hiddenProviders.has("cursor")
     ? []
     : cursorKeychainAccessEnvironments(selectedEnvironments);
@@ -351,10 +350,10 @@ export function UsagePage() {
       : enumerateHourStarts(shownWindow.sinceTime, shownWindow.untilTime);
   const showChatGptSharing =
     !hiddenProviders.has("codex") &&
-    [...providersByEnvironment].some(
-      ([id, providers]) =>
+    [...presentationsWithProviders].some(
+      ([id, presentation]) =>
         (selectedEnvironmentIds === null || selectedEnvironmentIds.has(id)) &&
-        providers.some(usesChatGptSharing),
+        (presentation.serverConfig?.providers ?? []).some(usesChatGptSharing),
     );
 
   const windowLabel =
@@ -362,7 +361,7 @@ export function UsagePage() {
       ? `${formatDateTimeShort(shownWindow.sinceTime, shownWindow.timeZone, hour12)} to ${formatDateTimeShort(shownWindow.untilTime, shownWindow.timeZone, hour12)}`
       : `${formatDayShort(shownWindow.sinceDay)} to ${formatDayShort(shownWindow.untilDay)}`;
   const topbarContent = (
-    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 xl:flex">
+    <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 py-2 @4xl/usage-header:flex">
       <WorkspaceBreadcrumb ariaLabel="Usage breadcrumb" className="min-w-0">
         <WorkspaceBreadcrumbItem>
           <h1>Usage</h1>
@@ -391,11 +390,11 @@ export function UsagePage() {
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
       {!showingLimits ? (
-        <span className="hidden min-w-0 truncate text-xs text-muted-foreground 2xl:block">
+        <span className="hidden min-w-0 truncate text-xs text-muted-foreground @7xl/usage-header:block">
           {windowLabel}
         </span>
       ) : null}
-      <div className="ms-auto hidden min-w-0 items-center justify-end gap-2 xl:flex">
+      <div className="ms-auto hidden shrink-0 items-center justify-end gap-2 @4xl/usage-header:flex">
         <ToggleGroup
           aria-label="Usage metric"
           variant="segmented"
@@ -438,7 +437,7 @@ export function UsagePage() {
           <RefreshIcon size="sm" refreshing={isRefreshing} />
         </Button>
       </div>
-      <div className="ms-auto flex min-w-0 items-center justify-end gap-1 xl:hidden">
+      <div className="ms-auto flex shrink-0 items-center justify-end gap-1 @4xl/usage-header:hidden">
         <Select
           value={metric}
           onValueChange={(value) => {
@@ -507,7 +506,9 @@ export function UsagePage() {
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
       <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
-        <WorkspacePageHeader electron={isElectron}>{topbarContent}</WorkspacePageHeader>
+        <WorkspacePageHeader electron={isElectron} className="@container/usage-header">
+          {topbarContent}
+        </WorkspacePageHeader>
 
         <ScrollArea className="min-h-0 flex-1">
           <WorkspacePageContainer width="wide">
@@ -633,16 +634,15 @@ function UsageOverview({
   const [breakdown, setBreakdown] = useState<"model" | "time">("model");
   const shownHourly = shownWindow.resolution === "hour";
   const loading = usageLoading(showingKept, selectedEnvironments, refreshingUsage, hiddenProviders);
-  // A primitive copy: reading `loading.partial` in the JSX would keep `loading` alive
-  // across every derivation below and fold them into one cache scope.
+  // Copy the primitive; JSX reads of loading.partial would merge all derivations into one compiler cache
+  // scope.
   const loadingPartial = loading.partial === true;
   const loadingProviders = new Set(
     PROVIDER_ORDER.filter((provider) => loading.everyProvider || loading.providers.has(provider)),
   );
   const providersWithData = new Set(providersWithUsage(merged.providers));
-  // `everyProvider` marks shown providers as loading; only `loading.providers`, which excludes
-  // hidden ones, may add a provider that has no data yet.
-  // Filtering a fresh copy, not the shared module array, lets the compiler cache this on its own.
+  // Only loading.providers excludes hidden providers without data. Filter a fresh array so the compiler can
+  // cache independently.
   const activeProviders = [...PROVIDER_ORDER].filter(
     (provider) => providersWithData.has(provider) || loading.providers.has(provider),
   );
@@ -795,7 +795,7 @@ function UsageOverview({
                     )}
                   >
                     {awaitingData
-                      ? "—"
+                      ? "-"
                       : metric === "cost"
                         ? formatUsd(totals?.costUsd ?? 0)
                         : formatTokens(totals?.totalTokens ?? 0)}
