@@ -2,23 +2,14 @@ import type * as React from "react";
 
 import { cn } from "~/lib/utils";
 
-/** The charcoal card every Usage section sits on; `glow` tints it from the top-left. */
-export function UsagePanel({
-  className,
-  glow,
-  style,
-  ...props
-}: React.ComponentProps<"section"> & { readonly glow?: string | undefined }) {
+/** The card every Usage section sits on: a faint lift that fades downward, and a hairline edge. */
+export function UsagePanel({ className, ...props }: React.ComponentProps<"section">) {
   return (
     <section
       className={cn(
-        "relative min-w-0 rounded-2xl bg-(--panel-surface) p-5 panel-edge squircle",
-        glow === undefined ? "bg-(image:--panel-sheen)" : "surface-glow",
+        "relative min-w-0 rounded-2xl border border-foreground/6 bg-linear-to-b from-foreground/4 to-foreground/1 p-5 squircle",
         className,
       )}
-      style={
-        glow === undefined ? style : ({ ...style, "--glow-color": glow } as React.CSSProperties)
-      }
       {...props}
     />
   );

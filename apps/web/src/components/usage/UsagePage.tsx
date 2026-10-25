@@ -56,9 +56,7 @@ import {
   formatUsageContractMismatch,
   formatUsd,
   makeWindow,
-  zonedHourStartMs,
 } from "@t3tools/shared/usageFormat";
-import { limitUsageCurve } from "@t3tools/shared/usageLimits";
 import { Button, InlineButton } from "../ui/button";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import {
@@ -78,7 +76,6 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
 import { UsageLimitsSection } from "./UsageLimits";
-import type { LimitCurveFor } from "./UsageLimitsPooled";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, usageChartSlot } from "./UsageProviderChart";
 import { SpeedPremium, UsageModelDialog } from "./UsageModelDialog";
@@ -456,7 +453,7 @@ export function UsagePage() {
                   : `Select an environment to see ${showingLimits ? "limits" : "usage"}.`}
               </p>
             ) : showingLimits ? (
-              <UsageLimitsView
+              <UsageLimitsSection
                 selectedEnvironmentIds={selectedEnvironmentIds}
                 hiddenProviders={hiddenProviders}
                 now={limitsNow}
@@ -556,63 +553,6 @@ export function UsagePage() {
         />
       ) : null}
     </AppRouteModal>
-  );
-}
-
-const HOUR_MS = 3_600_000;
-
-function limitCurveFor(merged: MergedUsage, timeZone: string, now: number): LimitCurveFor {
-  const periods = merged.series
-    ? merged.series.slots
-    : merged.daily.map((entry) => ({ ...entry, hour: 0 }));
-  const slotMs = (merged.series?.stepHours ?? 24) * HOUR_MS;
-  const startsMs = periods.map((period) => zonedHourStartMs(period.day, period.hour, timeZone));
-  return (driver, window) => {
-    const provider = PROVIDER_ORDER.find(
-      (candidate) => PROVIDER_PRESENTATION[candidate].driverKind === driver,
-    );
-    if (provider === undefined || !window.resetsAt || !window.windowDurationMins) return null;
-    const startMs = Date.parse(window.resetsAt) - window.windowDurationMins * 60_000;
-    // A window older than the loaded week would start its curve partway through.
-    if ((startsMs[0] ?? Infinity) > startMs) return null;
-    const totals = periods.map((period) => period.byProvider.get(provider));
-    // Cost tracks how providers meter limits; tokens stand in when nothing is priced.
-    const useCost = totals.some((entry) => (entry?.costUsd ?? 0) > 0);
-    return limitUsageCurve({
-      startMs,
-      nowMs: now,
-      usedPercent: window.usedPercent,
-      slotMs,
-      slots: totals.map((entry, index) => ({
-        startMs: startsMs[index] ?? 0,
-        value: (useCost ? entry?.costUsd : entry?.totalTokens) ?? 0,
-      })),
-    });
-  };
-}
-
-/** Limit curves read a week of hourly usage, separate from the chosen range. */
-function UsageLimitsView({
-  selectedEnvironmentIds,
-  hiddenProviders,
-  now,
-  cursorPrompt,
-}: {
-  readonly selectedEnvironmentIds: ReadonlySet<EnvironmentId> | null;
-  readonly hiddenProviders: ReadonlySet<UsageProviderKind>;
-  readonly now: number;
-  readonly cursorPrompt: ReactNode;
-}) {
-  const [window] = useState(() => usageWindow(7));
-  const { merged } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
-  return (
-    <UsageLimitsSection
-      selectedEnvironmentIds={selectedEnvironmentIds}
-      hiddenProviders={hiddenProviders}
-      now={now}
-      cursorPrompt={cursorPrompt}
-      curveFor={limitCurveFor(merged, window.timeZone, now)}
-    />
   );
 }
 

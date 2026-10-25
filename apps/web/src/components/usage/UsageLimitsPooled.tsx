@@ -47,7 +47,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
-import { LimitChartLegend, type LimitCurve, LimitPaceRow } from "./UsageLimitPace";
+import { LimitPaceRow } from "./UsageLimitPace";
 import type { ServerProvider, ServerProviderUsageWindow } from "@t3tools/contracts";
 import { UsagePanel } from "./UsagePanel";
 
@@ -525,27 +525,18 @@ function PoolBar({
   );
 }
 
-export type LimitCurveFor = (
-  driver: ServerProvider["driver"],
-  window: ServerProviderUsageWindow,
-) => LimitCurve | null;
-
 function PoolWindowCard({
   pool,
-  driver,
   color,
   now,
   label,
   description,
-  curveFor,
 }: {
   readonly pool: LimitPoolWindow;
-  readonly driver: ServerProvider["driver"];
   readonly color: string;
   readonly now: number;
   readonly label?: string | undefined;
   readonly description?: string | undefined;
-  readonly curveFor: LimitCurveFor | undefined;
 }) {
   const nextRefill = pool.resets.find((reset) => reset.restoresPercent > 0);
   const [onlyMember] = pool.members;
@@ -560,7 +551,6 @@ function PoolWindowCard({
           label={label ?? pool.label}
           window={onlyMember.window}
           projection={projection}
-          curve={curveFor?.(driver, onlyMember.window) ?? null}
           color={color}
           now={now}
         />
@@ -595,20 +585,12 @@ function PoolWindowCard({
   );
 }
 
-function PoolSection({
-  pool,
-  now,
-  curveFor,
-}: {
-  readonly pool: LimitPool;
-  readonly now: number;
-  readonly curveFor: LimitCurveFor | undefined;
-}) {
+function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
   const color = barColor(pool.driver);
   const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
   return (
-    <UsagePanel glow={color} className="flex flex-col gap-1 py-4">
+    <UsagePanel className="flex flex-col gap-1 py-4">
       <h2 className="flex items-center gap-2 pb-1 text-sm font-medium text-foreground">
         <ProviderInstanceIcon
           driverKind={pool.driver}
@@ -627,12 +609,10 @@ function PoolSection({
             <PoolWindowCard
               key={`${window.kind}:${window.id}`}
               pool={window}
-              driver={pool.driver}
               color={color}
               now={now}
               label={details?.label}
               description={details?.description}
-              curveFor={curveFor}
             />
           );
         })}
@@ -645,12 +625,10 @@ export function UsageLimitsPooled({
   presentations,
   now,
   cursorPrompt,
-  curveFor,
 }: {
   readonly presentations: Parameters<typeof collectLimitAccounts>[0];
   readonly now: number;
   readonly cursorPrompt?: ReactNode;
-  readonly curveFor?: LimitCurveFor;
 }) {
   const [segmentPopover] = useState(() => PopoverCreateHandle<SegmentPayload>());
   const segmentPopoverActions = useRef<PopoverPrimitive.Root.Actions | null>(null);
@@ -664,7 +642,6 @@ export function UsageLimitsPooled({
     ) + 1;
   return (
     <div className="flex flex-col gap-4">
-      {pools.length > 0 ? <LimitChartLegend /> : null}
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.
@@ -674,7 +651,7 @@ export function UsageLimitsPooled({
         {pools.map((pool, index) => (
           <Fragment key={pool.driver}>
             {index === cursorPromptAt ? cursorPrompt : null}
-            <PoolSection pool={pool} now={now} curveFor={curveFor} />
+            <PoolSection pool={pool} now={now} />
           </Fragment>
         ))}
       </SegmentPopoverContext>

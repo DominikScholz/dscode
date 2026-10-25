@@ -259,38 +259,6 @@ export function makeWindow(
   };
 }
 
-function zoneOffsetMs(instantMs: number, timeZone: string): number {
-  const parts = dateTimeFormatter("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hourCycle: "h23",
-  }).formatToParts(new Date(instantMs));
-  const part = (type: Intl.DateTimeFormatPartTypes) =>
-    Number(parts.find((entry) => entry.type === type)?.value ?? 0);
-  const wallAsUtc = Date.UTC(
-    part("year"),
-    part("month") - 1,
-    part("day"),
-    part("hour") % 24,
-    part("minute"),
-    part("second"),
-  );
-  return wallAsUtc - Math.floor(instantMs / 1000) * 1000;
-}
-
-/** The instant a local wall-clock hour starts; a skipped spring-forward hour maps to the hour after. */
-export function zonedHourStartMs(day: string, hour: number, timeZone: string): number {
-  const [year = 1970, month = 1, dayOfMonth = 1] = day.split("-").map(Number);
-  const wallAsUtc = Date.UTC(year, month - 1, dayOfMonth, hour);
-  const firstGuess = wallAsUtc - zoneOffsetMs(wallAsUtc, timeZone);
-  return wallAsUtc - zoneOffsetMs(firstGuess, timeZone);
-}
-
 function formatWallHour(hour: number, hour12: boolean): string {
   if (!hour12) return `${String(hour).padStart(2, "0")}:00`;
   return `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? "AM" : "PM"}`;

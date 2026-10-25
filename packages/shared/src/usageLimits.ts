@@ -590,42 +590,6 @@ export function limitProjection(
   };
 }
 
-/**
- * Providers only report the current percentage, so the curve so far is local usage in the
- * window scaled to land on it. Slots run oldest first; the slot holding now covers only up to
- * now. Null when no local usage fell in the window.
- */
-export function limitUsageCurve(input: {
-  readonly startMs: number;
-  readonly nowMs: number;
-  readonly usedPercent: number;
-  readonly slotMs: number;
-  readonly slots: readonly { readonly startMs: number; readonly value: number }[];
-}): readonly { readonly atMs: number; readonly percent: number }[] | null {
-  const { startMs, nowMs, usedPercent, slotMs } = input;
-  if (slotMs <= 0 || nowMs <= startMs) return null;
-  const points: { atMs: number; consumed: number }[] = [];
-  let consumed = 0;
-  for (const slot of input.slots) {
-    const end = Math.min(slot.startMs + slotMs, nowMs);
-    const from = Math.max(slot.startMs, startMs);
-    if (end <= from || slot.value <= 0) continue;
-    // Hold the level through idle time, then climb within the slot.
-    points.push({ atMs: from, consumed });
-    consumed += (slot.value * (end - from)) / (end - slot.startMs);
-    points.push({ atMs: end, consumed });
-  }
-  if (consumed <= 0) return null;
-  return [
-    { atMs: startMs, percent: 0 },
-    ...points.map((point) => ({
-      atMs: point.atMs,
-      percent: (point.consumed / consumed) * usedPercent,
-    })),
-    { atMs: nowMs, percent: usedPercent },
-  ];
-}
-
 function paceOfShares(usedPercent: number, elapsed: number): LimitPace {
   const gap = usedPercent - elapsed * 100;
   if (gap > 5) return "ahead";

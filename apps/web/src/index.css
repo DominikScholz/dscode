@@ -1723,36 +1723,31 @@ html[data-theme-id] [data-app-sidebar] {
   }
 }
 
-/* A wash of --glow-color from a surface's top-left corner, over the panel sheen. */
-@utility surface-glow {
+/* A window's backdrop: one broad, soft spotlight in the UI's blue-grey tint from behind the
+   headline, falling off into a vignette at the edges and corners. */
+@utility window-glow {
+  --window-glow: color-mix(in oklab, var(--primary) 45%, var(--surface-tint));
+  --window-vignette: rgb(0 0 0 / 0.06);
   background-image:
     radial-gradient(
-      110% 150% at 0% 0%,
-      color-mix(in srgb, var(--glow-color, var(--primary)) 13%, transparent),
-      transparent 62%
+      90% 70% at 35% 0%,
+      color-mix(in srgb, var(--window-glow) 5%, transparent),
+      transparent 100%
     ),
-    var(--panel-sheen);
+    radial-gradient(130% 110% at 50% 35%, transparent 40%, var(--window-vignette) 100%);
+
+  @variant dark {
+    --window-vignette: rgb(0 0 0 / 0.55);
+  }
 }
 
-/* A blue-grey wash in the UI's tint over a whole window, settling into the canvas. */
-@utility window-glow {
-  --window-glow: color-mix(in oklab, var(--primary) 55%, var(--surface-tint));
-  background-image:
-    radial-gradient(
-      75% 60% at 0% 0%,
-      color-mix(in srgb, var(--window-glow) 6%, transparent),
-      transparent 75%
-    ),
-    radial-gradient(
-      55% 45% at 100% 0%,
-      color-mix(in srgb, var(--window-glow) 2%, transparent),
-      transparent 70%
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--surface-tint) 3%, transparent),
-      transparent 60%
-    );
+/* A projected stretch of a bar, hatched in the element's text color. */
+@utility chart-hatch {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, currentColor 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
 }
 
 /* A chart point's soft halo, in the element's text color. */
