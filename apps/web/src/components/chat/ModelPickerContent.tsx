@@ -161,7 +161,7 @@ function adjacentModelPickerProvider(input: {
 }
 
 const EMPTY_MODEL_JUMP_LABELS = new Map<string, string>();
-const MODEL_LIST_ESTIMATED_ITEM_SIZE = 52;
+const MODEL_LIST_ESTIMATED_ITEM_SIZE = 34;
 
 function ModelListSeparator() {
   return <div className="h-0.5" />;
@@ -276,7 +276,7 @@ function ModelPickerList({
   if (fadesResetFor !== itemListKey) {
     setFadesResetFor(itemListKey);
     setShowTopScrollFade(false);
-    setShowBottomScrollFade(itemKeys.length > 5);
+    setShowBottomScrollFade(itemKeys.length > 8);
   }
   const measureScrollFades = useEffectEvent(updateScrollFades);
   useLayoutEffect(() => {
@@ -309,7 +309,7 @@ function ModelPickerList({
           estimatedItemSize={MODEL_LIST_ESTIMATED_ITEM_SIZE}
           drawDistance={480}
           recycleItems
-          contentContainerClassName="pl-2 pr-px"
+          contentContainerClassName="pr-px"
           ItemSeparatorComponent={ModelListSeparator}
           onLayout={updateScrollFades}
           onScroll={updateScrollFades}
@@ -870,8 +870,8 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
         >
           <div
             className={cn(
-              "flex min-h-0 flex-1 flex-col overflow-hidden bg-muted/40",
-              showSidebar && "border-l border-border/70",
+              "flex min-h-0 flex-1 flex-col overflow-hidden",
+              showSidebar && "border-l border-border",
             )}
           >
             <ComboboxSearchInput
@@ -948,15 +948,15 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                       aria-expanded={legacySection.isExpanded}
                       className="group w-full cursor-pointer"
                     >
-                      <div className="min-w-0 flex-1 text-left">
-                        <div className="text-xs font-medium leading-snug">Legacy models</div>
-                        <div className="mt-1 text-xs font-normal leading-snug text-muted-foreground/70">
-                          {legacySection.legacyModels.length} models
-                        </div>
-                      </div>
+                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                        Legacy models
+                      </span>
+                      <span className="text-muted-foreground text-xs tabular-nums">
+                        {legacySection.legacyModels.length}
+                      </span>
                       <ChevronRightIcon
                         className={cn(
-                          "size-4 transition-transform",
+                          "size-3.5 transition-transform",
                           legacySection.isExpanded && "rotate-90",
                         )}
                       />
@@ -989,8 +989,11 @@ export const ModelPickerContent = memo(function ModelPickerContent(props: {
                         ? selectedModelKeySet.has(modelKey)
                         : modelKey === activeModelKey
                     }
-                    showSelection={selectedModelKeys !== undefined}
-                    showProvider
+                    showProvider={
+                      isSearching ||
+                      selectedInstanceId === "favorites" ||
+                      model.subProvider !== undefined
+                    }
                     preferShortName={!isLocked}
                     useTriggerLabel={false}
                     showNewBadge={model.badge === "new"}

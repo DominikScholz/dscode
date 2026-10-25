@@ -5,7 +5,7 @@ import type {
   RuntimeMode,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
-import { BotIcon, PencilRulerIcon } from "lucide-react";
+import { BotIcon, CheckIcon, PencilRulerIcon } from "lucide-react";
 import { type ComponentProps, memo } from "react";
 
 import type { ContextWindowSnapshot } from "../../lib/contextWindow";
@@ -121,18 +121,17 @@ export const ComposerFooterModeControls = memo(function ComposerFooterModeContro
                   key={option.mode}
                   value={option.mode}
                   hideIndicator
-                  className="min-w-64"
+                  className="min-w-64 max-w-80"
                 >
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="grid min-w-0 flex-1 gap-0.5">
-                      <span className="inline-flex items-center gap-1.5 font-medium text-foreground">
-                        <OptionIcon className="size-3.5 shrink-0 text-muted-foreground" />
-                        {option.label}
-                      </span>
-                      <span className="text-muted-foreground text-xs leading-4">
-                        {option.description}
-                      </span>
-                    </div>
+                  <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-2.5 py-0.5">
+                    <OptionIcon className="size-4 text-muted-foreground" />
+                    <span className="text-foreground">{option.label}</span>
+                    {option.mode === props.runtimeMode ? (
+                      <CheckIcon className="size-3.5 text-foreground" />
+                    ) : null}
+                    <span className="col-start-2 text-pretty text-muted-foreground text-xs leading-4">
+                      {option.description}
+                    </span>
                   </div>
                 </SelectItem>
               );
