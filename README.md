@@ -14,13 +14,20 @@ For installation, supported providers, and everything else T3 Code does, see the
 
 A quieter, blue-tinted interface with an app rail, project-grouped thread cards, unified panel surfaces, and the Aspekta and Azeret Mono typefaces.
 
+<img width="4096" height="2489" alt="image" src="https://github.com/user-attachments/assets/3f652684-ce91-408f-afaf-c9ed6e84c71c" />
+
 ### Git Graph
 
 A per-project graph of branches, worktrees, and the threads working on them, on web and mobile.
 
+<img width="1081" height="635" alt="Screenshot 2026-10-25 at 12 09 44" src="https://github.com/user-attachments/assets/a28e0ad0-70c1-4dee-97ba-2b34be45c025" />
+
+
 ### Dashboard
 
 All projects at a glance, grouped into active, working, snoozed, and settled.
+
+<img width="601" height="360" alt="Screenshot 2026-10-25 at 11 02 55" src="https://github.com/user-attachments/assets/4b07102c-ae40-4004-9d95-c5cf9379b9b0" />
 
 ## Trying it
 
