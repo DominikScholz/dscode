@@ -45,9 +45,9 @@ export function shouldUseRestingComposerLayout(input: {
  * How much taller the empty expanded composer is than its resting row on
  * desktop widths, from the layout classes in ChatComposer: the body loses
  * 8px of top padding, the prompt clamps from min-h-17.5 (70px) to 32px, and
- * the 48px footer leaves flow.
+ * the 44px footer leaves flow.
  */
-const COMPOSER_RESTING_EXPANSION_MIN_PX = 94;
+const COMPOSER_RESTING_EXPANSION_MIN_PX = 90;
 
 /** Reserve expansion height because the timeline does not move when footer growth covers its last rows. */
 export function resolveComposerTimelineInset(input: {

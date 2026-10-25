@@ -1605,6 +1605,18 @@ html[data-theme-id] [data-app-sidebar] {
     color-mix(in srgb, var(--primary) 9%, transparent),
     transparent 70%
   );
+  --panel-glow-warning: linear-gradient(
+    140deg,
+    color-mix(in srgb, var(--warning) 16%, transparent),
+    color-mix(in srgb, var(--warning) 7%, transparent) 30%,
+    transparent 100%
+  );
+  --panel-edge-warning: radial-gradient(
+    140% 180% at 0% 0%,
+    color-mix(in srgb, var(--warning) 24%, transparent),
+    color-mix(in srgb, var(--warning) 10%, transparent) 38%,
+    color-mix(in srgb, var(--warning) 6%, transparent) 100%
+  );
   /* The app rail sits a step below the sidebar: a long, soft falloff toward
      the sidebar edge plus a faint contact line, rather than a dark band. Its
      edge is lit from the top like the panel edges. */

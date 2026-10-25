@@ -358,10 +358,10 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             <button
               type="button"
               className={cn(
-                "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+                "relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 font-medium text-xs tabular-nums outline-none squircle transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 sm:px-2.5 [&_svg]:pointer-events-none [&_svg]:size-3.5",
                 keepFullHistory
-                  ? "border-border text-muted-foreground hover:text-foreground"
-                  : "border-warning/40 text-warning hover:bg-warning/8",
+                  ? "text-muted-foreground hover:bg-(--panel-surface-hover) hover:text-foreground"
+                  : "bg-(--panel-surface-hover) bg-(image:--panel-glow-warning) text-foreground shadow-(--panel-drop) panel-edge [--panel-edge-gradient:var(--panel-edge-warning)] hover:bg-(--panel-surface-active)",
               )}
               {...pointerFocusProps}
               aria-pressed={!keepFullHistory}
@@ -373,7 +373,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
         >
           <Minimize2Icon aria-hidden="true" />
           {keepFullHistory ? "Full" : "Compact"}
-          <span>{compactTokens}</span>
+          <span className="text-muted-foreground">{compactTokens}</span>
         </TooltipTrigger>
         <TooltipPopup>
           <div>
