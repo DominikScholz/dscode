@@ -48,13 +48,16 @@ export function HostedEmptyState() {
           </EmptyHeader>
           <EmptyContent>
             {localEnvironmentOff ? (
-              <Button variant="contrast" render={<Link to="/settings/connections" />} size="sm">
+              <Button variant="contrast" render={<Link to="/settings/connections" />} size="lg">
                 Open Connections
               </Button>
             ) : (
-              <ol className="w-full space-y-4 text-left">
-                {cloudEnabled ? <T3ConnectSteps /> : <PairingSteps />}
-              </ol>
+              <>
+                <ol className="w-full space-y-6 text-left">
+                  {cloudEnabled ? <T3ConnectSteps /> : <PairingSteps />}
+                </ol>
+                <DesktopDownloadLink />
+              </>
             )}
           </EmptyContent>
         </Empty>
@@ -75,20 +78,20 @@ export function T3ConnectSteps() {
     discovered.length > 0 && discovered.every(({ availability }) => availability !== "checking");
   return (
     <>
-      <SetupStep number={1}>
+      <SetupStep number={1} title="Sign in to T3 Connect">
         {isSignedIn ? (
           <p className="flex items-center gap-1.5 text-muted-foreground">
             <CheckIcon className="size-4" />
             Signed in
           </p>
         ) : (
-          <Button variant="contrast" size="sm" disabled={!isLoaded} onClick={openAuthPrompt}>
+          <Button variant="contrast" size="lg" disabled={!isLoaded} onClick={openAuthPrompt}>
             Sign in
           </Button>
         )}
       </SetupStep>
-      <SetupStep number={2}>
-        <RunOnComputer command="npx t3 connect" />
+      <SetupStep number={2} title="Run on your computer">
+        <CommandBlock command="npx t3 connect" />
         {isSignedIn ? (
           <div className="mt-4 space-y-1.5">
             <CloudEnvironmentConnectRows
@@ -118,11 +121,11 @@ export function T3ConnectSteps() {
 function PairingSteps() {
   return (
     <>
-      <SetupStep number={1}>
-        <RunOnComputer command="npx t3 pair" />
+      <SetupStep number={1} title="Run on your computer">
+        <CommandBlock command="npx t3 pair" />
       </SetupStep>
-      <SetupStep number={2}>
-        <Button variant="contrast" render={<Link to="/settings/connections" />} size="sm">
+      <SetupStep number={2} title="Add the pairing link it prints">
+        <Button variant="contrast" render={<Link to="/settings/connections" />} size="lg">
           Add pairing link
         </Button>
       </SetupStep>
@@ -132,32 +135,35 @@ function PairingSteps() {
 
 function SetupStep({
   number,
+  title,
   children,
 }: {
   readonly number: number;
+  readonly title: string;
   readonly children: ReactNode;
 }) {
   return (
-    <li className="flex gap-3">
-      <span className="w-2 shrink-0 pt-1 text-muted-foreground">{number}</span>
-      <div className="min-w-0 flex-1">{children}</div>
+    <li className="space-y-2.5">
+      <div className="flex items-center gap-2.5">
+        <span className="flex size-5 shrink-0 items-center justify-center rounded-full border border-border text-2xs font-medium text-muted-foreground tabular-nums">
+          {number}
+        </span>
+        <p className="text-sm leading-5 font-medium">{title}</p>
+      </div>
+      <div className="grid">{children}</div>
     </li>
   );
 }
 
-function RunOnComputer({ command }: { readonly command: string }) {
+function DesktopDownloadLink() {
   return (
-    <>
-      <p>Run on your computer:</p>
-      <CommandBlock command={command} className="mt-2" />
-      <a
-        className="mt-2 inline-block text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-        href={DESKTOP_DOWNLOAD_URL}
-        target="_blank"
-        rel="noreferrer noopener"
-      >
-        Or download the desktop app
-      </a>
-    </>
+    <a
+      className="mt-4 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+      href={DESKTOP_DOWNLOAD_URL}
+      target="_blank"
+      rel="noreferrer noopener"
+    >
+      Prefer an app? Download the desktop app
+    </a>
   );
 }
