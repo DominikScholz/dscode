@@ -48,7 +48,7 @@ export function HostedEmptyState() {
           </EmptyHeader>
           <EmptyContent>
             {localEnvironmentOff ? (
-              <Button variant="outline" render={<Link to="/settings/connections" />} size="sm">
+              <Button variant="contrast" render={<Link to="/settings/connections" />} size="sm">
                 Open Connections
               </Button>
             ) : (
@@ -82,7 +82,7 @@ export function T3ConnectSteps() {
             Signed in
           </p>
         ) : (
-          <Button variant="outline" size="sm" disabled={!isLoaded} onClick={openAuthPrompt}>
+          <Button variant="contrast" size="sm" disabled={!isLoaded} onClick={openAuthPrompt}>
             Sign in
           </Button>
         )}
@@ -122,7 +122,7 @@ function PairingSteps() {
         <RunOnComputer command="npx t3 pair" />
       </SetupStep>
       <SetupStep number={2}>
-        <Button variant="outline" render={<Link to="/settings/connections" />} size="sm">
+        <Button variant="contrast" render={<Link to="/settings/connections" />} size="sm">
           Add pairing link
         </Button>
       </SetupStep>

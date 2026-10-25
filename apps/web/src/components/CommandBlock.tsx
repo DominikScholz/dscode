@@ -22,13 +22,13 @@ export function CommandBlock({
   return (
     <div
       className={cn(
-        "flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/50 font-mono",
+        "flex items-center justify-between gap-3 rounded-xl panel-well font-mono",
         prominent ? "px-4 py-3.5 text-base" : "px-3 py-2.5 text-sm",
         className,
       )}
     >
       <span className="min-w-0 truncate">
-        <span className="mr-2 text-muted-foreground">$</span>
+        <span className="mr-2 text-muted-foreground/60 select-none">$</span>
         {command}
       </span>
       <Button
