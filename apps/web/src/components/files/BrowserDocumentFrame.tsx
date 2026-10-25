@@ -22,12 +22,15 @@ import {
   matchesKeybindingShortcut,
   normalizeEventKey,
 } from "@t3tools/shared/keybindings";
+import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
+import { useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
 import { useOpenLink } from "~/browser/useOpenLink";
 import { ExpandedImageDialog } from "~/components/chat/ExpandedImageDialog";
 import type { ExpandedImagePreview } from "~/components/chat/ExpandedImagePreview";
 import { useHtmlRenderTheme } from "~/hooks/useHtmlRenderTheme";
+import { configuredHostedAppUrl } from "~/hostedPairing";
 import { shortcutConflictKey } from "~/keybindings";
 import { useOpenChangeRequestLink } from "~/lib/openPullRequestLink";
 import { readLocalApi } from "~/localApi";
@@ -180,11 +183,21 @@ export function HtmlRenderDocument(props: {
   );
   const openChangeRequestLink = useOpenChangeRequestLink(props.threadRef);
   const openLink = useOpenLink(props.threadRef);
+  const router = useRouter();
   const open = useEffectEvent((url: string, modifiers: { metaKey: boolean; ctrlKey: boolean }) => {
     if (modifiers.metaKey || modifiers.ctrlKey) {
       void readLocalApi()
         ?.shell.openExternal(url)
         .catch((cause: unknown) => console.error(cause));
+      return;
+    }
+    // Agents write app.t3.codes prompt links, so accept them even when this build hosts elsewhere.
+    const appPath = promptLinkAppPath(url, configuredHostedAppUrl()) ?? promptLinkAppPath(url);
+    if (appPath !== null) {
+      void router.navigate({
+        href: appPath,
+        ...(props.threadRef === undefined ? {} : { state: { promptLinkSource: props.threadRef } }),
+      });
       return;
     }
     if (

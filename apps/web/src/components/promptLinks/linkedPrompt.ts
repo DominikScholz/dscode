@@ -1,8 +1,27 @@
+import type { ScopedThreadRef } from "@t3tools/contracts";
 import type { LinkedPrompt } from "@t3tools/shared/promptLinks";
 
-import { type ComposerThreadTarget, useComposerDraftStore } from "~/composerDraftStore";
+import {
+  type ComposerThreadTarget,
+  type DraftId,
+  useComposerDraftStore,
+} from "~/composerDraftStore";
 
 import { toastManager } from "../ui/toast";
+
+declare module "@tanstack/react-router" {
+  interface HistoryState {
+    /** Only in-app clicks set history state, so a pasted or external link can never auto-send. */
+    promptLinkSource?: ScopedThreadRef;
+  }
+}
+
+// In memory only, so a reload never sends a linked prompt again.
+const draftsToSend = new Set<DraftId>();
+
+export function takeLinkedPromptSend(draftId: DraftId): boolean {
+  return draftsToSend.delete(draftId);
+}
 
 export function warnAboutHiddenCharacters(prompt: LinkedPrompt): void {
   if (prompt.hiddenCharacters === 0) return;
@@ -46,4 +65,21 @@ export function placeLinkedPrompt(
       },
     },
   });
+}
+
+/** Hidden characters fall back to placing the prompt, so the reader sees it first. */
+export function sendLinkedPrompt(
+  draftId: DraftId,
+  prompt: LinkedPrompt,
+  notes: ReadonlyArray<string> = [],
+): void {
+  if (prompt.hiddenCharacters > 0) {
+    placeLinkedPrompt(draftId, prompt, notes);
+    return;
+  }
+  draftsToSend.add(draftId);
+  useComposerDraftStore.getState().setPrompt(draftId, prompt.text);
+  if (notes.length > 0) {
+    toastManager.add({ type: "info", title: "Linked prompt sent", description: notes.join(" ") });
+  }
 }

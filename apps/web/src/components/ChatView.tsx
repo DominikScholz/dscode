@@ -10,6 +10,7 @@ import {
 } from "./ChatView.logic";
 import { usePullRequestDraftThread } from "./chat/usePullRequestDraftThread";
 import { useComposerSelection } from "./chat/useComposerSelection";
+import { takeLinkedPromptSend } from "./promptLinks/linkedPrompt";
 import { useProjectCloneBanner } from "./chat/useProjectCloneBanner";
 import { useAttachmentPreviewHandoff } from "./chat/useAttachmentPreviewHandoff";
 import { useTimelineRewind } from "./chat/useTimelineRewind";
@@ -594,6 +595,9 @@ export default function ChatView(props: ChatViewProps) {
       const referenced = new Set(collectInlineContextIds(draft.prompt));
       return draft.threadContexts.filter((record) => referenced.has(record.contextId));
     }),
+  );
+  const composerHasPrompt = useComposerDraftStore(
+    (store) => (store.getComposerDraft(composerDraftTarget)?.prompt.trim().length ?? 0) > 0,
   );
   const composerHasNonPromptContent = useComposerDraftStore((store) => {
     const draft = store.getComposerDraft(composerDraftTarget);
@@ -2989,9 +2993,7 @@ export default function ChatView(props: ChatViewProps) {
     void onComposerSendStable();
   };
   const resendAfterWorkLocallyStable = useStableCallback(resendAfterWorkLocally);
-  const workLocallyResendReady =
-    workLocallyResendDraftId !== null &&
-    workLocallyResendDraftId === draftId &&
+  const draftSendReady =
     isLocalDraftThread &&
     !isSendBusy &&
     !isConnecting &&
@@ -3002,6 +3004,8 @@ export default function ChatView(props: ChatViewProps) {
     !activeEnvironmentUnavailable &&
     !activePendingProgress &&
     !feedbackUploading;
+  const workLocallyResendReady =
+    workLocallyResendDraftId !== null && workLocallyResendDraftId === draftId && draftSendReady;
   useEffect(() => {
     if (
       !workLocallyResendReady ||
@@ -3025,6 +3029,11 @@ export default function ChatView(props: ChatViewProps) {
     setDraftThreadContext,
     workLocallyResendReady,
   ]);
+  const linkedPromptSendReady = draftId !== null && draftSendReady && composerHasPrompt;
+  useEffect(() => {
+    if (!linkedPromptSendReady || sendInFlightRef.current || draftId === null) return;
+    if (takeLinkedPromptSend(draftId)) void onComposerSendStable();
+  }, [draftId, linkedPromptSendReady, onComposerSendStable, sendInFlightRef]);
 
   const onExpandTimelineImage = (preview: ExpandedImagePreview) => {
     openExpandedImagePreview(routeThreadKey, preview);
