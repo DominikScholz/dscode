@@ -1,5 +1,6 @@
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
 import { formatDuration, type LimitProjection } from "@t3tools/shared/usageLimits";
+import { AlertTriangleIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
@@ -91,7 +92,7 @@ export function LeftFigure({
             tone === "destructive"
               ? "text-destructive-foreground"
               : tone === "warning"
-                ? "font-medium whitespace-nowrap text-foreground"
+                ? "font-medium whitespace-nowrap text-destructive-foreground"
                 : "text-foreground/52",
           )}
         >
@@ -157,13 +158,14 @@ export function LimitRow({
       <span
         className={cn(
           "col-start-2 row-start-2 justify-self-end text-xs leading-none md:col-start-3",
-          reached
-            ? "text-destructive-foreground"
-            : runsOutEarly
-              ? "font-medium whitespace-nowrap text-foreground"
-              : "text-foreground/52",
+          reached || runsOutEarly
+            ? "inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-destructive-foreground"
+            : "text-foreground/52",
         )}
       >
+        {reached || runsOutEarly ? (
+          <AlertTriangleIcon aria-hidden className="-my-1 size-3.5 shrink-0" />
+        ) : null}
         {forecast}
       </span>
       {/* Line boxes carry space above the capitals; the nudge centres the bar on the visible text. */}
@@ -176,15 +178,15 @@ export function LimitRow({
                 role="img"
                 tabIndex={0}
                 aria-label={`${label}: ${Math.round(left)}% left, ${timeLeft}% of the window left. ${forecast}.`}
-                className="relative h-5 w-full cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                className="relative h-6 w-full cursor-default rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
               />
             }
           >
             <div className="absolute inset-0" style={paceMark?.gap}>
-              <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-foreground/8" />
+              <div className="absolute inset-x-0 inset-y-1.75 rounded-full bg-foreground/8" />
               {left > 0 ? (
                 <div
-                  className="absolute inset-y-1.5 left-0 overflow-hidden rounded-full"
+                  className="absolute inset-y-1.75 left-0 overflow-hidden rounded-full"
                   style={{ width: `${left}%` }}
                 >
                   <div
@@ -196,7 +198,7 @@ export function LimitRow({
                     style={{
                       width: `${100 - (leftAtReset / left) * 100}%`,
                       // Projected use is striped in full colour.
-                      backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 2px, transparent 2px 5px)`,
+                      backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 2.5px, transparent 2.5px 6px)`,
                     }}
                   />
                 </div>

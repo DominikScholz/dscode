@@ -656,7 +656,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
       // Theme greys read far brighter than brand hues at the same strength, so they glow less.
       style={
         {
-          "--tile-glow": `color-mix(in oklab, ${color} ${color.startsWith("#") ? 19 : 8}%, transparent)`,
+          "--tile-glow": `color-mix(in oklab, ${color} ${color.startsWith("#") ? 14 : 8}%, transparent)`,
         } as CSSProperties
       }
     >

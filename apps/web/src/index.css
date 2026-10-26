@@ -1844,21 +1844,32 @@ html[data-theme-id] [data-app-sidebar] {
 @utility usage-card-lit {
   position: relative;
   background-color: var(--usage-card-fill);
-  background-image: radial-gradient(
-    9rem 6rem at 2.625rem 1.875rem,
-    var(--tile-glow, transparent),
-    transparent 100%
-  );
+  background-image:
+    radial-gradient(
+      15rem 9rem at 2.625rem 1.875rem,
+      var(--tile-glow, transparent),
+      transparent 100%
+    ),
+    radial-gradient(
+      90% 220% at 0% 0%,
+      color-mix(in oklab, var(--tile-glow, transparent) 38%, transparent),
+      transparent 100%
+    );
 
   @variant dark {
     background-image:
       radial-gradient(
-        9rem 6rem at 2.625rem 1.875rem,
+        15rem 9rem at 2.625rem 1.875rem,
         var(--tile-glow, transparent),
         transparent 100%
       ),
+      radial-gradient(
+        90% 220% at 0% 0%,
+        color-mix(in oklab, var(--tile-glow, transparent) 38%, transparent),
+        transparent 100%
+      ),
       var(--surface-grain-fine);
-    background-size: auto, var(--surface-grain-size);
+    background-size: auto, auto, var(--surface-grain-size);
   }
 
   &::after {
@@ -1890,7 +1901,7 @@ html[data-theme-id] [data-app-sidebar] {
   background-color: var(--tile-color);
   box-shadow:
     inset 0 1px 0 rgb(255 255 255 / 0.25),
-    0 0 22px 3px color-mix(in oklab, var(--tile-color) 32%, transparent),
+    0 0 34px 8px color-mix(in oklab, var(--tile-color) 46%, transparent),
     0 3px 14px 2px rgb(0 0 0 / 0.45);
 }
 
