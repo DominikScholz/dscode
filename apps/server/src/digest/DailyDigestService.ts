@@ -13,14 +13,17 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 
+import { resolveAttachmentRelativePath } from "../attachmentPaths.ts";
 import * as SessionStore from "../auth/SessionStore.ts";
 import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as ManagedProjectFolders from "../project/ManagedProjectFolders.ts";
+import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
 import * as ProjectService from "../project/ProjectService.ts";
 import { forkParked } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
@@ -35,11 +38,26 @@ import {
   threadActivityMs,
   windowThreads,
 } from "./dailyDigestPlan.ts";
-import { type DailyDigestPageContent, renderDailyDigestPage } from "./dailyDigestPage.ts";
+import { digestSnapshotPath } from "./dailyDigestAsset.ts";
+import {
+  type DailyDigestPageContent,
+  DailyDigestPageSnapshot,
+  renderDailyDigestSnapshot,
+} from "./dailyDigestPage.ts";
 import { dailyDigestPrompt, isoAt } from "./dailyDigestPrompt.ts";
 
 const AWAY_POLL = "30 seconds";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const IMAGE_MIME_TYPES: Record<string, string> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  gif: "image/gif",
+  webp: "image/webp",
+  avif: "image/avif",
+  svg: "image/svg+xml",
+  ico: "image/x-icon",
+};
 const HOUR_MS = 60 * 60 * 1_000;
 
 export class DailyDigestService extends Context.Service<
@@ -51,7 +69,15 @@ export class DailyDigestService extends Context.Service<
     readonly preparePage: (
       threadId: ThreadId,
       content: DailyDigestPageContent,
-    ) => Effect.Effect<{ readonly html: string; readonly title: string }, DailyDigestError>;
+    ) => Effect.Effect<
+      { readonly html: string; readonly title: string; readonly snapshot: DailyDigestPageSnapshot },
+      DailyDigestError
+    >;
+    /** Keeps a published page's snapshot so serving it renders with the current template. */
+    readonly rememberPage: (
+      attachmentId: string,
+      snapshot: DailyDigestPageSnapshot,
+    ) => Effect.Effect<void, DailyDigestError>;
   }
 >()("t3/digest/DailyDigestService") {}
 
@@ -71,6 +97,7 @@ export const layer = Layer.effect(
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const permit = yield* Semaphore.make(1);
     const fileSystem = yield* FileSystem.FileSystem;
+    const favicons = yield* ProjectFaviconResolver.ProjectFaviconResolver;
     const { attachmentsDir } = yield* ServerConfig.ServerConfig;
 
     const fail = (message: string) => (cause: unknown) => new DailyDigestError({ message, cause });
@@ -197,13 +224,24 @@ export const layer = Layer.effect(
         );
 
     // A missing or oversized image would fail the whole publish, so it is left out instead.
-    const isShowableImage = (path: string) =>
-      /\.(?:png|jpe?g|gif|webp|avif)$/i.test(path)
-        ? fileSystem.stat(path).pipe(
-            Effect.map((info) => info.type === "File" && Number(info.size) <= MAX_IMAGE_BYTES),
-            Effect.orElseSucceed(() => false),
-          )
-        : Effect.succeed(false);
+    const readImage = (path: string) => {
+      const mimeType = IMAGE_MIME_TYPES[path.slice(path.lastIndexOf(".") + 1).toLowerCase()];
+      if (mimeType === undefined) return Effect.succeed(null);
+      return fileSystem.stat(path).pipe(
+        Effect.flatMap((info) =>
+          info.type === "File" && Number(info.size) <= MAX_IMAGE_BYTES
+            ? fileSystem
+                .readFile(path)
+                .pipe(
+                  Effect.map(
+                    (bytes) => `data:${mimeType};base64,${Buffer.from(bytes).toString("base64")}`,
+                  ),
+                )
+            : Effect.succeed(null),
+        ),
+        Effect.orElseSucceed(() => null),
+      );
+    };
 
     const preparePage: DailyDigestService["Service"]["preparePage"] = Effect.fn(
       "DailyDigestService.preparePage",
@@ -224,33 +262,64 @@ export const layer = Layer.effect(
       if (project === null) {
         return yield* new DailyDigestError({ message: "The digest's project no longer exists." });
       }
-      const snapshot = yield* threads
+      const shells = yield* threads
         .getShellSnapshot()
         .pipe(Effect.mapError(fail("Could not list threads.")));
-      const window = digestWindow(thread, [...snapshot.threads, ...snapshot.archivedThreads]);
+      const window = digestWindow(thread, [...shells.threads, ...shells.archivedThreads]);
       const times = yield* commitTimes(project.workspaceRoot, window);
       const environmentId = yield* environment.getEnvironmentId;
-      const visuals = yield* Effect.filter(content.visuals, (visual) =>
-        visual.kind === "image" ? isShowableImage(visual.path) : Effect.succeed(true),
+      const imagePaths = content.visuals.flatMap((visual) =>
+        visual.kind === "image" ? [visual.path] : [],
       );
+      const images = yield* Effect.forEach(imagePaths, (path) =>
+        readImage(path).pipe(
+          Effect.map((dataUri) => (dataUri === null ? [] : [[path, dataUri] as const])),
+        ),
+      );
+      const iconPath = yield* favicons
+        .resolvePath(project.workspaceRoot, project.faviconPath ?? undefined)
+        .pipe(Effect.orElseSucceed(() => null));
+      const icon = iconPath === null ? null : yield* readImage(iconPath);
+      const snapshot: DailyDigestPageSnapshot = {
+        content,
+        context: {
+          projectTitle: project.title,
+          environmentId,
+          ...window,
+          activity: bucketActivity(times, window),
+          threads: windowThreads(thread, shells.threads, window).map((entry) => ({
+            id: entry.id,
+            title: entry.title,
+            status: entry.status,
+            activityMs: threadActivityMs(entry),
+          })),
+          ...(icon === null ? {} : { icon }),
+        },
+        images: Object.fromEntries(images.flat()),
+      };
       return {
         title: `${project.title} daily digest`,
-        html: renderDailyDigestPage(
-          { ...content, visuals },
-          {
-            projectTitle: project.title,
-            environmentId,
-            ...window,
-            activity: bucketActivity(times, window),
-            threads: windowThreads(thread, snapshot.threads, window).map((entry) => ({
-              id: entry.id,
-              title: entry.title,
-              status: entry.status,
-              activityMs: threadActivityMs(entry),
-            })),
-          },
-        ),
+        html: renderDailyDigestSnapshot(snapshot),
+        snapshot,
       };
+    });
+
+    const rememberPage: DailyDigestService["Service"]["rememberPage"] = Effect.fn(
+      "DailyDigestService.rememberPage",
+    )(function* (attachmentId, snapshot) {
+      const htmlPath = resolveAttachmentRelativePath({
+        attachmentsDir,
+        relativePath: `${attachmentId}.html`,
+      });
+      if (htmlPath === null) {
+        return yield* new DailyDigestError({ message: "Invalid digest page id." });
+      }
+      const json = yield* Schema.encodeEffect(Schema.fromJsonString(DailyDigestPageSnapshot))(
+        snapshot,
+      ).pipe(Effect.mapError(fail("Could not encode the digest page.")));
+      yield* fileSystem
+        .writeFileString(digestSnapshotPath(htmlPath), json)
+        .pipe(Effect.mapError(fail("Could not keep the digest page.")));
     });
 
     const runNow: DailyDigestService["Service"]["runNow"] = () =>
@@ -287,6 +356,6 @@ export const layer = Layer.effect(
     );
     yield* forkParked(watchAway);
 
-    return DailyDigestService.of({ runNow, preparePage });
+    return DailyDigestService.of({ runNow, preparePage, rememberPage });
   }),
 );

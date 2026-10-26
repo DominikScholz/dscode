@@ -25,7 +25,7 @@ export function ThreadTimeline({
   detailLoading,
   readyMarkdownCwd,
   readyWorkspaceRoot,
-  hideSystemPrompts = false,
+  pageOnly = false,
   ...timelineProps
 }: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries"> & {
   /** Null until the thread's detail may load; see resolveThreadDetailRef. */
@@ -38,8 +38,8 @@ export function ThreadTimeline({
   detailLoading: boolean;
   readyMarkdownCwd: string | null;
   readyWorkspaceRoot: string | null;
-  /** Leaves out user messages the server wrote, such as a digest's instructions. */
-  hideSystemPrompts?: boolean;
+  /** Shows a digest's first turn as just its page and closing reply. */
+  pageOnly?: boolean;
 }) {
   const visibleTurnItems = useThreadVisibleTurnItems(threadDetailRef);
   const serverEntries = useIncrementalTimelineEntries(activeThreadKey, {
@@ -64,17 +64,24 @@ export function ThreadTimeline({
       workspaceRoot: readyWorkspaceRoot,
     });
   }, [activeThreadKey, detailLoading, entries, readyMarkdownCwd, readyWorkspaceRoot]);
-  const shown = hideSystemPrompts ? withoutSystemPrompts(displayed.entries) : displayed.entries;
+  const shown = pageOnly ? withoutServerTurn(displayed.entries) : displayed.entries;
   return <MessagesTimeline {...timelineProps} timelineEntries={shown} />;
 }
 
-function withoutSystemPrompts(entries: ReadonlyArray<TimelineEntry>): ReadonlyArray<TimelineEntry> {
-  return entries.filter(
+// The server's first turn keeps only its pages and closing reply, so it shows no work fold.
+function withoutServerTurn(entries: ReadonlyArray<TimelineEntry>): ReadonlyArray<TimelineEntry> {
+  const firstReply = entries.findIndex(
     (entry) =>
-      !(
-        entry.kind === "message" &&
-        entry.message.role === "user" &&
-        entry.message.createdBy === "system"
-      ),
+      entry.kind === "message" &&
+      entry.message.role === "user" &&
+      entry.message.createdBy !== "system",
   );
+  const serverTurn = firstReply === -1 ? entries : entries.slice(0, firstReply);
+  const closingReply = serverTurn.findLast(
+    (entry) => entry.kind === "message" && entry.message.role === "assistant",
+  );
+  const shownServerTurn = serverTurn.filter(
+    (entry) => entry.kind === "html-render" || entry.kind === "mcp-app" || entry === closingReply,
+  );
+  return firstReply === -1 ? shownServerTurn : [...shownServerTurn, ...entries.slice(firstReply)];
 }

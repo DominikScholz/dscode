@@ -86,23 +86,44 @@ export const DailyDigestPageContent = Schema.Struct({
 });
 export type DailyDigestPageContent = typeof DailyDigestPageContent.Type;
 
-export interface DailyDigestPageThread {
-  readonly id: string;
-  readonly title: string;
-  readonly status: string;
-  readonly activityMs: number;
-}
-
-export interface DailyDigestPageContext {
-  readonly projectTitle: string;
-  readonly environmentId: string;
-  readonly sinceMs: number;
-  readonly untilMs: number;
+const DailyDigestPageContext = Schema.Struct({
+  projectTitle: Schema.String,
+  environmentId: Schema.String,
+  sinceMs: Schema.Number,
+  untilMs: Schema.Number,
   /** Commit counts in even slots across the window. */
-  readonly activity: ReadonlyArray<number>;
+  activity: Schema.Array(Schema.Number),
   /** Main threads that were active in the window, newest first. */
-  readonly threads: ReadonlyArray<DailyDigestPageThread>;
-  readonly timeZone?: string;
+  threads: Schema.Array(
+    Schema.Struct({
+      id: Schema.String,
+      title: Schema.String,
+      status: Schema.String,
+      activityMs: Schema.Number,
+    }),
+  ),
+  timeZone: Schema.optional(Schema.String),
+  /** The project's icon as a data URI, as the app shows it. */
+  icon: Schema.optional(Schema.String),
+});
+type DailyDigestPageContext = typeof DailyDigestPageContext.Type;
+
+/** Everything a digest page renders from, kept beside it so it re-renders with today's template. */
+export const DailyDigestPageSnapshot = Schema.Struct({
+  content: DailyDigestPageContent,
+  context: DailyDigestPageContext,
+  /** Image visuals' data URIs by path, since the files may be gone by the next render. */
+  images: Schema.Record(Schema.String, Schema.String),
+});
+export type DailyDigestPageSnapshot = typeof DailyDigestPageSnapshot.Type;
+
+export function renderDailyDigestSnapshot(snapshot: DailyDigestPageSnapshot): string {
+  const visuals = snapshot.content.visuals.flatMap((visual): Visual[] => {
+    if (visual.kind !== "image") return [visual];
+    const image = snapshot.images[visual.path];
+    return image?.startsWith("data:image/") ? [{ ...visual, path: image }] : [];
+  });
+  return renderDailyDigestPage({ ...snapshot.content, visuals }, snapshot.context);
 }
 
 const STATUS_LABELS: Record<(typeof DAILY_DIGEST_STATUSES)[number], [string, string]> = {
@@ -137,29 +158,28 @@ function newThreadHref(prompt: string): string {
 
 const line = (opacity: number) => `color-mix(in srgb,var(--foreground) ${opacity}%,transparent)`;
 
-const GRAIN =
-  "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .5 0 0 0 0 .5 0 0 0 0 .5 0 0 0 .06 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E\")";
-
 // Theme variables only, so the page follows light, dark, and custom themes.
 const STYLES = `
 html,body{background:transparent!important}
-.dd{--hair:${line(7)};--hair-hi:${line(15)};--top:color-mix(in srgb,var(--foreground) 5.5%,var(--background));--bottom:color-mix(in srgb,var(--foreground) 2%,var(--background));--lift:0 1px 1px rgb(0 0 0/.22),0 22px 44px -22px rgb(0 0 0/.6);display:flex;flex-direction:column;gap:22px;max-width:1240px;margin:0 auto;padding:6px 4px 28px}
+.dd{--hair:${line(6)};--surface:color-mix(in srgb,var(--foreground) 4.5%,var(--background));--control:color-mix(in srgb,var(--foreground) 9%,var(--background));--control-hover:color-mix(in srgb,var(--foreground) 13%,var(--background));--edge:inset 0 1px 0 ${line(5)},inset 0 0 0 1px ${line(2.5)};display:flex;flex-direction:column;gap:22px;max-width:1240px;margin:0 auto;padding:6px 4px 28px}
 .ok{--tone:color-mix(in srgb,var(--success) 62%,var(--foreground))}
 .run{--tone:color-mix(in srgb,var(--info) 58%,var(--foreground))}
 .ask{--tone:color-mix(in srgb,var(--warning) 66%,var(--foreground))}
 .off{--tone:var(--muted-foreground)}
 .top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:10px}
 .ttl{display:flex;align-items:center;gap:14px;min-width:0}
-.tile{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;font-size:15px;font-weight:700;color:var(--background);background:linear-gradient(180deg,var(--foreground),color-mix(in srgb,var(--foreground) 72%,var(--background)));box-shadow:inset 0 1px 0 rgb(255 255 255/.35),0 0 0 1px ${line(14)},0 8px 28px ${line(16)}}
+.tile{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;font-size:15px;font-weight:700;color:var(--background);background:var(--foreground)}
+.tile.icon{overflow:hidden;background:none}
+.tile img{width:100%;height:100%;object-fit:contain}
 .ttl h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em;white-space:nowrap}
-.raised{border:1px solid transparent;background:linear-gradient(180deg,${line(9)},${line(4)}) padding-box,linear-gradient(180deg,${line(20)},${line(7)}) border-box;box-shadow:0 1px 2px rgb(0 0 0/.25),inset 0 1px 0 ${line(8)}}
+.raised{border:1px solid transparent;background:var(--control)}
 .pill{display:inline-flex;align-items:center;height:34px;padding:0 15px;border-radius:11px;font-size:14px;font-weight:600}
-.chip{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 9px 0 8px;border-radius:7px;font-size:12px;font-weight:500;white-space:nowrap;color:color-mix(in srgb,var(--foreground) 82%,transparent);border:1px solid var(--hair);background:${line(4)}}
-.chip::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--tone);box-shadow:0 0 8px var(--tone)}
-.card{position:relative;border-radius:18px;border:1px solid transparent;background:${GRAIN} padding-box,linear-gradient(180deg,var(--top),var(--bottom)) padding-box,linear-gradient(180deg,var(--hair-hi),var(--hair) 38%) border-box;box-shadow:inset 0 1px 0 ${line(5)},var(--lift)}
+.chip{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 9px 0 8px;border-radius:7px;font-size:12px;font-weight:500;white-space:nowrap;color:color-mix(in srgb,var(--foreground) 82%,transparent);background:${line(7)}}
+.chip::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--tone)}
+.card{position:relative;border-radius:18px;background:var(--surface);box-shadow:var(--edge)}
 .hero{display:grid;gap:22px}
 @media (min-width:900px){.hero{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}}
-.brief{display:flex;flex-direction:column;justify-content:space-between;gap:44px;min-height:310px;padding:30px 34px 34px;overflow:hidden;background:${GRAIN} padding-box,radial-gradient(85% 75% at 0% 0%,${line(11)},transparent 62%) padding-box,radial-gradient(70% 60% at 100% 100%,${line(4)},transparent 70%) padding-box,linear-gradient(180deg,color-mix(in srgb,var(--foreground) 3%,var(--background)),var(--background)) padding-box,linear-gradient(160deg,${line(22)},var(--hair) 45%) border-box}
+.brief{display:flex;flex-direction:column;justify-content:space-between;gap:44px;min-height:310px;padding:30px 34px 34px;overflow:hidden;background:radial-gradient(90% 80% at 0% 0%,${line(9)},transparent 65%),var(--surface)}
 .brief-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mood{display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:999px;font-size:13px;color:color-mix(in srgb,var(--foreground) 85%,transparent)}
 .stamp{font-size:12px;color:var(--muted-foreground)}
@@ -175,7 +195,7 @@ html,body{background:transparent!important}
 .plot polyline{filter:drop-shadow(0 0 6px ${line(45)})}
 .ylab{position:absolute;right:0;font-size:11px;color:var(--muted-foreground);transform:translateY(-50%);font-variant-numeric:tabular-nums}
 .comb{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));align-items:end;height:34px;margin:14px 44px 0 0}
-.comb i{justify-self:center;width:2px;min-height:2px;border-radius:1px;background:linear-gradient(180deg,${line(45)},${line(16)})}
+.comb i{justify-self:center;width:2px;min-height:2px;border-radius:1px;background:${line(32)}}
 .axis{display:flex;justify-content:space-between;margin:12px 44px 0 0;font-size:11.5px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
 .strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));padding:24px 8px}
 .strip div{display:grid;gap:9px;justify-items:center;text-align:center;padding:2px 12px}
@@ -192,15 +212,15 @@ html,body{background:transparent!important}
 .th{padding-top:15px;padding-bottom:13px;font-size:12px;color:var(--muted-foreground);background:${line(2)}}
 @media (max-width:819px){.th{display:none}}
 .name{display:flex;gap:12px;min-width:0}
-.name .dot{flex:none;width:7px;height:7px;margin-top:7px;border-radius:999px;background:var(--tone);box-shadow:0 0 10px var(--tone)}
+.name .dot{flex:none;width:7px;height:7px;margin-top:7px;border-radius:999px;background:var(--tone)}
 .name b{display:block;font-size:14.5px;font-weight:600}
 .name p{margin:3px 0 0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .note{margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .note.risk{color:color-mix(in srgb,var(--warning) 48%,var(--foreground))}
 .act{justify-self:end}
 @media (max-width:819px){.act{justify-self:start}}
-.btn{display:inline-flex;align-items:center;height:31px;padding:0 13px;border-radius:9px;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;color:var(--foreground)}
-.btn:hover{background:linear-gradient(180deg,${line(13)},${line(6)}) padding-box,linear-gradient(180deg,${line(26)},${line(9)}) border-box}
+.btn{display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:10px;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;color:var(--foreground);background:var(--control)}
+.btn:hover{background:var(--control-hover)}
 .proceed{display:grid;gap:22px;align-items:start}
 @media (min-width:900px){.proceed.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .list{padding:24px 26px 10px}
@@ -208,7 +228,7 @@ html,body{background:transparent!important}
 .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 14px;align-items:center;padding:16px 0;border-top:1px solid var(--hair)}
 .list h3+.row{border-top:0}
 .row .mk{grid-row:span 2;align-self:start;display:grid;place-items:center;width:24px;height:24px;margin-top:-1px;border-radius:999px;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;color:color-mix(in srgb,var(--foreground) 75%,transparent)}
-.row .mk.q{width:7px;height:7px;margin:7px 9px 0;border:0;background:var(--tone);box-shadow:0 0 10px var(--tone)}
+.row .mk.q{width:7px;height:7px;margin:7px 9px 0;border:0;background:var(--tone)}
 .row b{font-size:14.5px;font-weight:600}
 .row p{grid-column:2;margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .row .btn{grid-column:3;grid-row:1 / span 2}
@@ -223,17 +243,17 @@ html,body{background:transparent!important}
 .bar-list{flex:1;display:grid;align-content:center;gap:15px;padding:18px 30px 28px}
 .bar{display:grid;grid-template-columns:minmax(90px,32%) minmax(0,1fr) auto;align-items:center;gap:14px;font-size:13px}
 .bar span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted-foreground)}
-.track{height:10px;border-radius:999px;background:${line(6)};box-shadow:inset 0 1px 1px rgb(0 0 0/.3);overflow:hidden}
-.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,${line(22)},${line(40)})}
+.track{height:8px;border-radius:999px;background:${line(7)};overflow:hidden}
+.fill{height:100%;border-radius:999px;background:${line(32)}}
 .bar.hi span{color:var(--foreground)}
-.bar.hi .fill{background:linear-gradient(90deg,color-mix(in srgb,var(--foreground) 65%,transparent),var(--foreground));box-shadow:0 0 14px ${line(35)}}
+.bar.hi .fill{background:var(--foreground)}
 .bar b{min-width:58px;text-align:right;white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums}
 .bar b i{font-style:normal;font-weight:400;color:var(--muted-foreground)}
 .gallery{display:grid;gap:22px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
 .threads{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
 .thread{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px;border-radius:14px;text-decoration:none;color:inherit}
-.thread:hover{background:${GRAIN} padding-box,linear-gradient(180deg,color-mix(in srgb,var(--foreground) 8%,var(--background)),var(--bottom)) padding-box,linear-gradient(180deg,${line(24)},var(--hair) 40%) border-box}
-.thread .dot{flex:none;width:7px;height:7px;border-radius:999px;background:var(--tone);box-shadow:0 0 10px var(--tone)}
+.thread:hover{background:var(--control)}
+.thread .dot{flex:none;width:7px;height:7px;border-radius:999px;background:var(--tone)}
 .thread div{min-width:0}
 .thread b{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:14px;font-weight:600}
 .thread span{display:block;margin-top:2px;font-size:12px;color:var(--muted-foreground)}
@@ -300,7 +320,7 @@ function formatNumber(value: number): string {
 
 function visualCard(visual: Visual, environmentId: string, className: string): string {
   const open = visual.threadId
-    ? `<a class="btn raised" href="${escapeHtml(threadHref(environmentId, visual.threadId))}">Open</a>`
+    ? `<a class="btn" href="${escapeHtml(threadHref(environmentId, visual.threadId))}">Open</a>`
     : "";
   const caption = `<div><b>${rich(visual.title)}</b>${visual.caption ? `<span>${rich(visual.caption)}</span>` : ""}</div>${open}`;
   if (visual.kind === "image") {
@@ -399,7 +419,7 @@ export function renderDailyDigestPage(
         ? `<p class="note risk">${rich(section.issue)}</p>`
         : `<span></span>`;
       const open = section.threadId
-        ? `<a class="btn raised act" href="${escapeHtml(threadHref(environmentId, section.threadId))}">Open</a>`
+        ? `<a class="btn act" href="${escapeHtml(threadHref(environmentId, section.threadId))}">Open</a>`
         : `<span></span>`;
       return `<div class="tr"><div class="name"><span class="dot ${tone}"></span><div><b>${rich(section.title)}</b><p>${rich(section.summary)}</p></div></div><span><span class="chip ${tone}">${label}</span></span>${note}${open}</div>`;
     })
@@ -415,9 +435,9 @@ export function renderDailyDigestPage(
       : `<section class="card list"><h3>Your call</h3>${content.decisions
           .map((decision) => {
             const answer = decision.threadId
-              ? `<a class="btn raised" href="${escapeHtml(threadHref(environmentId, decision.threadId, decision.prompt))}">Answer</a>`
+              ? `<a class="btn" href="${escapeHtml(threadHref(environmentId, decision.threadId, decision.prompt))}">Answer</a>`
               : decision.prompt
-                ? `<a class="btn raised" href="${escapeHtml(newThreadHref(decision.prompt))}">Start thread</a>`
+                ? `<a class="btn" href="${escapeHtml(newThreadHref(decision.prompt))}">Start thread</a>`
                 : "";
             return `<div class="row"><span class="mk q ask"></span><b>${rich(decision.question)}</b><p>${rich(decision.context)}</p>${answer}</div>`;
           })
@@ -428,16 +448,18 @@ export function renderDailyDigestPage(
       : `<section class="card list"><h3>Next steps</h3>${content.nextSteps
           .map(
             (step, index) =>
-              `<div class="row"><span class="mk raised">${index + 1}</span><b>${rich(step.title)}</b><p>${rich(step.reason)}</p><a class="btn raised" href="${escapeHtml(newThreadHref(step.prompt))}">Start thread</a></div>`,
+              `<div class="row"><span class="mk raised">${index + 1}</span><b>${rich(step.title)}</b><p>${rich(step.reason)}</p><a class="btn" href="${escapeHtml(newThreadHref(step.prompt))}">Start thread</a></div>`,
           )
           .join("")}</section>`;
   const proceed =
     decisions === "" && steps === ""
       ? ""
       : `<div class="sec"><h2>How to proceed</h2></div><div class="proceed${decisions !== "" && steps !== "" ? " two" : ""}">${decisions}${steps}</div>`;
-  const initial = escapeHtml(context.projectTitle.trim().charAt(0).toUpperCase() || "?");
+  const tile = context.icon?.startsWith("data:image/")
+    ? `<span class="tile icon"><img src="${escapeHtml(context.icon)}" alt=""></span>`
+    : `<span class="tile">${escapeHtml(context.projectTitle.trim().charAt(0).toUpperCase() || "?")}</span>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${STYLES}</style></head><body><div class="dd">
-<header class="top"><div class="ttl"><span class="tile">${initial}</span><h1>${escapeHtml(context.projectTitle)} digest</h1><span class="chip ok">${commitLabel}</span></div><span class="pill raised">${today}</span></header>
+<header class="top"><div class="ttl">${tile}<h1>${escapeHtml(context.projectTitle)} digest</h1><span class="chip ok">${commitLabel}</span></div><span class="pill raised">${today}</span></header>
 <div class="hero">
 <section class="card brief"><div class="brief-top"><span class="mood raised">${rich(content.mood)}</span><span class="stamp">Summarized at ${summarized}</span></div><div><p class="headline">${rich(content.headline)}</p><p class="summary">${rich(content.summary)}</p></div></section>
 ${heroSide}

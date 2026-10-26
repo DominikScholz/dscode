@@ -70,17 +70,32 @@ export const layerDigest = McpToolAccess.toLayer(DigestToolkit, {
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
       const { thread } = yield* McpInvocationContext.requireThreadScope(scope, "digest_publish");
-      const page = yield* DailyDigestService.DailyDigestService.pipe(
-        Effect.flatMap((digest) => digest.preparePage(thread.threadId, input)),
-        Effect.mapError(
-          (error) =>
-            new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
-        ),
-      );
+      const digest = yield* DailyDigestService.DailyDigestService;
+      const page = yield* digest
+        .preparePage(thread.threadId, input)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
+          ),
+        );
       const htmlRender = yield* HtmlRender.HtmlRender;
       const reference = yield* htmlRender
-        .publish({ threadId: thread.threadId, ...page, height: DIGEST_FALLBACK_HEIGHT })
+        .publish({
+          threadId: thread.threadId,
+          html: page.html,
+          title: page.title,
+          height: DIGEST_FALLBACK_HEIGHT,
+        })
         .pipe(Effect.mapError(toFailure));
+      // Without a snapshot the page keeps the design it was published with.
+      yield* digest
+        .rememberPage(reference.attachmentId, page.snapshot)
+        .pipe(
+          Effect.catchCause((cause) =>
+            Effect.logWarning("Could not keep a digest snapshot", { cause }),
+          ),
+        );
       return {
         htmlRender: reference,
         message: "Published above your reply. Reply with one short line; don't restate the page.",

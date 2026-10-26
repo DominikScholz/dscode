@@ -47,6 +47,14 @@ describe("renderDailyDigestPage", () => {
     expect(html).toContain("3 commits");
   });
 
+  it("shows the project's icon and falls back to its initial", () => {
+    const icon = "data:image/svg+xml;base64,PHN2Zy8+";
+    expect(renderDailyDigestPage(content, { ...context, icon })).toContain(
+      `<span class="tile icon"><img src="${icon}" alt=""></span>`,
+    );
+    expect(renderDailyDigestPage(content, context)).toContain('<span class="tile">D</span>');
+  });
+
   it("leaves out sections with nothing in them", () => {
     const html = renderDailyDigestPage({ ...content, decisions: [], nextSteps: [] }, context);
     expect(html).not.toContain("How to proceed");
