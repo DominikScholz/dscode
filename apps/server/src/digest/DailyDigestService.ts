@@ -9,12 +9,14 @@ import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Semaphore from "effect/Semaphore";
 
 import * as SessionStore from "../auth/SessionStore.ts";
+import * as ServerConfig from "../config.ts";
 import * as ServerEnvironment from "../environment/ServerEnvironment.ts";
 import * as ThreadLaunchService from "../orchestration-v2/ThreadLaunchService.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
@@ -30,11 +32,14 @@ import {
   bucketActivity,
   digestWindow,
   planDailyDigests,
+  threadActivityMs,
+  windowThreads,
 } from "./dailyDigestPlan.ts";
 import { type DailyDigestPageContent, renderDailyDigestPage } from "./dailyDigestPage.ts";
 import { dailyDigestPrompt, isoAt } from "./dailyDigestPrompt.ts";
 
 const AWAY_POLL = "30 seconds";
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const HOUR_MS = 60 * 60 * 1_000;
 
 export class DailyDigestService extends Context.Service<
@@ -65,6 +70,8 @@ export const layer = Layer.effect(
     const git = yield* GitVcsDriver.GitVcsDriver;
     const environment = yield* ServerEnvironment.ServerEnvironment;
     const permit = yield* Semaphore.make(1);
+    const fileSystem = yield* FileSystem.FileSystem;
+    const { attachmentsDir } = yield* ServerConfig.ServerConfig;
 
     const fail = (message: string) => (cause: unknown) => new DailyDigestError({ message, cause });
 
@@ -106,6 +113,7 @@ export const layer = Layer.effect(
             candidate,
             nowMs,
             instructions: settings.dailyDigestInstructions,
+            attachmentsDir,
           }),
           attachments: [],
         },
@@ -188,6 +196,15 @@ export const layer = Layer.effect(
           Effect.orElseSucceed((): ReadonlyArray<number> => []),
         );
 
+    // A missing or oversized image would fail the whole publish, so it is left out instead.
+    const isShowableImage = (path: string) =>
+      /\.(?:png|jpe?g|gif|webp|avif)$/i.test(path)
+        ? fileSystem.stat(path).pipe(
+            Effect.map((info) => info.type === "File" && Number(info.size) <= MAX_IMAGE_BYTES),
+            Effect.orElseSucceed(() => false),
+          )
+        : Effect.succeed(false);
+
     const preparePage: DailyDigestService["Service"]["preparePage"] = Effect.fn(
       "DailyDigestService.preparePage",
     )(function* (threadId, content) {
@@ -213,14 +230,26 @@ export const layer = Layer.effect(
       const window = digestWindow(thread, [...snapshot.threads, ...snapshot.archivedThreads]);
       const times = yield* commitTimes(project.workspaceRoot, window);
       const environmentId = yield* environment.getEnvironmentId;
+      const visuals = yield* Effect.filter(content.visuals, (visual) =>
+        visual.kind === "image" ? isShowableImage(visual.path) : Effect.succeed(true),
+      );
       return {
         title: `${project.title} daily digest`,
-        html: renderDailyDigestPage(content, {
-          projectTitle: project.title,
-          environmentId,
-          ...window,
-          activity: bucketActivity(times, window),
-        }),
+        html: renderDailyDigestPage(
+          { ...content, visuals },
+          {
+            projectTitle: project.title,
+            environmentId,
+            ...window,
+            activity: bucketActivity(times, window),
+            threads: windowThreads(thread, snapshot.threads, window).map((entry) => ({
+              id: entry.id,
+              title: entry.title,
+              status: entry.status,
+              activityMs: threadActivityMs(entry),
+            })),
+          },
+        ),
       };
     });
 

@@ -17,10 +17,12 @@ one day. Connecting again restarts the wait, and a restart of the environment do
 
 ## Shape the digest
 
-Every digest uses the same page: the project and date at the top, a headline with an activity
-chart of the window's commits, **What happened** with one card per workstream, and **How to
-proceed** with the decisions only you can make and ranked next steps. Each next step starts a new
-thread in that project and sends its prompt; links to threads open them in the app.
+Every digest uses the same page: the project and date at the top, a headline next to the most
+telling visual, **Highlights** with more screenshots from the threads or comparisons of their
+numbers, **Threads** linking every thread that was active during the window, **What happened**
+with one row per workstream, and **How to proceed** with the decisions only you can make and
+ranked next steps. Each next step starts a new thread in that project and sends its prompt.
+Digests show images and GIFs but not videos.
 
 Describe what the digest should focus on under **Daily digest instructions**, such as what to put
 first or which suggestions help you most. T3 Code always tells the agent to only investigate.

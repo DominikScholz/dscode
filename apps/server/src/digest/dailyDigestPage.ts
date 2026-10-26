@@ -12,6 +12,38 @@ export const DailyDigestPageContent = Schema.Struct({
     description: "One plain sentence, at most 20 words: what matters most today.",
   }),
   summary: Text(360).annotate({ description: "Two short sentences on what moved." }),
+  visuals: Schema.Array(
+    Schema.Union([
+      Schema.Struct({
+        kind: Schema.Literal("image"),
+        title: Text(60),
+        caption: Schema.optional(Text(160)),
+        path: Text(1024).annotate({
+          description: "Absolute path to a png, jpg, gif, or webp on this machine.",
+        }),
+        threadId: Schema.optional(Text(200)),
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("bars"),
+        title: Text(60),
+        caption: Schema.optional(Text(160)),
+        unit: Schema.optional(Text(12)),
+        items: Schema.Array(
+          Schema.Struct({
+            label: Text(40),
+            value: Schema.Number,
+            highlight: Schema.optional(Schema.Boolean),
+          }),
+        ).check(Schema.isMinLength(2), Schema.isMaxLength(8)),
+        threadId: Schema.optional(Text(200)),
+      }),
+    ]),
+  )
+    .check(Schema.isMaxLength(4))
+    .annotate({
+      description:
+        "The most telling visuals, first is the largest: images from the threads, or a bars comparison of numbers from them.",
+    }),
   facts: Schema.Array(Schema.Struct({ label: Text(28), value: Text(16) }))
     .check(Schema.isMaxLength(4))
     .annotate({ description: "Up to four numbers that describe the window, besides commits." }),
@@ -54,6 +86,13 @@ export const DailyDigestPageContent = Schema.Struct({
 });
 export type DailyDigestPageContent = typeof DailyDigestPageContent.Type;
 
+export interface DailyDigestPageThread {
+  readonly id: string;
+  readonly title: string;
+  readonly status: string;
+  readonly activityMs: number;
+}
+
 export interface DailyDigestPageContext {
   readonly projectTitle: string;
   readonly environmentId: string;
@@ -61,6 +100,8 @@ export interface DailyDigestPageContext {
   readonly untilMs: number;
   /** Commit counts in even slots across the window. */
   readonly activity: ReadonlyArray<number>;
+  /** Main threads that were active in the window, newest first. */
+  readonly threads: ReadonlyArray<DailyDigestPageThread>;
   readonly timeZone?: string;
 }
 
@@ -171,6 +212,33 @@ html,body{background:transparent!important}
 .row b{font-size:14.5px;font-weight:600}
 .row p{grid-column:2;margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .row .btn{grid-column:3;grid-row:1 / span 2}
+.vis{display:flex;flex-direction:column;overflow:hidden;margin:0}
+.shot{position:relative;flex:1;min-height:240px;overflow:hidden;border-radius:17px 17px 0 0;background:var(--background);border-bottom:1px solid var(--hair)}
+.shot img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:top center}
+.gallery .shot{flex:none;aspect-ratio:16/10;min-height:0}
+.cap{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 22px 18px}
+.cap b{display:block;font-size:14.5px;font-weight:600}
+.cap span{display:block;margin-top:3px;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
+.cap.over{padding:26px 30px 6px}
+.bar-list{flex:1;display:grid;align-content:center;gap:15px;padding:18px 30px 28px}
+.bar{display:grid;grid-template-columns:minmax(90px,32%) minmax(0,1fr) auto;align-items:center;gap:14px;font-size:13px}
+.bar span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:var(--muted-foreground)}
+.track{height:10px;border-radius:999px;background:${line(6)};box-shadow:inset 0 1px 1px rgb(0 0 0/.3);overflow:hidden}
+.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,${line(22)},${line(40)})}
+.bar.hi span{color:var(--foreground)}
+.bar.hi .fill{background:linear-gradient(90deg,color-mix(in srgb,var(--foreground) 65%,transparent),var(--foreground));box-shadow:0 0 14px ${line(35)}}
+.bar b{min-width:58px;text-align:right;white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums}
+.bar b i{font-style:normal;font-weight:400;color:var(--muted-foreground)}
+.gallery{display:grid;gap:22px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+.threads{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(270px,1fr))}
+.thread{display:flex;align-items:center;gap:12px;min-width:0;padding:14px 16px;border-radius:14px;text-decoration:none;color:inherit}
+.thread:hover{background:${GRAIN} padding-box,linear-gradient(180deg,color-mix(in srgb,var(--foreground) 8%,var(--background)),var(--bottom)) padding-box,linear-gradient(180deg,${line(24)},var(--hair) 40%) border-box}
+.thread .dot{flex:none;width:7px;height:7px;border-radius:999px;background:var(--tone);box-shadow:0 0 10px var(--tone)}
+.thread div{min-width:0}
+.thread b{display:block;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-size:14px;font-weight:600}
+.thread span{display:block;margin-top:2px;font-size:12px;color:var(--muted-foreground)}
+.spark{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));align-items:end;width:120px;height:20px}
+.spark i{justify-self:center;width:2px;min-height:1px;border-radius:1px;background:${line(40)}}
 code{font-family:var(--font-mono);font-size:.86em;padding:1px 5px;border-radius:5px;background:${line(8)}}
 @media (max-width:600px){.brief,.plot-card{padding:22px}.headline{font-size:20px}.tr{padding:14px 18px}.list{padding:20px 18px 6px}.row{grid-template-columns:auto minmax(0,1fr)}.row .btn{grid-column:2;grid-row:auto;justify-self:start;margin-top:8px}}
 `;
@@ -224,6 +292,44 @@ function plot(activity: ReadonlyArray<number>): string {
   return `<div class="plot"><svg viewBox="0 0 ${PLOT_WIDTH} ${PLOT_HEIGHT}" preserveAspectRatio="none" role="img" aria-label="Commits over the window"><defs><linearGradient id="dd-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--foreground)" stop-opacity=".16"/><stop offset="1" stop-color="var(--foreground)" stop-opacity="0"/></linearGradient></defs>${grid}<polygon fill="url(#dd-area)" points="0,${PLOT_HEIGHT} ${path} ${PLOT_WIDTH},${PLOT_HEIGHT}"/><polyline fill="none" stroke="var(--foreground)" stroke-width="1.6" stroke-linejoin="round" vector-effect="non-scaling-stroke" points="${path}"/>${dots}<path d="M${lastX.toFixed(1)} ${lastY.toFixed(1)}h0" stroke="${line(18)}" stroke-width="14" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>${labels}</div><div class="comb" style="--n:${activity.length}">${bars}</div>`;
 }
 
+type Visual = DailyDigestPageContent["visuals"][number];
+
+function formatNumber(value: number): string {
+  return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function visualCard(visual: Visual, environmentId: string, className: string): string {
+  const open = visual.threadId
+    ? `<a class="btn raised" href="${escapeHtml(threadHref(environmentId, visual.threadId))}">Open</a>`
+    : "";
+  const caption = `<div><b>${rich(visual.title)}</b>${visual.caption ? `<span>${rich(visual.caption)}</span>` : ""}</div>${open}`;
+  if (visual.kind === "image") {
+    return `<figure class="card vis ${className}"><div class="shot"><img src="${escapeHtml(visual.path)}" alt="${escapeHtml(visual.title)}"></div><figcaption class="cap">${caption}</figcaption></figure>`;
+  }
+  const max = Math.max(...visual.items.map((item) => Math.abs(item.value)), Number.MIN_VALUE);
+  // Words such as "commits" or "ms" read as a separate unit; "%" and "x" hug the number.
+  const unit = visual.unit
+    ? `<i>${/^[\p{L}]{2,}/u.test(visual.unit) ? " " : ""}${escapeHtml(visual.unit)}</i>`
+    : "";
+  const rows = visual.items
+    .map(
+      (item) =>
+        `<div class="bar${item.highlight ? " hi" : ""}"><span>${rich(item.label)}</span><div class="track"><div class="fill" style="width:${Math.max(2, (Math.abs(item.value) / max) * 100).toFixed(1)}%"></div></div><b>${escapeHtml(formatNumber(item.value))}${unit}</b></div>`,
+    )
+    .join("");
+  return `<figure class="card vis ${className}"><figcaption class="cap over">${caption}</figcaption><div class="bar-list">${rows}</div></figure>`;
+}
+
+const THREAD_STATUS: Record<string, [string, string]> = {
+  running: ["Running", "run"],
+  preparing: ["Running", "run"],
+  starting: ["Running", "run"],
+  queued: ["Queued", "run"],
+  waiting: ["Waiting on you", "ask"],
+  failed: ["Stopped with an error", "ask"],
+  interrupted: ["Stopped", "off"],
+};
+
 export function renderDailyDigestPage(
   content: DailyDigestPageContent,
   context: DailyDigestPageContext,
@@ -249,11 +355,43 @@ export function renderDailyDigestPage(
     month: "long",
   });
   const commitLabel = commits === 1 ? "1 commit" : `${commits} commits`;
-  const strip = [{ label: "Commits", value: String(commits) }, ...content.facts]
+  const sparkMax = Math.max(1, ...context.activity);
+  const spark = `<div class="spark" style="--n:${context.activity.length}">${context.activity
     .map(
-      (fact) => `<div><span>${rich(fact.label)}</span><strong>${rich(fact.value)}</strong></div>`,
+      (count) =>
+        `<i style="height:${count === 0 ? 0 : Math.max(10, (count / sparkMax) * 100)}%"></i>`,
     )
+    .join("")}</div>`;
+  const strip = [
+    `<div><span>Commits</span><strong>${commits}</strong>${spark}</div>`,
+    ...content.facts.map(
+      (fact) => `<div><span>${rich(fact.label)}</span><strong>${rich(fact.value)}</strong></div>`,
+    ),
+  ].join("");
+  const [lead, ...moreVisuals] = content.visuals;
+  const heroSide =
+    lead === undefined
+      ? `<section class="card plot-card"><div class="card-head"><h2>Commits</h2><span class="legend"><i></i>Since ${since}</span></div>${plot(context.activity)}<div class="axis">${axis}</div></section>`
+      : visualCard(lead, environmentId, "lead");
+  const highlights =
+    moreVisuals.length === 0
+      ? ""
+      : `<div class="sec"><h2>Highlights</h2></div><div class="gallery">${moreVisuals
+          .map((visual) => visualCard(visual, environmentId, ""))
+          .join("")}</div>`;
+  const threadCards = context.threads
+    .map((thread) => {
+      const [label, tone] = THREAD_STATUS[thread.status] ?? [
+        `Last active ${formatTime(thread.activityMs, timeZone, { weekday: "short", hour: "2-digit", minute: "2-digit" })}`,
+        "off",
+      ];
+      return `<a class="card thread" href="${escapeHtml(threadHref(environmentId, thread.id))}"><span class="dot ${tone}"></span><div><b>${escapeHtml(thread.title)}</b><span>${label}</span></div></a>`;
+    })
     .join("");
+  const threadList =
+    threadCards === ""
+      ? ""
+      : `<div class="sec"><h2>Threads</h2><span>${context.threads.length === 1 ? "1 active" : `${context.threads.length} active`}</span></div><div class="threads">${threadCards}</div>`;
   const rows = content.sections
     .map((section) => {
       const [label, tone] = STATUS_LABELS[section.status];
@@ -302,9 +440,11 @@ export function renderDailyDigestPage(
 <header class="top"><div class="ttl"><span class="tile">${initial}</span><h1>${escapeHtml(context.projectTitle)} digest</h1><span class="chip ok">${commitLabel}</span></div><span class="pill raised">${today}</span></header>
 <div class="hero">
 <section class="card brief"><div class="brief-top"><span class="mood raised">${rich(content.mood)}</span><span class="stamp">Summarized at ${summarized}</span></div><div><p class="headline">${rich(content.headline)}</p><p class="summary">${rich(content.summary)}</p></div></section>
-<section class="card plot-card"><div class="card-head"><h2>Commits</h2><span class="legend"><i></i>Since ${since}</span></div>${plot(context.activity)}<div class="axis">${axis}</div></section>
+${heroSide}
 </div>
 <section class="card strip">${strip}</section>
+${highlights}
+${threadList}
 ${happened}
 ${proceed}
 </div></body></html>`;

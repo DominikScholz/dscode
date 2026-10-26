@@ -25,6 +25,7 @@ export function ThreadTimeline({
   detailLoading,
   readyMarkdownCwd,
   readyWorkspaceRoot,
+  hideSystemPrompts = false,
   ...timelineProps
 }: Omit<ComponentProps<typeof MessagesTimeline>, "timelineEntries"> & {
   /** Null until the thread's detail may load; see resolveThreadDetailRef. */
@@ -37,6 +38,8 @@ export function ThreadTimeline({
   detailLoading: boolean;
   readyMarkdownCwd: string | null;
   readyWorkspaceRoot: string | null;
+  /** Leaves out user messages the server wrote, such as a digest's instructions. */
+  hideSystemPrompts?: boolean;
 }) {
   const visibleTurnItems = useThreadVisibleTurnItems(threadDetailRef);
   const serverEntries = useIncrementalTimelineEntries(activeThreadKey, {
@@ -61,5 +64,17 @@ export function ThreadTimeline({
       workspaceRoot: readyWorkspaceRoot,
     });
   }, [activeThreadKey, detailLoading, entries, readyMarkdownCwd, readyWorkspaceRoot]);
-  return <MessagesTimeline {...timelineProps} timelineEntries={displayed.entries} />;
+  const shown = hideSystemPrompts ? withoutSystemPrompts(displayed.entries) : displayed.entries;
+  return <MessagesTimeline {...timelineProps} timelineEntries={shown} />;
+}
+
+function withoutSystemPrompts(entries: ReadonlyArray<TimelineEntry>): ReadonlyArray<TimelineEntry> {
+  return entries.filter(
+    (entry) =>
+      !(
+        entry.kind === "message" &&
+        entry.message.role === "user" &&
+        entry.message.createdBy === "system"
+      ),
+  );
 }

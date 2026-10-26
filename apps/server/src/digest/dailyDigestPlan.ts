@@ -116,3 +116,31 @@ export function bucketActivity(
   }
   return buckets;
 }
+
+const LIVE_STATUSES: ReadonlySet<string> = new Set([
+  "running",
+  "preparing",
+  "starting",
+  "queued",
+  "waiting",
+]);
+
+/** Main threads of the digest's project that ran in the window or are still running, newest first. */
+export function windowThreads(
+  digest: Pick<OrchestrationV2ThreadShell, "projectId">,
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+  window: { readonly sinceMs: number; readonly untilMs: number },
+): ReadonlyArray<OrchestrationV2ThreadShell> {
+  return threads
+    .filter(
+      (thread) =>
+        thread.projectId === digest.projectId &&
+        thread.digest !== true &&
+        thread.deletedAt === null &&
+        thread.lineage.relationshipToParent !== "subagent" &&
+        (LIVE_STATUSES.has(thread.status) ||
+          (threadActivityMs(thread) > window.sinceMs &&
+            threadActivityMs(thread) <= window.untilMs)),
+    )
+    .toSorted((left, right) => threadActivityMs(right) - threadActivityMs(left));
+}

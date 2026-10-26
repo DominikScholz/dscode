@@ -8,6 +8,7 @@ const context = {
   sinceMs: Date.parse("2026-10-25T07:00:00.000Z"),
   untilMs: Date.parse("2026-10-26T07:00:00.000Z"),
   activity: [0, 2, 1, 0],
+  threads: [{ id: "thread:2", title: "Bench <fast>", status: "running", activityMs: 0 }],
   timeZone: "UTC",
 };
 
@@ -15,6 +16,7 @@ const content: DailyDigestPageContent = {
   mood: "Calm day",
   headline: "Ship <it> & `main`",
   summary: "Summary.",
+  visuals: [],
   facts: [],
   sections: [
     {
@@ -49,5 +51,37 @@ describe("renderDailyDigestPage", () => {
     const html = renderDailyDigestPage({ ...content, decisions: [], nextSteps: [] }, context);
     expect(html).not.toContain("How to proceed");
     expect(html).toContain("What happened");
+  });
+
+  it("leads with the first visual and falls back to the commits chart without one", () => {
+    const withVisuals = renderDailyDigestPage(
+      {
+        ...content,
+        visuals: [
+          { kind: "image", title: "New panel", path: "/tmp/shot.png", threadId: "thread:1" },
+          {
+            kind: "bars",
+            title: "Startup",
+            unit: "ms",
+            items: [
+              { label: "Before", value: 400 },
+              { label: "After", value: 100, highlight: true },
+            ],
+          },
+        ],
+      },
+      context,
+    );
+    expect(withVisuals).toContain('<img src="/tmp/shot.png"');
+    expect(withVisuals).toContain("Highlights");
+    expect(withVisuals).toContain('<div class="bar hi"><span>After</span>');
+    expect(withVisuals).not.toContain('class="card plot-card"');
+    expect(renderDailyDigestPage(content, context)).toContain('class="card plot-card"');
+  });
+
+  it("always lists the window's threads with links", () => {
+    const html = renderDailyDigestPage(content, context);
+    expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A2"');
+    expect(html).toContain("<b>Bench &lt;fast&gt;</b><span>Running</span>");
   });
 });

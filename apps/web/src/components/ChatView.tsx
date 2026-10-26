@@ -3285,6 +3285,7 @@ export default function ChatView(props: ChatViewProps) {
             <div className="relative -mt-(--chat-header-overlay) flex min-h-0 flex-1 flex-col bg-background [--chat-header-overlay:var(--workspace-topbar-height)]">
               <ThreadTimeline
                 threadDetailRef={routeThreadDetailRef}
+                hideSystemPrompts={isDigestThread}
                 entriesInput={timelineEntriesInput}
                 draftEntries={isServerThread ? null : draftTimelineEntries}
                 activeThreadKey={activeThreadKey}

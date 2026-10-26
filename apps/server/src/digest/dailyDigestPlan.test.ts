@@ -13,6 +13,7 @@ import {
   bucketActivity,
   digestWindow,
   planDailyDigests,
+  windowThreads,
 } from "./dailyDigestPlan.ts";
 
 const HOUR_MS = 60 * 60 * 1_000;
@@ -158,5 +159,23 @@ describe("bucketActivity", () => {
     expect(
       bucketActivity([0, HOUR_MS + 1, 2 * HOUR_MS, 4 * HOUR_MS, 5 * HOUR_MS], window, 4),
     ).toEqual([1, 1, 1, 1]);
+  });
+});
+
+describe("windowThreads", () => {
+  it("lists main threads active in the window or still running, newest first", () => {
+    const window = { sinceMs: NOW_MS - 24 * HOUR_MS, untilMs: NOW_MS };
+    const listed = windowThreads(
+      { projectId: ProjectId.make("a") },
+      [
+        thread("old", "a", { latestUserMessageAt: at(30) }),
+        thread("still-running", "a", { latestUserMessageAt: at(40), status: "running" }),
+        thread("recent", "a", { latestRunCompletedAt: at(2) }),
+        thread("digest", "a", { digest: true, latestRunCompletedAt: at(1) }),
+        thread("other-project", "b", { latestRunCompletedAt: at(1) }),
+      ],
+      window,
+    );
+    expect(listed.map((entry) => entry.id)).toEqual(["recent", "still-running"]);
   });
 });

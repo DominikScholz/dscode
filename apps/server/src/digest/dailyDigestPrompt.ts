@@ -12,6 +12,7 @@ export function dailyDigestPrompt(input: {
   readonly candidate: DailyDigestCandidate;
   readonly nowMs: number;
   readonly instructions: string;
+  readonly attachmentsDir: string;
 }): string {
   const { project, sinceMs, threads } = input.candidate;
   const since = isoAt(sinceMs);
@@ -29,12 +30,14 @@ export function dailyDigestPrompt(input: {
     ...listed,
     "",
     `Commits on local branches: \`git log --branches --since="${since}"\`.`,
+    `Images and pages from a thread are files in \`${input.attachmentsDir}\` named after its thread id: \`<threadId>-*.png\` (or jpg, gif, webp) and \`<threadId>-*-html.html\`. Screenshots that threads mention by path count too.`,
     "",
     "How to write it:",
     "- Only read. Use t3_thread_read for the threads, git for history, and existing CI results for checks. Do not edit files, run builds or test suites, commit, push, or start threads.",
     "- Digests for other projects run at the same time. Keep scratch files in your own directory from `mktemp -d`, never a shared path.",
     "- Publish with digest_publish, once, when you have read everything. Its design, title, activity chart, and links are fixed: you write only the content, never HTML. Do not use html_render.",
     "- Write little: the reader skims this in a minute. mood: a few words on the day overall. headline: one plain sentence of at most 20 words on what matters most today. summary: two short sentences on what moved.",
+    "- visuals make the digest: one to four, most telling first, since the first one fills the top of the page. Use images from the threads (absolute paths: screenshots of new UI, before and after, results), or a bars comparison of numbers from the threads, such as benchmarks, sizes, or timings from a thread's page or output. Highlight the winner. Videos cannot be shown; use a screenshot or GIF instead. Leave visuals empty only when nothing visual happened.",
     "- facts: up to four numbers that describe the window besides commits, such as threads, merged pull requests, unpushed branches, or decisions waiting.",
     "- sections are what happened: one per workstream (a thread, a branch, or commits with one purpose), most important first. Pick the status that fits, keep the summary to one short sentence, put any problem worth knowing (unpushed work, a failing check, an open risk) in issue as a short phrase, and set threadId when a thread holds the work.",
     "- decisions are what only the reader can decide, each with the threadId where it is discussed and a prompt that starts their answer. Leave it empty when nothing waits on them.",
