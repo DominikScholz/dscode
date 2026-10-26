@@ -974,6 +974,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     max-width: var(--chat-content-max-width);
   }
 
+  /* As the Full chat width setting, so the canvas still keeps chat clear of the details card. */
+  [data-digest-thread] {
+    --chat-content-max-width: 100%;
+  }
+
   .messages-timeline-row-frame {
     padding-inline: 0;
   }

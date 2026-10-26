@@ -913,6 +913,9 @@ export const BackgroundActivitySettings = Schema.Struct({
 }).pipe(Schema.withDecodingDefault(Effect.succeed({})));
 export type BackgroundActivitySettings = typeof BackgroundActivitySettings.Type;
 
+const DEFAULT_DAILY_DIGEST_AWAY_HOURS = 8;
+export const DailyDigestAwayHours = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 24 }));
+
 export const ResponseStreamingMode = Schema.Literals(["turn", "paragraph"]);
 export type ResponseStreamingMode = typeof ResponseStreamingMode.Type;
 
@@ -1237,6 +1240,16 @@ export const ServerSettings = Schema.Struct({
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
   reviewGuideInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
+  dailyDigestEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  dailyDigestAwayHours: DailyDigestAwayHours.pipe(
+    Schema.withDecodingDefault(Effect.succeed(DEFAULT_DAILY_DIGEST_AWAY_HOURS)),
+  ),
+  /** Null uses the default model for new threads. */
+  dailyDigestModelSelection: Schema.NullOr(ModelSelection).pipe(
+    Schema.withDecodingDefault(Effect.succeed(null)),
+  ),
+  /** Empty uses DEFAULT_DAILY_DIGEST_INSTRUCTIONS. */
+  dailyDigestInstructions: TrimmedString.pipe(Schema.withDecodingDefault(Effect.succeed(""))),
 
   pullRequestMergeMethod: Schema.NullOr(PullRequestMergeMethod).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
@@ -1546,6 +1559,10 @@ export const ServerSettingsPatch = Schema.Struct({
   reviewGuidesEnabled: Schema.optionalKey(Schema.Boolean),
   reviewGuideModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
   reviewGuideInstructions: Schema.optionalKey(TrimmedString),
+  dailyDigestEnabled: Schema.optionalKey(Schema.Boolean),
+  dailyDigestAwayHours: Schema.optionalKey(DailyDigestAwayHours),
+  dailyDigestModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  dailyDigestInstructions: Schema.optionalKey(TrimmedString),
   pullRequestMergeMethod: Schema.optionalKey(Schema.NullOr(PullRequestMergeMethod)),
   observability: Schema.optionalKey(
     Schema.Struct({

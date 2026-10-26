@@ -1292,6 +1292,38 @@ it.effect("replays a thread.create receipt without changing the thread", () =>
   }).pipe(Effect.provide(layerTest)),
 );
 
+it.effect("carries the digest mark from thread.create into every thread shell", () =>
+  Effect.gen(function* () {
+    const orchestrator = yield* Orchestrator.OrchestratorV2;
+    const projections = yield* ProjectionStore.ProjectionStoreV2;
+    const create = (id: string, digest: boolean) =>
+      orchestrator.dispatch({
+        type: "thread.create",
+        commandId: CommandId.make(`create:${id}`),
+        threadId: ThreadId.make(id),
+        projectId: ProjectId.make("project:digest"),
+        title: id,
+        modelSelection,
+        runtimeMode: "full-access",
+        interactionMode: "default",
+        branch: null,
+        worktreePath: null,
+        ...(digest ? { digest: true } : {}),
+        createdBy: "system",
+        creationSource: "server",
+      });
+    yield* create("thread:digest", true);
+    yield* create("thread:plain", false);
+    assert.isTrue((yield* projections.getThreadShell(ThreadId.make("thread:digest")))?.digest);
+    const snapshot = yield* projections.getShellSnapshot();
+    const digests = snapshot.threads.filter((thread) => thread.digest === true);
+    assert.deepEqual(
+      digests.map((thread) => thread.id),
+      ["thread:digest"],
+    );
+  }).pipe(Effect.provide(layerTest)),
+);
+
 it.effect("explicit settle clears snooze atomically and stays idempotent after re-snoozing", () =>
   Effect.gen(function* () {
     const orchestrator = yield* Orchestrator.OrchestratorV2;

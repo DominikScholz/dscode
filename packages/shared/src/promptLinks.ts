@@ -203,6 +203,22 @@ export function promptLinkAppPath(
   return thread ? `/${thread[1]}/${thread[2]}${url.search}` : null;
 }
 
+/**
+ * A hosted thread link without a prompt, as an in-app path. Only `environmentId`'s threads
+ * match, since any other two-segment path may be an app page.
+ */
+export function hostedThreadAppPath(
+  value: string,
+  environmentId: string,
+  hostedAppUrl: string = DEFAULT_HOSTED_APP_URL,
+): string | null {
+  if (!URL.canParse(value) || !URL.canParse(hostedAppUrl)) return null;
+  const url = new URL(value);
+  if (url.origin !== new URL(hostedAppUrl).origin) return null;
+  const thread = THREAD_PATH.exec(url.pathname);
+  return thread?.[1] === encodeURIComponent(environmentId) ? `${url.pathname}${url.search}` : null;
+}
+
 export function promptLinkDeepLink(appPath: string, scheme = "t3code"): string {
   const url = new URL(appPath, "https://app.invalid");
   const host = url.pathname === "/new" ? "new" : `threads${url.pathname}`;

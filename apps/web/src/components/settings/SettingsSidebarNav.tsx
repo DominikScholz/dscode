@@ -19,6 +19,7 @@ import {
   PanelsTopLeftIcon,
   KeyboardIcon,
   Link2Icon,
+  NewspaperIcon,
   PaletteIcon,
   SearchIcon,
   Settings2Icon,
@@ -87,6 +88,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/source-control": GitBranchIcon,
   "/settings/storage": HardDriveIcon,
   "/settings/connections": Link2Icon,
+  "/settings/digest": NewspaperIcon,
   "/settings/beta": FlaskConicalIcon,
   "/settings/archived": ArchiveIcon,
 };

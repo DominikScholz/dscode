@@ -22,7 +22,7 @@ import {
   matchesKeybindingShortcut,
   normalizeEventKey,
 } from "@t3tools/shared/keybindings";
-import { promptLinkAppPath } from "@t3tools/shared/promptLinks";
+import { hostedThreadAppPath, promptLinkAppPath } from "@t3tools/shared/promptLinks";
 import { useRouter } from "@tanstack/react-router";
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from "react";
 
@@ -192,7 +192,14 @@ export function HtmlRenderDocument(props: {
       return;
     }
     // Agents write app.t3.codes prompt links, so accept them even when this build hosts elsewhere.
-    const appPath = promptLinkAppPath(url, configuredHostedAppUrl()) ?? promptLinkAppPath(url);
+    const environmentId = props.threadRef?.environmentId;
+    const appPath =
+      promptLinkAppPath(url, configuredHostedAppUrl()) ??
+      promptLinkAppPath(url) ??
+      (environmentId === undefined
+        ? null
+        : (hostedThreadAppPath(url, environmentId, configuredHostedAppUrl()) ??
+          hostedThreadAppPath(url, environmentId)));
     if (appPath !== null) {
       void router.navigate({
         href: appPath,

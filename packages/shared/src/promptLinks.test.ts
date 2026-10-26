@@ -4,6 +4,7 @@ import {
   buildNewThreadLink,
   parseNewThreadLink,
   parseThreadLinkPrompt,
+  hostedThreadAppPath,
   promptLinkAppPath,
   sanitizeLinkedPrompt,
   withoutPromptLinkParams,
@@ -114,5 +115,14 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("https://app.t3.codes/settings/general")).toBeNull();
     expect(promptLinkAppPath("https://evil.test/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("t3code://app/index.html")).toBeNull();
+  });
+
+  it("maps hosted links to one environment's threads, and not app pages", () => {
+    expect(hostedThreadAppPath("https://app.t3.codes/env-1/thread-1", "env-1")).toBe(
+      "/env-1/thread-1",
+    );
+    expect(hostedThreadAppPath("https://app.t3.codes/env-2/thread-1", "env-1")).toBeNull();
+    expect(hostedThreadAppPath("https://app.t3.codes/settings/general", "env-1")).toBeNull();
+    expect(hostedThreadAppPath("https://evil.test/env-1/thread-1", "env-1")).toBeNull();
   });
 });

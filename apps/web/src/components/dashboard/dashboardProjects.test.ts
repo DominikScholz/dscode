@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import { EnvironmentId, ProjectId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProjectId, ProviderInstanceId, RunId, ThreadId } from "@t3tools/contracts";
 
 import { makeThreadFixture } from "../../test-fixtures";
-import { summarizeDashboardProjects } from "./dashboardProjects";
+import { isDigestUnread, summarizeDashboardProjects } from "./dashboardProjects";
 
 const local = EnvironmentId.make("local");
 const legacy = EnvironmentId.make("legacy");
@@ -154,6 +154,37 @@ describe("summarizeDashboardProjects", () => {
       ],
     );
     expect(active).toEqual([]);
+  });
+
+  it("links the newest digest, unread until opened after it finished, and counts it nowhere", () => {
+    const digest = (createdAt: string, fields: Parameters<typeof thread>[2] = {}) => {
+      const shell = thread("news", "active", { createdAt, ...fields });
+      return { ...shell, source: { ...shell.source, digest: true } };
+    };
+    const finished = {
+      runId: RunId.make("run"),
+      status: "completed" as const,
+      requestedAt: "2026-10-20T06:00:00.000Z",
+      startedAt: "2026-10-20T06:00:00.000Z",
+      completedAt: "2026-10-20T06:10:00.000Z",
+      assistantMessageId: null,
+    };
+    const result = summarizeDashboardProjects({
+      groups: [group("news")],
+      threads: [
+        digest("2026-10-19T06:00:00.000Z"),
+        digest("2026-10-20T06:00:00.000Z", { latestRun: finished }),
+      ],
+      capabilities: () => ({ threadSettlement: true, threadSnooze: true }),
+      now: NOW,
+    });
+    const [project] = result.settled;
+    expect(project).toMatchObject({ active: 0, lastActivityMs: null, digest: { unread: true } });
+    expect(project?.digest?.thread.createdAt).toBe("2026-10-20T06:00:00.000Z");
+    expect(
+      isDigestUnread({ ...project!.digest!.thread, lastVisitedAt: "2026-10-20T07:00:00.000Z" }),
+    ).toBe(false);
+    expect(isDigestUnread({ ...project!.digest!.thread, latestRun: null })).toBe(false);
   });
 
   it("keeps threads active on environments that cannot settle", () => {

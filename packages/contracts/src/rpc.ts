@@ -360,6 +360,11 @@ import {
   ScheduledTaskUpsertInput,
   ScheduledTaskMutationResult,
 } from "./scheduledTask.ts";
+import {
+  DailyDigestError,
+  DailyDigestRunNowInput,
+  DailyDigestRunNowResult,
+} from "./dailyDigest.ts";
 import { SecretRequestAnswerInput, SecretRequestError } from "./secretRequest.ts";
 import {
   ProjectCloneActionInput,
@@ -526,6 +531,7 @@ export const WS_METHODS = {
   guestShareCreate: "guestShare.create",
   scheduledTasksListWebhookDeliveries: "scheduledTasks.listWebhookDeliveries",
   scheduledTasksGetWebhookDelivery: "scheduledTasks.getWebhookDelivery",
+  dailyDigestRunNow: "dailyDigest.runNow",
 
   cloudGetRelayClientStatus: "cloud.getRelayClientStatus",
   cloudInstallRelayClient: "cloud.installRelayClient",
@@ -1841,6 +1847,12 @@ const WsScheduledTasksRunNowRpc = Rpc.make(WS_METHODS.scheduledTasksRunNow, {
   error: Schema.Union([ScheduledTaskError, EnvironmentAuthorizationError]),
 });
 
+const WsDailyDigestRunNowRpc = Rpc.make(WS_METHODS.dailyDigestRunNow, {
+  payload: DailyDigestRunNowInput,
+  success: DailyDigestRunNowResult,
+  error: Schema.Union([DailyDigestError, EnvironmentAuthorizationError]),
+});
+
 const WsScheduledTasksRotateWebhookTokenRpc = Rpc.make(
   WS_METHODS.scheduledTasksRotateWebhookToken,
   {
@@ -1968,6 +1980,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsSecretsAnswerRequestRpc,
   WsScheduledTasksListWebhookDeliveriesRpc,
   WsScheduledTasksGetWebhookDeliveryRpc,
+  WsDailyDigestRunNowRpc,
   WsServerReportClientActivityRpc,
   WsServerReportHostPowerStateRpc,
   WsServerGetBackgroundPolicyRpc,

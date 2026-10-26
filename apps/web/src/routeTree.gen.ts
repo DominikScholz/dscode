@@ -33,6 +33,7 @@ import { Route as ChatSettingsOpenSourceLicensesRouteImport } from './routes/_ch
 import { Route as ChatSettingsKeybindingsRouteImport } from './routes/_chat.settings.keybindings'
 import { Route as ChatSettingsIntegrationsRouteImport } from './routes/_chat.settings.integrations'
 import { Route as ChatSettingsGeneralRouteImport } from './routes/_chat.settings.general'
+import { Route as ChatSettingsDigestRouteImport } from './routes/_chat.settings.digest'
 import { Route as ChatSettingsDiagnosticsRouteImport } from './routes/_chat.settings.diagnostics'
 import { Route as ChatSettingsConnectionsRouteImport } from './routes/_chat.settings.connections'
 import { Route as ChatSettingsBetaRouteImport } from './routes/_chat.settings.beta'
@@ -164,6 +165,11 @@ const ChatSettingsGeneralRoute = ChatSettingsGeneralRouteImport.update({
   path: '/general',
   getParentRoute: () => ChatSettingsRoute,
 } as any)
+const ChatSettingsDigestRoute = ChatSettingsDigestRouteImport.update({
+  id: '/digest',
+  path: '/digest',
+  getParentRoute: () => ChatSettingsRoute,
+} as any)
 const ChatSettingsDiagnosticsRoute = ChatSettingsDiagnosticsRouteImport.update({
   id: '/diagnostics',
   path: '/diagnostics',
@@ -222,6 +228,7 @@ export interface FileRoutesByFullPath {
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+  '/settings/digest': typeof ChatSettingsDigestRoute
   '/settings/general': typeof ChatSettingsGeneralRoute
   '/settings/integrations': typeof ChatSettingsIntegrationsRoute
   '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
@@ -254,6 +261,7 @@ export interface FileRoutesByTo {
   '/settings/beta': typeof ChatSettingsBetaRoute
   '/settings/connections': typeof ChatSettingsConnectionsRoute
   '/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+  '/settings/digest': typeof ChatSettingsDigestRoute
   '/settings/general': typeof ChatSettingsGeneralRoute
   '/settings/integrations': typeof ChatSettingsIntegrationsRoute
   '/settings/keybindings': typeof ChatSettingsKeybindingsRoute
@@ -288,6 +296,7 @@ export interface FileRoutesById {
   '/_chat/settings/beta': typeof ChatSettingsBetaRoute
   '/_chat/settings/connections': typeof ChatSettingsConnectionsRoute
   '/_chat/settings/diagnostics': typeof ChatSettingsDiagnosticsRoute
+  '/_chat/settings/digest': typeof ChatSettingsDigestRoute
   '/_chat/settings/general': typeof ChatSettingsGeneralRoute
   '/_chat/settings/integrations': typeof ChatSettingsIntegrationsRoute
   '/_chat/settings/keybindings': typeof ChatSettingsKeybindingsRoute
@@ -322,6 +331,7 @@ export interface FileRouteTypes {
     | '/settings/beta'
     | '/settings/connections'
     | '/settings/diagnostics'
+    | '/settings/digest'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -354,6 +364,7 @@ export interface FileRouteTypes {
     | '/settings/beta'
     | '/settings/connections'
     | '/settings/diagnostics'
+    | '/settings/digest'
     | '/settings/general'
     | '/settings/integrations'
     | '/settings/keybindings'
@@ -387,6 +398,7 @@ export interface FileRouteTypes {
     | '/_chat/settings/beta'
     | '/_chat/settings/connections'
     | '/_chat/settings/diagnostics'
+    | '/_chat/settings/digest'
     | '/_chat/settings/general'
     | '/_chat/settings/integrations'
     | '/_chat/settings/keybindings'
@@ -581,6 +593,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSettingsGeneralRouteImport
       parentRoute: typeof ChatSettingsRoute
     }
+    '/_chat/settings/digest': {
+      id: '/_chat/settings/digest'
+      path: '/digest'
+      fullPath: '/settings/digest'
+      preLoaderRoute: typeof ChatSettingsDigestRouteImport
+      parentRoute: typeof ChatSettingsRoute
+    }
     '/_chat/settings/diagnostics': {
       id: '/_chat/settings/diagnostics'
       path: '/diagnostics'
@@ -639,6 +658,7 @@ interface ChatSettingsRouteChildren {
   ChatSettingsBetaRoute: typeof ChatSettingsBetaRoute
   ChatSettingsConnectionsRoute: typeof ChatSettingsConnectionsRoute
   ChatSettingsDiagnosticsRoute: typeof ChatSettingsDiagnosticsRoute
+  ChatSettingsDigestRoute: typeof ChatSettingsDigestRoute
   ChatSettingsGeneralRoute: typeof ChatSettingsGeneralRoute
   ChatSettingsIntegrationsRoute: typeof ChatSettingsIntegrationsRoute
   ChatSettingsKeybindingsRoute: typeof ChatSettingsKeybindingsRoute
@@ -657,6 +677,7 @@ const ChatSettingsRouteChildren: ChatSettingsRouteChildren = {
   ChatSettingsBetaRoute: ChatSettingsBetaRoute,
   ChatSettingsConnectionsRoute: ChatSettingsConnectionsRoute,
   ChatSettingsDiagnosticsRoute: ChatSettingsDiagnosticsRoute,
+  ChatSettingsDigestRoute: ChatSettingsDigestRoute,
   ChatSettingsGeneralRoute: ChatSettingsGeneralRoute,
   ChatSettingsIntegrationsRoute: ChatSettingsIntegrationsRoute,
   ChatSettingsKeybindingsRoute: ChatSettingsKeybindingsRoute,
