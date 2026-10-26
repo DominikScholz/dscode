@@ -91,7 +91,7 @@ export function LeftFigure({
             tone === "destructive"
               ? "text-destructive-foreground"
               : tone === "warning"
-                ? "usage-warning-badge text-2xs font-medium whitespace-nowrap"
+                ? "font-medium whitespace-nowrap text-foreground"
                 : "text-foreground/52",
           )}
         >
@@ -160,7 +160,7 @@ export function LimitRow({
           reached
             ? "text-destructive-foreground"
             : runsOutEarly
-              ? "usage-warning-badge font-medium whitespace-nowrap"
+              ? "font-medium whitespace-nowrap text-foreground"
               : "text-foreground/52",
         )}
       >
@@ -181,14 +181,10 @@ export function LimitRow({
             }
           >
             <div className="absolute inset-0" style={paceMark?.gap}>
-              {/* The track shows only where nothing is left, so the projected dots sit on bare card. */}
-              <div
-                className="absolute top-1/2 right-0 h-px -translate-y-1/2 bg-foreground/16"
-                style={{ left: `${left}%` }}
-              />
+              <div className="absolute inset-x-0 inset-y-1.5 rounded-full bg-foreground/8" />
               {left > 0 ? (
                 <div
-                  className="absolute inset-y-2.25 left-0 overflow-hidden rounded-full"
+                  className="absolute inset-y-1.5 left-0 overflow-hidden rounded-full"
                   style={{ width: `${left}%` }}
                 >
                   <div
@@ -199,10 +195,8 @@ export function LimitRow({
                     className="absolute inset-y-0 right-0"
                     style={{
                       width: `${100 - (leftAtReset / left) * 100}%`,
-                      // Projected use reads as a dotted line in full colour, as Fey draws forecasts;
-                      // rose when it runs out, matching the badge.
-                      backgroundImage: `radial-gradient(circle, ${runsOutEarly ? "rgb(235 86 122)" : color} 1px, transparent 1.25px)`,
-                      backgroundSize: "5px 100%",
+                      // Projected use is striped in full colour.
+                      backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 2px, transparent 2px 5px)`,
                     }}
                   />
                 </div>
@@ -211,20 +205,8 @@ export function LimitRow({
             {paceMark ? (
               <span
                 aria-hidden
-                className="absolute top-1/2 h-2.5 w-px -translate-y-1/2 bg-foreground/70"
-                // Snapped to a whole pixel; a centred 1px line otherwise smears across two.
-                style={{ left: `round(down, ${paceMark.tick.left}, 1px)` }}
-              />
-            ) : null}
-            {/* The head draws last so its ring masks the pace tick when the two meet. */}
-            {left > 0 ? (
-              <span
-                aria-hidden
-                className="absolute top-1/2 size-1.5 -translate-1/2 rounded-full bar-head"
-                style={{
-                  left: `${left}%`,
-                  backgroundColor: runsOutEarly ? "rgb(235 86 122)" : color,
-                }}
+                className="absolute inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
+                style={paceMark.tick}
               />
             ) : null}
           </TooltipTrigger>
@@ -234,7 +216,7 @@ export function LimitRow({
                 {Math.round(left)}% left · {timeLeft}% of the window left
               </span>
               <span className="text-muted-foreground">
-                The line is where even spending would be. The dotted end is what your pace so far
+                The line is where even spending would be. The striped end is what your pace so far
                 uses before the reset. {forecast}.
               </span>
             </div>

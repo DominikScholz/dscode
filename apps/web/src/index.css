@@ -1894,21 +1894,6 @@ html[data-theme-id] [data-app-sidebar] {
     0 3px 14px 2px rgb(0 0 0 / 0.45);
 }
 
-/* A forecast that needs attention, as Fey shows a loss: rose text on a faint rose badge, kept
-   clear of Claude's orange. */
-@utility usage-warning-badge {
-  display: inline-flex;
-  align-items: center;
-  /* Fey's chip proportions; the negative margin keeps the taller chip from growing its row. */
-  height: 1.125rem;
-  margin-block: -0.1875rem;
-  padding-inline: 0.5rem;
-  border-radius: 0.3125rem;
-  font-size: 0.75rem;
-  color: rgb(235 86 122);
-  background-color: rgb(235 86 122 / 0.15);
-}
-
 /* The dimmed app behind the Usage window, in neutral black rather than the theme's tint. */
 body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
   @variant dark {
@@ -1922,13 +1907,6 @@ body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
     border-top: 1px solid var(--usage-groove);
     box-shadow: inset 0 1px 0 var(--usage-groove-light);
   }
-}
-
-/* A limit bar's live end, as Fey ends a line: a dot cut out of the card inside a faint ring. */
-@utility bar-head {
-  box-shadow:
-    0 0 0 4px var(--usage-card-fill, var(--background)),
-    0 0 0 5px color-mix(in srgb, var(--foreground) 12%, transparent);
 }
 
 /* A card's header row parted from its body by a full-width engraving, as on Fey's cards. */
