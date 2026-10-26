@@ -1750,9 +1750,9 @@ html[data-theme-id] [data-app-sidebar] {
       radial-gradient(130% 110% at 50% 35%, transparent 45%, var(--window-vignette) 100%),
       linear-gradient(
         180deg,
-        oklch(0.152 0.0025 264),
+        oklch(0.2 0.005 264),
         var(--usage-window-fill) 40%,
-        oklch(0.135 0.0025 264)
+        oklch(0.175 0.005 264)
       );
   }
 }
@@ -1797,13 +1797,11 @@ html[data-theme-id] [data-app-sidebar] {
   }
 }
 
-/* A chart's live point: a small dot cut out of the window, inside a faint ring and a soft halo in
-   the series colour. */
+/* A chart point's soft halo, in the element's text color. */
 @utility chart-glow {
   box-shadow:
-    0 0 0 4px var(--usage-window-fill, var(--background)),
-    0 0 0 5px color-mix(in srgb, var(--foreground) 10%, transparent),
-    0 0 14px 3px color-mix(in srgb, currentColor 30%, transparent);
+    0 0 0 4px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 14px 2px color-mix(in srgb, currentColor 45%, transparent);
 }
 
 /* Usage, after Fey: the window's surfaces as variables, so cards, edges and dots agree. Dark mode
@@ -1819,8 +1817,8 @@ html[data-theme-id] [data-app-sidebar] {
   text-rendering: geometricPrecision;
 
   @variant dark {
-    --usage-window-fill: oklch(0.145 0.0025 264);
-    --usage-card-fill: oklch(0.163 0.0025 264);
+    --usage-window-fill: oklch(0.19 0.005 264);
+    --usage-card-fill: oklch(0.215 0.005 264);
     --usage-card-edge: rgb(255 255 255 / 0.045);
     --usage-lit-strong: rgb(255 255 255 / 0.3);
     --usage-lit-mid: rgb(255 255 255 / 0.1);
@@ -1961,16 +1959,17 @@ body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
 @utility chart-dot-grid {
   background-image: radial-gradient(
     circle,
-    color-mix(in srgb, var(--foreground) 15%, transparent) 0.75px,
+    color-mix(in srgb, var(--foreground) 16%, transparent) 0.7px,
     transparent 1px
   );
-  background-size: 8px 8px;
-  /* Strongest by the live end of the chart, gone by its left third, as Fey's grids fade. */
+  background-size: 10px 10px;
   -webkit-mask-image:
-    linear-gradient(90deg, transparent, #000 35%), linear-gradient(0deg, #000 75%, transparent);
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
   -webkit-mask-composite: source-in;
   mask-image:
-    linear-gradient(90deg, transparent, #000 35%), linear-gradient(0deg, #000 75%, transparent);
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
   mask-composite: intersect;
 }
 

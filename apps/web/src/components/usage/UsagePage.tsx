@@ -379,8 +379,8 @@ export function UsagePage() {
   );
   const topbarContent = (
     <div className="flex w-full min-w-0 items-center gap-3 py-2">
-      <h1 className="shrink-0 text-label font-semibold text-foreground/92">Usage</h1>
-      <div className="flex min-w-0 items-center gap-1.5">
+      <h1 className="shrink-0 text-sm font-medium text-foreground">Usage</h1>
+      <div className="flex min-w-0 items-center gap-0.5">
         <UsageEnvironmentFilter
           environments={environments}
           selectedEnvironments={selectedEnvironments}
@@ -466,17 +466,13 @@ export function UsagePage() {
         />
         <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 grain" />
         <div data-neutral-palette className="contents neutral-palette">
-          <header className="@container/usage-header relative flex min-h-14 shrink-0 items-center">
-            <div className="mx-auto flex w-full max-w-5xl items-center ps-5 pe-14 sm:ps-6 @6xl/usage-header:pe-6">
-              {topbarContent}
-            </div>
-            <div className="absolute top-3 right-3">
-              <AppRouteModalClose />
-            </div>
+          <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 ps-5 pe-2">
+            {topbarContent}
+            <AppRouteModalClose />
           </header>
 
           <ScrollArea scrollFade className="min-h-0 flex-1">
-            <WorkspacePageContainer width="wide" className="pt-15">
+            <WorkspacePageContainer width="wide">
               {selectedEnvironments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {environments.length === 0
@@ -672,53 +668,58 @@ function UsageOverview({
   const todayValue = metric === "cost" ? (today?.costUsd ?? 0) : (today?.totalTokens ?? 0);
 
   return (
-    <div aria-busy={loadingPartial} className="flex flex-col gap-5">
+    <div aria-busy={loadingPartial} className="flex flex-col gap-6">
       {sourceMessages.map((message) => (
         <p key={message} className="mb-4 text-sm text-muted-foreground">
           {message}
         </p>
       ))}
       <section className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-end gap-x-11 gap-y-4">
-          <div className="flex flex-col gap-0.5">
-            {/* Today's spend rides on the total's baseline, as Fey sets a price's change. */}
-            <span className="flex items-baseline gap-2.5">
-              <span
-                className={cn(
-                  "text-hero font-semibold tracking-tighter text-foreground",
-                  figureClass(loadingPartial),
-                )}
-              >
-                {metric === "cost" ? (
-                  <MutedCents text={formatUsd(merged.costUsd)} />
-                ) : (
-                  formatTokens(merged.totalTokens)
-                )}
-              </span>
-              <span
-                className={cn(
-                  "text-label font-medium text-foreground/70 tabular-nums",
-                  figureClass(loadingPartial),
-                )}
-              >
-                +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)} today
-              </span>
-            </span>
-            <span className="inline-flex items-center text-xs text-foreground/55">
-              {metric === "cost" ? (
-                <>
-                  Cost
-                  <Middot />
-                  API estimate
-                </>
-              ) : (
-                "Processed tokens"
+        <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
+          <div className="flex flex-col gap-1">
+            <span
+              className={cn(
+                "text-4xl font-semibold text-foreground tabular-nums",
+                figureClass(loadingPartial),
               )}
+            >
+              {metric === "cost" ? (
+                <MutedCents text={formatUsd(merged.costUsd)} />
+              ) : (
+                formatTokens(merged.totalTokens)
+              )}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {metric === "cost" ? "Cost · API estimate" : "Processed tokens"}
+            </span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span
+              className={cn(
+                "text-2xl font-semibold text-foreground tabular-nums",
+                figureClass(loadingPartial),
+              )}
+            >
+              +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)}
+            </span>
+            <span className="text-xs text-muted-foreground">Today</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <span
+              className={cn(
+                "text-2xl font-semibold text-foreground tabular-nums",
+                figureClass(loadingPartial),
+              )}
+            >
+              {formatCount(merged.sessions)}
+            </span>
+            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+              <span>Sessions</span>
               {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
                 <Popover>
                   <PopoverTrigger
                     openOnHover
-                    render={<InlineButton tone="muted" className="ms-1" />}
+                    render={<InlineButton tone="muted" />}
                     aria-label="Unpriced usage details"
                   >
                     <InfoIcon className="size-3" aria-hidden />
@@ -731,7 +732,7 @@ function UsageOverview({
               )}
             </span>
           </div>
-          <div className="flex flex-wrap items-end gap-x-11 gap-y-3 lg:ms-auto">
+          <div className="flex flex-wrap items-end gap-x-8 gap-y-3 lg:ms-auto">
             {activeProviders.map((provider) => {
               const totals = merged.providers.find((entry) => entry.provider === provider);
               const share =
@@ -743,7 +744,7 @@ function UsageOverview({
                 <div key={provider} className="flex min-w-0 flex-col gap-1">
                   <span
                     className={cn(
-                      "text-stat leading-none font-semibold text-foreground tabular-nums",
+                      "text-2xl font-semibold text-foreground tabular-nums",
                       figureClass(providerLoading),
                     )}
                   >
@@ -753,26 +754,21 @@ function UsageOverview({
                         ? formatUsd(totals?.costUsd ?? 0)
                         : formatTokens(totals?.totalTokens ?? 0)}
                   </span>
-                  <span className="flex min-w-0 items-center text-xs text-foreground/55">
+                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
                     <span
                       aria-hidden
-                      className="-ms-2.5 me-1.75 h-3 w-0.75 shrink-0 rounded-full"
+                      className="size-2 shrink-0 rounded-full"
                       style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
                     />
                     <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
                     <span
                       className={cn(
-                        "shrink-0",
+                        "shrink-0 tabular-nums",
                         figureClass(providerLoading),
                         awaitingData && "invisible",
                       )}
                     >
-                      <Middot />
-                      <span className="text-foreground/85">{formatPercent(share)}</span>
-                      <Middot />
-                      <span className="text-foreground/85">
-                        {formatCount(providerSessions)}
-                      </span>{" "}
+                      · {formatPercent(share)} · {formatCount(providerSessions)}{" "}
                       {providerSessions === 1 ? "session" : "sessions"}
                     </span>
                   </span>
@@ -815,9 +811,9 @@ function UsageOverview({
           timeZone={shownWindow.timeZone}
           hour12={hour12}
         />
-        <div className="-mt-1.5 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           {rangeControl}
-          <span className="text-xs text-foreground/40">
+          <span className="text-xs text-muted-foreground">
             Bars show the total per {usageChartSlot(shownHourly ? "hour" : "day", merged.series)}
           </span>
         </div>
@@ -825,7 +821,7 @@ function UsageOverview({
 
       <UsagePanel
         aria-label="Totals"
-        className="mt-11 grid grid-cols-3 gap-y-6 px-0 py-5.5 md:grid-cols-6"
+        className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8"
       >
         <Metric
           loading={loadingPartial}
@@ -848,7 +844,6 @@ function UsageOverview({
           label="Cache savings"
           value={formatUsd(merged.costQuality.cacheSavingsUsd)}
         />
-        <Metric loading={loadingPartial} label="Sessions" value={formatCount(merged.sessions)} />
       </UsagePanel>
 
       {merged.totalTokens > 0 ? (
@@ -1238,13 +1233,10 @@ function Metric({
   readonly loading: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5 px-5 text-center groove-divider">
-      <span className="text-2xs text-foreground/58">{label}</span>
+    <div className="flex min-w-0 flex-col items-center gap-1.5 px-5 text-center">
+      <span className="text-sm text-muted-foreground">{label}</span>
       <span
-        className={cn(
-          "text-sm leading-5 font-semibold text-foreground tabular-nums",
-          figureClass(loading),
-        )}
+        className={cn("text-xl font-semibold text-foreground tabular-nums", figureClass(loading))}
       >
         {value}
       </span>
@@ -1330,10 +1322,7 @@ function UsageEnvironmentFilter({
 
   return (
     <Menu>
-      <MenuTrigger
-        render={<Button variant="quiet-outline" size="sm" />}
-        className="min-w-0 max-w-48"
-      >
+      <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
         <span className="min-w-0 truncate">{label}</span>
         {showUsageStatus && hasIssue ? (
           <CircleAlertIcon
@@ -1448,10 +1437,7 @@ function UsageProviderFilter({
 
   return (
     <Menu>
-      <MenuTrigger
-        render={<Button variant="quiet-outline" size="sm" />}
-        className="min-w-0 max-w-48"
-      >
+      <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
         <span className="min-w-0 truncate">{label}</span>
         <ChevronDownIcon aria-hidden />
       </MenuTrigger>
@@ -1497,20 +1483,19 @@ function UsageSkeleton() {
             <Skeleton className="h-10 w-48" />
             <Skeleton className="h-4 w-28" />
           </div>
+          {["Today", "Sessions"].map((label) => (
+            <div key={label} className="flex flex-col gap-1">
+              <Skeleton className="h-8 w-24" />
+              <span className="text-xs text-muted-foreground">{label}</span>
+            </div>
+          ))}
         </div>
         <Skeleton className="h-64" />
         <Skeleton shape="card" className="h-7 w-44" />
       </section>
 
       <MetricSkeletons
-        labels={[
-          "Processed tokens",
-          "Cached input",
-          "Uncached input",
-          "Output",
-          "Cache savings",
-          "Sessions",
-        ]}
+        labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
       />
 
       <UsagePanel className="flex flex-col gap-2.5">
@@ -1543,20 +1528,12 @@ function MutedCents({ text }: { readonly text: string }) {
   );
 }
 
-function Middot() {
-  return (
-    <span aria-hidden className="mx-0.5 text-foreground/40">
-      ·
-    </span>
-  );
-}
-
 function MetricSkeletons({ labels }: { readonly labels: readonly string[] }) {
   return (
-    <UsagePanel className="grid grid-cols-3 gap-y-6 px-0 py-5.5 md:grid-cols-6">
+    <UsagePanel className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8">
       {labels.map((label) => (
-        <div key={label} className="flex flex-col items-center gap-2 px-5 groove-divider">
-          <span className="text-xs text-muted-foreground">{label}</span>
+        <div key={label} className="flex flex-col items-center gap-1.5 px-5">
+          <span className="text-sm text-muted-foreground">{label}</span>
           <Skeleton className="h-7 w-16" />
         </div>
       ))}
