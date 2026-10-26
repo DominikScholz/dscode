@@ -12,6 +12,7 @@ const context = {
 };
 
 const content: DailyDigestPageContent = {
+  mood: "Calm day",
   headline: "Ship <it> & `main`",
   summary: "Summary.",
   facts: [],
@@ -37,7 +38,7 @@ describe("renderDailyDigestPage", () => {
 
   it("titles every page the same way and builds the links itself", () => {
     const html = renderDailyDigestPage(content, context);
-    expect(html).toContain("<b>dscode</b><span>Daily digest</span>");
+    expect(html).toContain("<h1>dscode digest</h1>");
     expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A1"');
     expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A1?prompt=Yes%20%26%20go"');
     expect(html).toContain('href="https://app.t3.codes/new?prompt=Add%20a%20CI%20workflow"');
