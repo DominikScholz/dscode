@@ -76,6 +76,14 @@ describe("pace", () => {
     expect(limitProjection({ ...window, usedPercent: 100 }, now)?.runsOutAt).toBe(now);
     expect(limitProjection({ ...window, resetsAt: undefined }, now)).toBeNull();
   });
+
+  it("holds the forecast until a tenth of the window has passed", () => {
+    // The five-hour window started at 09:00; a pace read from its first half hour is noise.
+    const windowStart = Date.parse("2026-09-03T09:00:00.000Z");
+    expect(limitProjection(window, now)?.forecastFrom).toBe(windowStart + 30 * 60_000);
+    const justReset = limitProjection(window, windowStart + 10 * 60_000);
+    expect(justReset?.forecastFrom).toBeGreaterThan(windowStart + 10 * 60_000);
+  });
 });
 
 describe("pools", () => {

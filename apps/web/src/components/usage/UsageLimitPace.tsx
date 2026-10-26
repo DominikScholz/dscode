@@ -1,5 +1,5 @@
 import type { ServerProviderUsageWindow } from "@t3tools/contracts";
-import type { LimitProjection } from "@t3tools/shared/usageLimits";
+import { formatDuration, type LimitProjection } from "@t3tools/shared/usageLimits";
 import type { ReactNode } from "react";
 
 import { usePrimarySettings } from "../../hooks/useSettings";
@@ -125,18 +125,21 @@ export function LimitRow({
   const hour12 = resolveHour12(timestampFormat);
   const used = Math.max(0, Math.min(100, window.usedPercent));
   const left = 100 - used;
-  const { runsOutAt, projectedPercent, elapsed } = projection;
+  const { runsOutAt, projectedPercent, elapsed, forecastFrom } = projection;
   const reached = used >= 100;
-  const runsOutEarly = !reached && runsOutAt !== null;
-  const leftAtReset = runsOutEarly ? 0 : Math.max(0, 100 - projectedPercent);
+  const forecasting = now >= forecastFrom;
+  const runsOutEarly = forecasting && !reached && runsOutAt !== null;
+  const leftAtReset = !forecasting ? left : runsOutEarly ? 0 : Math.max(0, 100 - projectedPercent);
   const timeLeft = Math.round((1 - elapsed) * 100);
   const [barRef, paceMark] = usePaceMark(timeLeft);
   const endMs = Date.parse(window.resetsAt ?? "");
   const forecast = reached
     ? "Limit reached"
-    : runsOutEarly
-      ? `Runs out ${windowTime(runsOutAt, now, hour12)}`
-      : `About ${Math.round(leftAtReset)}% at reset`;
+    : !forecasting
+      ? `Forecast in ${formatDuration(forecastFrom - now)}`
+      : runsOutEarly
+        ? `Runs out ${windowTime(runsOutAt, now, hour12)}`
+        : `About ${Math.round(leftAtReset)}% at reset`;
 
   // Two baseline rows: name and what is left, then the reset and the forecast, with the bar
   // spanning both between them.

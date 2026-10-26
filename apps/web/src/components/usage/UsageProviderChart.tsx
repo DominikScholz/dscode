@@ -166,7 +166,7 @@ function ChartDot({
       aria-hidden="true"
       className={cn(
         "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-current",
-        glow ? "size-1.5 chart-glow" : "size-1.5",
+        glow ? "size-2 chart-glow" : "size-1.5",
       )}
       style={{ left: percentLeft(point.x), top: percentTop(point.y), color }}
     />
@@ -393,15 +393,15 @@ function UsageChartPlot({
             vectorEffect="non-scaling-stroke"
           />
         )}
-        {/* Lines sort largest first; draw that one last so it sits on top, the rest as context. */}
+        {/* Lines sort largest first; draw that one last so it sits on top. */}
         {lines.toReversed().map(({ provider, path }) => (
           <path
             key={provider}
             d={path}
-            className={cn(lineClassName(provider), provider !== lines[0]?.provider && "opacity-70")}
+            className={lineClassName(provider)}
             fill="none"
             stroke={PROVIDER_PRESENTATION[provider].color}
-            strokeWidth={provider === lines[0]?.provider ? 1.25 : 1}
+            strokeWidth={provider === lines[0]?.provider ? 1.5 : 1.25}
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
@@ -416,8 +416,7 @@ function UsageChartPlot({
             key={provider}
             point={point}
             color={PROVIDER_PRESENTATION[provider].color}
-            // One ringed end point, on the leading series; rings on both collide when they meet.
-            glow={hoverIndex === null && provider === lines[0]?.provider}
+            glow={hoverIndex === null}
           />
         );
       })}

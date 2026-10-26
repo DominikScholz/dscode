@@ -565,7 +565,12 @@ export interface LimitProjection {
   readonly runsOutAt: number | null;
   /** The pace, in percent per hour, that ends exactly at 100% at the reset. */
   readonly evenPercentPerHour: number;
+  /** When enough of the window has passed for its pace to mean anything. */
+  readonly forecastFrom: number;
 }
+
+/** Share of a window to wait before forecasting from its pace. */
+const FORECAST_AFTER = 0.1;
 
 export function limitProjection(
   window: ServerProviderUsageWindow,
@@ -587,6 +592,7 @@ export function limitProjection(
     exhaustsAt,
     runsOutAt: exhaustsAt !== null && exhaustsAt < resetsAt ? exhaustsAt : null,
     evenPercentPerHour: remainingHours > 0 ? (100 - used) / remainingHours : 0,
+    forecastFrom: resetsAt - (1 - FORECAST_AFTER) * window.windowDurationMins * MINUTE,
   };
 }
 

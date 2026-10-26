@@ -1217,12 +1217,12 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
   @variant dark {
     color-scheme: dark;
-    /* A neutral near-black, after Fey: no hue anywhere in the greys, so the only colour on
-       screen is content. Controls, borders and inputs mix from a light grey. */
-    --background: oklch(0.15 0 0);
-    --control-tint: oklch(0.9 0 0);
+    /* A near-black with a whisper of blue, after Fey: content carries the colour, the greys only
+       lean cool. Controls, borders and inputs mix from a faintly cool light grey. */
+    --background: oklch(0.162 0.0025 264);
+    --control-tint: oklch(0.9 0.02 264);
     --surface-raised: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --foreground: oklch(0.97 0 0);
+    --foreground: oklch(0.97 0.002 264);
     --card: color-mix(in srgb, var(--background) 97%, var(--color-white));
     --card-foreground: var(--foreground);
     --popover: color-mix(in srgb, var(--background) 97%, var(--color-white));
@@ -1233,7 +1233,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --secondary: --alpha(var(--control-tint) / 4%);
     --secondary-foreground: var(--foreground);
     --muted: --alpha(var(--control-tint) / 4%);
-    --muted-foreground: oklch(0.65 0 0);
+    --muted-foreground: oklch(0.65 0.006 264);
     --accent: --alpha(var(--control-tint) / 6%);
     --accent-foreground: var(--foreground);
     --error: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
@@ -1291,7 +1291,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --accent: color-mix(in srgb, var(--app-canvas) 94%, var(--color-white));
     --accent-foreground: #f7f7f7;
     --muted: color-mix(in srgb, var(--app-canvas) 85%, var(--color-black));
-    --muted-foreground: oklch(0.7 0 0);
+    --muted-foreground: oklch(0.7 0.006 264);
     --border: --alpha(var(--control-tint) / 8%);
     --input: --alpha(var(--control-tint) / 16%);
     --sidebar: var(--app-canvas);
@@ -1656,7 +1656,7 @@ html[data-theme-id] [data-app-sidebar] {
   --popup-row-highlight: color-mix(in srgb, var(--surface-tint) 6%, var(--popover));
 
   @variant dark {
-    --surface-tint: oklch(0.9 0 0);
+    --surface-tint: oklch(0.9 0.02 262);
     --popup-surface: color-mix(in srgb, var(--surface-tint) 6%, var(--background));
     --popup-edge-gradient: radial-gradient(
       140% 180% at 0% 0%,
@@ -1748,7 +1748,12 @@ html[data-theme-id] [data-app-sidebar] {
     background-image:
       radial-gradient(70% 45% at 30% 0%, var(--usage-brand-light, transparent), transparent 75%),
       radial-gradient(130% 110% at 50% 35%, transparent 45%, var(--window-vignette) 100%),
-      linear-gradient(180deg, oklch(0.152 0 0), var(--usage-window-fill) 40%, oklch(0.135 0 0));
+      linear-gradient(
+        180deg,
+        oklch(0.152 0.0025 264),
+        var(--usage-window-fill) 40%,
+        oklch(0.135 0.0025 264)
+      );
   }
 }
 
@@ -1788,17 +1793,17 @@ html[data-theme-id] [data-app-sidebar] {
   /* Overlay leaves mid-grey neutral, so on near-black the grain adds texture without lifting it. */
   @variant dark {
     mix-blend-mode: overlay;
-    opacity: 0.7;
+    opacity: 0.85;
   }
 }
 
-/* A chart's live point: a small dot cut out of the window, inside two faint rings. */
+/* A chart's live point: a small dot cut out of the window, inside a faint ring and a soft halo in
+   the series colour. */
 @utility chart-glow {
   box-shadow:
     0 0 0 4px var(--usage-window-fill, var(--background)),
-    0 0 0 5px color-mix(in srgb, var(--foreground) 10%, transparent);
-  outline: 1px solid color-mix(in srgb, var(--foreground) 4%, transparent);
-  outline-offset: 9px;
+    0 0 0 5px color-mix(in srgb, var(--foreground) 10%, transparent),
+    0 0 14px 3px color-mix(in srgb, currentColor 30%, transparent);
 }
 
 /* Usage, after Fey: the window's surfaces as variables, so cards, edges and dots agree. Dark mode
@@ -1814,11 +1819,11 @@ html[data-theme-id] [data-app-sidebar] {
   text-rendering: geometricPrecision;
 
   @variant dark {
-    --usage-window-fill: oklch(0.145 0 0);
-    --usage-card-fill: oklch(0.163 0 0);
+    --usage-window-fill: oklch(0.145 0.0025 264);
+    --usage-card-fill: oklch(0.163 0.0025 264);
     --usage-card-edge: rgb(255 255 255 / 0.045);
-    --usage-lit-strong: rgb(255 255 255 / 0.42);
-    --usage-lit-mid: rgb(255 255 255 / 0.16);
+    --usage-lit-strong: rgb(255 255 255 / 0.3);
+    --usage-lit-mid: rgb(255 255 255 / 0.1);
     --usage-groove: rgb(0 0 0 / 0.6);
     --usage-groove-light: rgb(255 255 255 / 0.065);
     border-color: rgb(255 255 255 / 0.07);
@@ -1830,20 +1835,32 @@ html[data-theme-id] [data-app-sidebar] {
   border: 1px solid var(--usage-card-edge);
 
   @variant dark {
-    background-image: var(--surface-grain);
+    background-image: var(--surface-grain-fine);
     background-size: var(--surface-grain-size);
   }
 }
 
-/* A card lit from its lower left, where its tile glows: the edge brightens toward that corner,
-   as on Fey's position cards. The edge is a masked overlay so a translucent fill stays clean. */
+/* A card lit by the provider tile in its top-left corner: a soft pool of the tile's colour
+   (--tile-glow) behind the content, and an edge that brightens only near the tile, fading to the
+   plain hairline elsewhere, as on Fey's position cards. The edge is a masked overlay. */
 @utility usage-card-lit {
   position: relative;
   background-color: var(--usage-card-fill);
+  background-image: radial-gradient(
+    9rem 6rem at 2.625rem 1.875rem,
+    var(--tile-glow, transparent),
+    transparent 100%
+  );
 
   @variant dark {
-    background-image: var(--surface-grain);
-    background-size: var(--surface-grain-size);
+    background-image:
+      radial-gradient(
+        9rem 6rem at 2.625rem 1.875rem,
+        var(--tile-glow, transparent),
+        transparent 100%
+      ),
+      var(--surface-grain-fine);
+    background-size: auto, var(--surface-grain-size);
   }
 
   &::after {
@@ -1854,10 +1871,10 @@ html[data-theme-id] [data-app-sidebar] {
     padding: 1px;
     pointer-events: none;
     background: radial-gradient(
-      160% 140% at 0% 100%,
+      22rem 10rem at 2.625rem 1.875rem,
       var(--usage-lit-strong),
       var(--usage-lit-mid) 40%,
-      var(--usage-card-edge) 75%
+      var(--usage-card-edge) 100%
     );
     -webkit-mask:
       linear-gradient(#000 0 0) content-box,
@@ -1867,6 +1884,16 @@ html[data-theme-id] [data-app-sidebar] {
       linear-gradient(#000 0 0) content-box exclude,
       linear-gradient(#000 0 0);
   }
+}
+
+/* A provider's tile, after Fey's: the brand fill with a slight inner highlight, a soft halo of its
+   own colour (--tile-color), and a wide, blurred dark shadow that sets it into the card. */
+@utility provider-tile {
+  background-color: var(--tile-color);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.25),
+    0 0 22px 3px color-mix(in oklab, var(--tile-color) 32%, transparent),
+    0 3px 14px 2px rgb(0 0 0 / 0.45);
 }
 
 /* A forecast that needs attention, as Fey shows a loss: rose text on a faint rose badge, kept
@@ -1932,8 +1959,12 @@ body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
 
 /* The faint dot field behind charts, fading out toward the plot's edges. */
 @utility chart-dot-grid {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Crect width='1' height='1' fill='%23fff' fill-opacity='.11'/%3E%3C/svg%3E");
-  background-size: 6px 6px;
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 15%, transparent) 0.75px,
+    transparent 1px
+  );
+  background-size: 8px 8px;
   /* Strongest by the live end of the chart, gone by its left third, as Fey's grids fade. */
   -webkit-mask-image:
     linear-gradient(90deg, transparent, #000 35%), linear-gradient(0deg, #000 75%, transparent);
@@ -1941,11 +1972,6 @@ body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
   mask-image:
     linear-gradient(90deg, transparent, #000 35%), linear-gradient(0deg, #000 75%, transparent);
   mask-composite: intersect;
-
-  /* One device pixel per dot on dense screens, as Fey's field is drawn. */
-  @media (resolution >= 2x) {
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='6'%3E%3Crect width='.5' height='.5' fill='%23fff' fill-opacity='.3'/%3E%3C/svg%3E");
-  }
 }
 
 /* A 1px ring painted with --panel-edge-gradient, for an absolutely positioned
@@ -2153,8 +2179,10 @@ body {
    texture to any surface, light or dark, without lifting it. Surfaces that float over the body
    (e.g. the inset main card) opt in via the surface-grain utility. */
 :root {
-  --surface-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.067 0.067 0.067 0 -0.1'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.067 -0.067 -0.067 0 0.1'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --surface-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.083 0.083 0.083 0 -0.125'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.083 -0.083 -0.083 0 0.125'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   --surface-grain-size: 128px 128px;
+  /* Half the grain, for cards above a grained canvas: Fey keeps its cards smoother. */
+  --surface-grain-fine: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.04 0.04 0.04 0 -0.06'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.04 -0.04 -0.04 0 0.06'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* The live T3 Chat texture is a 128px grayscale tile with a constant 7/255

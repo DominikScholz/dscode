@@ -20,6 +20,7 @@ import type { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import { AlertTriangleIcon, ExternalLinkIcon, TicketIcon } from "lucide-react";
 import {
   createContext,
+  type CSSProperties,
   Fragment,
   type ReactNode,
   type RefObject,
@@ -49,7 +50,6 @@ import {
   useResetCredit,
 } from "./UsageLimits";
 import { LeftFigure, LIMIT_ROW_CLASS, LimitRow, StatLabel } from "./UsageLimitPace";
-import { UsagePanel } from "./UsagePanel";
 
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
@@ -575,7 +575,7 @@ function PoolWindowCard({
   );
 }
 
-function ProviderSummary({
+function ProviderHeader({
   pool,
   label,
   color,
@@ -593,31 +593,26 @@ function ProviderSummary({
     ),
   );
   return (
-    <div className="relative isolate flex flex-wrap items-center gap-y-2 overflow-hidden rounded-xl px-7 py-4.5 usage-card-lit ">
-      {/* The provider's colour spills from its tile onto the card, as light would. Theme greys
-          glow as fog at brand strength, so they glow less. */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 -z-10"
-        style={{
-          backgroundImage: `radial-gradient(3.5rem 2.25rem at 2.6rem 50%, color-mix(in oklab, ${color} ${color.startsWith("#") ? 20 : 9}%, transparent), transparent)`,
-        }}
-      />
+    <div className="relative flex min-h-15 flex-wrap items-center gap-y-2 py-3 groove-under">
       {/* As wide as the limit rows' label column, so Plan starts where the bars do. */}
       <span className="flex w-40 shrink-0 items-center gap-4">
         <span
-          className="relative flex size-6.5 items-center justify-center rounded-sm shadow-sm ring-1 ring-foreground/10"
-          style={{ backgroundColor: color }}
+          className="relative flex size-7 shrink-0 items-center justify-center rounded-md provider-tile"
+          style={{ "--tile-color": color } as CSSProperties}
         >
           <ProviderInstanceIcon
             driverKind={pool.driver}
             displayName={label}
             indicatorBackground="var(--background)"
-            className="size-3.5"
-            iconClassName="size-3.5 fill-background text-background"
+            className="size-4"
+            // Brand tiles carry a white mark, as Claude's own icon does; a light tile a dark one.
+            iconClassName={cn(
+              "size-4",
+              color.startsWith("#") ? "fill-white text-white" : "fill-background text-background",
+            )}
           />
         </span>
-        <h2 className="min-w-0 truncate text-xs font-semibold text-foreground">{label}</h2>
+        <h2 className="min-w-0 truncate text-label font-semibold text-foreground">{label}</h2>
       </span>
       <span className="flex flex-1 flex-wrap items-center gap-x-12 gap-y-2">
         {plans.length > 0 ? (
@@ -647,14 +642,26 @@ function ProviderSummary({
   );
 }
 
+/**
+ * One provider: its header and its limits in a single card, lit by the provider's tile: the
+ * colour pools around the tile and the card's edge brightens only near it.
+ */
 function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: number }) {
   const color = barColor(pool.driver);
   const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
   return (
-    <section className="flex flex-col gap-5">
-      <ProviderSummary pool={pool} label={label} color={color} now={now} />
-      <UsagePanel className="flex flex-col px-7 py-1.5 groove-rows">
+    <section
+      className="relative isolate overflow-hidden rounded-xl px-7 pb-1.5 usage-card-lit"
+      // Theme greys read far brighter than brand hues at the same strength, so they glow less.
+      style={
+        {
+          "--tile-glow": `color-mix(in oklab, ${color} ${color.startsWith("#") ? 19 : 8}%, transparent)`,
+        } as CSSProperties
+      }
+    >
+      <ProviderHeader pool={pool} label={label} color={color} now={now} />
+      <div className="flex flex-col groove-rows">
         {windows.map((window) => {
           const details =
             pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
@@ -669,7 +676,7 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
             />
           );
         })}
-      </UsagePanel>
+      </div>
     </section>
   );
 }
