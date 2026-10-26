@@ -448,7 +448,7 @@ export function UsagePage() {
   );
 
   return (
-    <AppRouteModal label="Usage" className="usage-window">
+    <AppRouteModal label="Usage" className="usage-window sm:max-w-[88rem]">
       <div
         className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col neutral-capture"
         style={
@@ -472,7 +472,7 @@ export function UsagePage() {
           </header>
 
           <ScrollArea scrollFade className="min-h-0 flex-1">
-            <WorkspacePageContainer width="wide">
+            <WorkspacePageContainer width="expanded">
               {selectedEnvironments.length === 0 ? (
                 <p className="text-sm text-muted-foreground">
                   {environments.length === 0
@@ -674,65 +674,112 @@ function UsageOverview({
           {message}
         </p>
       ))}
-      <section className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-4xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              {metric === "cost" ? (
-                <MutedCents text={formatUsd(merged.costUsd)} />
-              ) : (
-                formatTokens(merged.totalTokens)
-              )}
-            </span>
+      {/* Two columns, as Fey lays out a ticker: the chart in the main column, the breakdown
+          by provider in a narrow one beside it. */}
+      <section className="grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+        <div className="flex min-w-0 flex-col gap-5">
+          <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
+            <div className="flex flex-col gap-1">
+              <span
+                className={cn(
+                  "text-4xl font-semibold text-foreground tabular-nums",
+                  figureClass(loadingPartial),
+                )}
+              >
+                {metric === "cost" ? (
+                  <MutedCents text={formatUsd(merged.costUsd)} />
+                ) : (
+                  formatTokens(merged.totalTokens)
+                )}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {metric === "cost" ? "Cost · API estimate" : "Processed tokens"}
+              </span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span
+                className={cn(
+                  "text-2xl font-semibold text-foreground tabular-nums",
+                  figureClass(loadingPartial),
+                )}
+              >
+                +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)}
+              </span>
+              <span className="text-xs text-muted-foreground">Today</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <span
+                className={cn(
+                  "text-2xl font-semibold text-foreground tabular-nums",
+                  figureClass(loadingPartial),
+                )}
+              >
+                {formatCount(merged.sessions)}
+              </span>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                <span>Sessions</span>
+                {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
+                  <Popover>
+                    <PopoverTrigger
+                      openOnHover
+                      render={<InlineButton tone="muted" />}
+                      aria-label="Unpriced usage details"
+                    >
+                      <InfoIcon className="size-3" aria-hidden />
+                    </PopoverTrigger>
+                    <PopoverPopup side="top" tooltipStyle>
+                      API estimate excludes {formatPercent(merged.costQuality.unpricedShare)}{" "}
+                      unpriced records.
+                    </PopoverPopup>
+                  </Popover>
+                )}
+              </span>
+            </div>
+          </div>
+          {showChatGptSharing || cursorAccessEnvironments.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+              {showChatGptSharing ? (
+                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                  <span>ChatGPT shared usage</span>
+                  <ChatGptUsageButton size="xs" />
+                </div>
+              ) : null}
+              {cursorAccessEnvironments.map((environment) => (
+                <CursorEnableRow
+                  key={environment.environmentId}
+                  environmentId={environment.environmentId}
+                  label={environment.label}
+                  showEnvironment={selectedEnvironments.length > 1}
+                  onEnabled={onCursorEnabled}
+                />
+              ))}
+            </div>
+          ) : null}
+
+          <UsageProviderChart
+            providers={activeProviders}
+            loadingProviders={chartLoadingProviders}
+            days={days}
+            daily={merged.daily}
+            hours={hours}
+            hourly={merged.hourly}
+            metric={metric}
+            referenceTime={shownWindow.untilTime}
+            resolution={shownHourly ? "hour" : "day"}
+            series={merged.series}
+            timeZone={shownWindow.timeZone}
+            hour12={hour12}
+          />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {rangeControl}
             <span className="text-xs text-muted-foreground">
-              {metric === "cost" ? "Cost · API estimate" : "Processed tokens"}
+              Bars show the total per {usageChartSlot(shownHourly ? "hour" : "day", merged.series)}
             </span>
           </div>
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-2xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)}
-            </span>
-            <span className="text-xs text-muted-foreground">Today</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-2xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              {formatCount(merged.sessions)}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <span>Sessions</span>
-              {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
-                <Popover>
-                  <PopoverTrigger
-                    openOnHover
-                    render={<InlineButton tone="muted" />}
-                    aria-label="Unpriced usage details"
-                  >
-                    <InfoIcon className="size-3" aria-hidden />
-                  </PopoverTrigger>
-                  <PopoverPopup side="top" tooltipStyle>
-                    API estimate excludes {formatPercent(merged.costQuality.unpricedShare)} unpriced
-                    records.
-                  </PopoverPopup>
-                </Popover>
-              )}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-end gap-x-8 gap-y-3 lg:ms-auto">
+        </div>
+        <aside aria-label="By provider" className="flex min-w-0 flex-col lg:pt-2">
+          <h2 className="pb-3 text-xs text-muted-foreground">By provider</h2>
+          <div className="flex flex-col groove-rows [&>*]:py-3.5">
             {activeProviders.map((provider) => {
               const totals = merged.providers.find((entry) => entry.provider === provider);
               const share =
@@ -741,82 +788,58 @@ function UsageOverview({
               const providerLoading = loadingProviders.has(provider);
               const awaitingData = providerLoading && !providersWithData.has(provider);
               return (
-                <div key={provider} className="flex min-w-0 flex-col gap-1">
-                  <span
-                    className={cn(
-                      "text-2xl font-semibold text-foreground tabular-nums",
-                      figureClass(providerLoading),
-                    )}
-                  >
-                    {awaitingData
-                      ? "-"
-                      : metric === "cost"
-                        ? formatUsd(totals?.costUsd ?? 0)
-                        : formatTokens(totals?.totalTokens ?? 0)}
-                  </span>
-                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <span
-                      aria-hidden
-                      className="size-2 shrink-0 rounded-full"
-                      style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
-                    />
-                    <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+                <div key={provider} className="flex flex-col gap-1">
+                  <div className="flex items-baseline justify-between gap-4">
+                    <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                      <span
+                        aria-hidden
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
+                      />
+                      <ProviderMark provider={provider} className="size-4" />
+                      <span className="flex min-w-0 items-baseline gap-1.5">
+                        <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+                        <span
+                          className={cn(
+                            "shrink-0 text-2xs whitespace-nowrap text-muted-foreground tabular-nums",
+                            figureClass(providerLoading),
+                            awaitingData && "invisible",
+                          )}
+                        >
+                          {formatCount(providerSessions)}{" "}
+                          {providerSessions === 1 ? "session" : "sessions"}
+                        </span>
+                      </span>
+                    </span>
                     <span
                       className={cn(
-                        "shrink-0 tabular-nums",
+                        "shrink-0 text-sm font-medium text-foreground tabular-nums",
                         figureClass(providerLoading),
-                        awaitingData && "invisible",
                       )}
                     >
-                      · {formatPercent(share)} · {formatCount(providerSessions)}{" "}
-                      {providerSessions === 1 ? "session" : "sessions"}
+                      {awaitingData
+                        ? "-"
+                        : metric === "cost"
+                          ? formatUsd(totals?.costUsd ?? 0)
+                          : formatTokens(totals?.totalTokens ?? 0)}
                     </span>
+                  </div>
+                  <span
+                    className={cn(
+                      "text-xs text-muted-foreground",
+                      figureClass(providerLoading),
+                      awaitingData && "invisible",
+                    )}
+                  >
+                    {metric === "cost"
+                      ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
+                      : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
                   </span>
                 </div>
               );
             })}
           </div>
-        </div>
-        {showChatGptSharing || cursorAccessEnvironments.length > 0 ? (
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
-            {showChatGptSharing ? (
-              <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                <span>ChatGPT shared usage</span>
-                <ChatGptUsageButton size="xs" />
-              </div>
-            ) : null}
-            {cursorAccessEnvironments.map((environment) => (
-              <CursorEnableRow
-                key={environment.environmentId}
-                environmentId={environment.environmentId}
-                label={environment.label}
-                showEnvironment={selectedEnvironments.length > 1}
-                onEnabled={onCursorEnabled}
-              />
-            ))}
-          </div>
-        ) : null}
-
-        <UsageProviderChart
-          providers={activeProviders}
-          loadingProviders={chartLoadingProviders}
-          days={days}
-          daily={merged.daily}
-          hours={hours}
-          hourly={merged.hourly}
-          metric={metric}
-          referenceTime={shownWindow.untilTime}
-          resolution={shownHourly ? "hour" : "day"}
-          series={merged.series}
-          timeZone={shownWindow.timeZone}
-          hour12={hour12}
-        />
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {rangeControl}
-          <span className="text-xs text-muted-foreground">
-            Bars show the total per {usageChartSlot(shownHourly ? "hour" : "day", merged.series)}
-          </span>
-        </div>
+        </aside>
       </section>
 
       <UsagePanel
