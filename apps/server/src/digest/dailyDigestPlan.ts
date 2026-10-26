@@ -84,3 +84,35 @@ export function advanceAwayClock(
   const due = input.enabled && !clock.digested && input.nowMs - awaySinceMs >= input.awayMs;
   return { clock: { awaySinceMs, digested: clock.digested || due }, due };
 }
+
+/** A digest covers from the project's previous digest, or a day back, to its own start. */
+export function digestWindow(
+  digest: Pick<OrchestrationV2ThreadShell, "id" | "projectId" | "createdAt">,
+  threads: ReadonlyArray<OrchestrationV2ThreadShell>,
+): { readonly sinceMs: number; readonly untilMs: number } {
+  const untilMs = DateTime.toEpochMillis(digest.createdAt);
+  let sinceMs = untilMs - DAY_MS;
+  for (const thread of threads) {
+    if (thread.digest !== true || thread.id === digest.id || thread.projectId !== digest.projectId)
+      continue;
+    const createdMs = DateTime.toEpochMillis(thread.createdAt);
+    if (createdMs < untilMs && createdMs > sinceMs) sinceMs = createdMs;
+  }
+  return { sinceMs, untilMs };
+}
+
+/** Counts commit times into `slots` even buckets across the window. */
+export function bucketActivity(
+  commitTimesMs: ReadonlyArray<number>,
+  window: { readonly sinceMs: number; readonly untilMs: number },
+  slots = 48,
+): ReadonlyArray<number> {
+  const buckets = Array.from({ length: slots }, () => 0);
+  const span = Math.max(1, window.untilMs - window.sinceMs);
+  for (const time of commitTimesMs) {
+    if (time < window.sinceMs || time > window.untilMs) continue;
+    const index = Math.min(slots - 1, Math.floor(((time - window.sinceMs) / span) * slots));
+    buckets[index] = (buckets[index] ?? 0) + 1;
+  }
+  return buckets;
+}

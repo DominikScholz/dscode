@@ -1,5 +1,6 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
+  DIGEST_PUBLISH_TOOL_NAME,
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
   HTML_RENDER_MAX_FIT_HEIGHT,
@@ -12,6 +13,8 @@ import {
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as DailyDigestService from "../../../digest/DailyDigestService.ts";
+import { DailyDigestPageContent } from "../../../digest/dailyDigestPage.ts";
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -104,6 +107,36 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, true);
+
+const DigestPublishTool = Tool.make(DIGEST_PUBLISH_TOOL_NAME, {
+  description:
+    "Daily digest threads only. Publish the digest page from its content; the design, title, activity chart, and links are built for you. Text may use `backticks` for code. Call it once, after you have read everything.",
+  parameters: DailyDigestPageContent,
+  success: Schema.Struct({
+    htmlRender: Schema.Struct({
+      attachmentId: Schema.String,
+      title: Schema.String,
+      height: Schema.Number,
+      heights: Schema.optional(Schema.Array(Schema.Tuple([Schema.Int, Schema.Int]))),
+    }),
+    message: Schema.String,
+  }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    HtmlRender.HtmlRender,
+    DailyDigestService.DailyDigestService,
+  ],
+})
+  .annotate(Tool.Title, "Publish daily digest")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+export const DigestToolkit = Toolkit.make(DigestPublishTool);
 
 export const HtmlPreviewToolkit = Toolkit.make(HtmlPreviewTool);
 

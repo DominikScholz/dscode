@@ -1,10 +1,11 @@
 import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
 
+import * as DailyDigestService from "../../../digest/DailyDigestService.ts";
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
 import * as McpToolAccess from "../../McpToolAccess.ts";
-import { HtmlPreviewToolkit, HtmlRenderToolkit, type HtmlToolkit } from "./tools.ts";
+import { DigestToolkit, HtmlPreviewToolkit, HtmlRenderToolkit, type HtmlToolkit } from "./tools.ts";
 
 const INVALID_PAGE_ERRORS = new Set([
   "HtmlRenderImagesNotFoundError",
@@ -59,4 +60,31 @@ export const layerPreview = McpToolAccess.toLayer(HtmlPreviewToolkit, {
 
 export const layerRender = McpToolAccess.toLayer(HtmlRenderToolkit, {
   html_render: handlers.html_render,
+});
+
+// The page fits its content at every measured width, so this height only applies before measuring.
+const DIGEST_FALLBACK_HEIGHT = 1800;
+
+export const layerDigest = McpToolAccess.toLayer(DigestToolkit, {
+  digest_publish: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const { thread } = yield* McpInvocationContext.requireThreadScope(scope, "digest_publish");
+      const page = yield* DailyDigestService.DailyDigestService.pipe(
+        Effect.flatMap((digest) => digest.preparePage(thread.threadId, input)),
+        Effect.mapError(
+          (error) =>
+            new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
+        ),
+      );
+      const htmlRender = yield* HtmlRender.HtmlRender;
+      const reference = yield* htmlRender
+        .publish({ threadId: thread.threadId, ...page, height: DIGEST_FALLBACK_HEIGHT })
+        .pipe(Effect.mapError(toFailure));
+      return {
+        htmlRender: reference,
+        message: "Published above your reply. Reply with one short line; don't restate the page.",
+      };
+    }),
+  ),
 });

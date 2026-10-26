@@ -7,6 +7,12 @@ import {
 import { EVENT_CODE_SHORTCUT_KEYS } from "./keybindings.ts";
 
 export const HTML_RENDER_TOOL_NAME = "html_render";
+/** Publishes a daily digest page from content; its result is an HTML render too. */
+export const DIGEST_PUBLISH_TOOL_NAME = "digest_publish";
+
+export function isHtmlRenderToolId(toolId: string | null | undefined): boolean {
+  return toolId === HTML_RENDER_TOOL_NAME || toolId === DIGEST_PUBLISH_TOOL_NAME;
+}
 export const HTML_RENDER_MIN_HEIGHT = 80;
 export const HTML_RENDER_MAX_HEIGHT = 2000;
 // A client fits the frame to the live page up to this height. It only stops a

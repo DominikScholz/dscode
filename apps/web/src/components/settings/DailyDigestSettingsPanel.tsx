@@ -204,7 +204,7 @@ export function DailyDigestSettingsPanel() {
           serverScoped
           settingKeys={["dailyDigestInstructions"]}
           {...searchableSetting("daily-digest-instructions")}
-          description="Describe the digest you want: what comes first, how to lay out the page, which suggestions help you most. T3 Code always tells the agent how to publish the page and write prompt links."
+          description="What the digest should focus on: what comes first, what to leave out, which suggestions help you most. The page layout is the same for every digest."
           resetAction={
             settings.dailyDigestInstructions !== "" ? (
               <SettingResetButton

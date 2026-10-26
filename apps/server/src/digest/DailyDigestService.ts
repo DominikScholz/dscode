@@ -27,8 +27,11 @@ import {
   type AwayClock,
   type DailyDigestCandidate,
   advanceAwayClock,
+  bucketActivity,
+  digestWindow,
   planDailyDigests,
 } from "./dailyDigestPlan.ts";
+import { type DailyDigestPageContent, renderDailyDigestPage } from "./dailyDigestPage.ts";
 import { dailyDigestPrompt, isoAt } from "./dailyDigestPrompt.ts";
 
 const AWAY_POLL = "30 seconds";
@@ -39,11 +42,16 @@ export class DailyDigestService extends Context.Service<
   {
     /** Starts digests for every changed project now, whether or not digests are on. */
     readonly runNow: () => Effect.Effect<DailyDigestRunNowResult, DailyDigestError>;
+    /** The digest page for content a digest thread's agent wrote. */
+    readonly preparePage: (
+      threadId: ThreadId,
+      content: DailyDigestPageContent,
+    ) => Effect.Effect<{ readonly html: string; readonly title: string }, DailyDigestError>;
   }
 >()("t3/digest/DailyDigestService") {}
 
 const digestTitle = (nowMs: number) =>
-  `Digest · ${new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(nowMs)}`;
+  `Daily digest · ${new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric" }).format(nowMs)}`;
 
 export const layer = Layer.effect(
   DailyDigestService,
@@ -80,7 +88,6 @@ export const layer = Layer.effect(
       nowMs: number,
     ) {
       const settings = yield* settingsService.getSettings;
-      const environmentId = yield* environment.getEnvironmentId;
       const { project } = candidate;
       const projectSettings = resolveProjectSettings(settings, project.id, project).settings;
       const launched = yield* threadLaunch.launch({
@@ -97,7 +104,6 @@ export const layer = Layer.effect(
         initialMessage: {
           text: dailyDigestPrompt({
             candidate,
-            environmentId,
             nowMs,
             instructions: settings.dailyDigestInstructions,
           }),
@@ -154,6 +160,70 @@ export const layer = Layer.effect(
       return { threadIds };
     });
 
+    const commitTimes = (workspaceRoot: string, window: { sinceMs: number; untilMs: number }) =>
+      git
+        .execute({
+          operation: "DailyDigest.commitTimes",
+          cwd: workspaceRoot,
+          args: [
+            "log",
+            "--branches",
+            `--since=${isoAt(window.sinceMs)}`,
+            `--until=${isoAt(window.untilMs)}`,
+            "--format=%ct",
+          ],
+          allowNonZeroExit: true,
+          timeoutMs: 15_000,
+          maxOutputBytes: 1_000_000,
+        })
+        .pipe(
+          Effect.map((result) =>
+            result.exitCode === 0
+              ? result.stdout
+                  .split("\n")
+                  .filter((line) => line.trim() !== "")
+                  .map((line) => Number(line) * 1_000)
+              : [],
+          ),
+          Effect.orElseSucceed((): ReadonlyArray<number> => []),
+        );
+
+    const preparePage: DailyDigestService["Service"]["preparePage"] = Effect.fn(
+      "DailyDigestService.preparePage",
+    )(function* (threadId, content) {
+      const thread = yield* threads
+        .getThreadShell(threadId)
+        .pipe(Effect.mapError(fail("Could not read this thread.")));
+      if (thread === null || thread.digest !== true) {
+        return yield* new DailyDigestError({
+          message: "Only daily digest threads can publish a digest.",
+        });
+      }
+      const project = Option.getOrNull(
+        yield* projects
+          .getShell(thread.projectId)
+          .pipe(Effect.mapError(fail("Could not read the project."))),
+      );
+      if (project === null) {
+        return yield* new DailyDigestError({ message: "The digest's project no longer exists." });
+      }
+      const snapshot = yield* threads
+        .getShellSnapshot()
+        .pipe(Effect.mapError(fail("Could not list threads.")));
+      const window = digestWindow(thread, [...snapshot.threads, ...snapshot.archivedThreads]);
+      const times = yield* commitTimes(project.workspaceRoot, window);
+      const environmentId = yield* environment.getEnvironmentId;
+      return {
+        title: `${project.title} daily digest`,
+        html: renderDailyDigestPage(content, {
+          projectTitle: project.title,
+          environmentId,
+          ...window,
+          activity: bucketActivity(times, window),
+        }),
+      };
+    });
+
     const runNow: DailyDigestService["Service"]["runNow"] = () =>
       runDigests().pipe(
         permit.withPermitsIfAvailable(1),
@@ -188,6 +258,6 @@ export const layer = Layer.effect(
     );
     yield* forkParked(watchAway);
 
-    return DailyDigestService.of({ runNow });
+    return DailyDigestService.of({ runNow, preparePage });
   }),
 );

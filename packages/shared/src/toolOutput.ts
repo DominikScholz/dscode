@@ -5,7 +5,7 @@ import {
 import * as Predicate from "effect/Predicate";
 
 import {
-  HTML_RENDER_TOOL_NAME,
+  isHtmlRenderToolId,
   readHtmlRenderReference,
   type HtmlRenderReference,
 } from "./htmlRender.ts";
@@ -180,7 +180,7 @@ export function htmlRenderFromToolItem(item: {
   readonly toolName: string | null | undefined;
   readonly output?: unknown;
 }): HtmlRenderReference | undefined {
-  if (resolveT3McpToolId(item.toolName) !== HTML_RENDER_TOOL_NAME) return undefined;
+  if (!isHtmlRenderToolId(resolveT3McpToolId(item.toolName))) return undefined;
   const output = compactDynamicToolOutput(item.output);
   return output?.isError ? undefined : output?.htmlRender;
 }

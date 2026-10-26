@@ -8,7 +8,12 @@ import {
 import { describe, expect, it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 
-import { advanceAwayClock, planDailyDigests } from "./dailyDigestPlan.ts";
+import {
+  advanceAwayClock,
+  bucketActivity,
+  digestWindow,
+  planDailyDigests,
+} from "./dailyDigestPlan.ts";
 
 const HOUR_MS = 60 * 60 * 1_000;
 const NOW_MS = Date.parse("2026-10-26T08:00:00.000Z");
@@ -124,5 +129,34 @@ describe("advanceAwayClock", () => {
       { ...away, enabled: false, nowMs: 100 * HOUR_MS },
     );
     expect(clock.due).toBe(false);
+  });
+});
+
+describe("digestWindow", () => {
+  it("runs from the project's previous digest to this one, or a day back without one", () => {
+    const current = thread("now", "a", { digest: true, createdAt: at(0) });
+    const threads = [
+      current,
+      thread("older", "a", { digest: true, createdAt: at(40) }),
+      thread("previous", "a", { digest: true, createdAt: at(10) }),
+      thread("elsewhere", "b", { digest: true, createdAt: at(2) }),
+    ];
+    expect(digestWindow(current, threads)).toEqual({
+      sinceMs: NOW_MS - 10 * HOUR_MS,
+      untilMs: NOW_MS,
+    });
+    expect(digestWindow(current, [current])).toEqual({
+      sinceMs: NOW_MS - 24 * HOUR_MS,
+      untilMs: NOW_MS,
+    });
+  });
+});
+
+describe("bucketActivity", () => {
+  it("counts commits into even slots and drops ones outside the window", () => {
+    const window = { sinceMs: 0, untilMs: 4 * HOUR_MS };
+    expect(
+      bucketActivity([0, HOUR_MS + 1, 2 * HOUR_MS, 4 * HOUR_MS, 5 * HOUR_MS], window, 4),
+    ).toEqual([1, 1, 1, 1]);
   });
 });

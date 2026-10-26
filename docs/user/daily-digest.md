@@ -17,13 +17,13 @@ one day. Connecting again restarts the wait, and a restart of the environment do
 
 ## Shape the digest
 
-Describe the digest you want under **Daily digest instructions**: what comes first, how to lay
-out the page, which suggestions help most. When empty, the digest opens with a short summary,
-groups the work into shipped, in progress, and stuck, and ends with suggested next steps.
+Every digest uses the same page: the project and date at the top, a headline with an activity
+chart of the window's commits, **What happened** with one card per workstream, and **How to
+proceed** with the decisions only you can make and ranked next steps. Each next step starts a new
+thread in that project and sends its prompt; links to threads open them in the app.
 
-T3 Code always tells the agent to only investigate, to publish one page, and how to write links.
-Each suggestion is a prompt link: clicking it starts a new thread in that project and sends the
-prompt. Links to other threads open them in the app.
+Describe what the digest should focus on under **Daily digest instructions**, such as what to put
+first or which suggestions help you most. T3 Code always tells the agent to only investigate.
 
 Choose the model under **Daily digest model**. It uses your permission mode for new threads.
 

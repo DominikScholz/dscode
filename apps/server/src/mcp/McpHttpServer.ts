@@ -71,7 +71,12 @@ import {
   DeviceStandardToolkit,
 } from "./toolkits/device/tools.ts";
 import * as HtmlHandlers from "./toolkits/html/handlers.ts";
-import { HtmlPreviewTool, HtmlPreviewToolkit, HtmlRenderToolkit } from "./toolkits/html/tools.ts";
+import {
+  DigestToolkit,
+  HtmlPreviewTool,
+  HtmlPreviewToolkit,
+  HtmlRenderToolkit,
+} from "./toolkits/html/tools.ts";
 
 const mcpResourceMetadataUrl = (request: HttpServerRequest.HttpServerRequest) =>
   HttpServerRequest.toURL(request).pipe(
@@ -963,6 +968,7 @@ const imageToolRegistration = <Tools extends Record<string, Tool.Any>, A, E, R, 
 
 export const layerHtmlToolkit = Layer.mergeAll(
   toolkitRegistration(HtmlRenderToolkit, HtmlHandlers.layerRender),
+  toolkitRegistration(DigestToolkit, HtmlHandlers.layerDigest),
   imageToolRegistration(registerHtmlPreview(), HtmlHandlers.layerPreview),
 ).pipe(Layer.provide(HtmlRender.layer));
 
