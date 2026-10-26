@@ -32,6 +32,9 @@ Choose the model under **Daily digest model**. It uses your permission mode for 
 ## Read a digest
 
 Digest threads hide the thread sidebar while open and show their page across the whole window.
+In the web and desktop apps everything on the page opens what it names: a thread opens it, a
+changed file opens in the file panel, a commit or branch opens the project graph, a screenshot
+opens full size, and each next step starts its thread.
 The dashboard shows a newspaper button on each project with a digest; a dot means you have not
 opened its newest digest since it finished. A digest is an ordinary thread, so you can reply to it,
 settle it, or archive it.

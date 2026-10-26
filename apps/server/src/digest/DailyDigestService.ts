@@ -2,6 +2,8 @@ import {
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DailyDigestError,
+  type DailyDigestPageContent,
+  DailyDigestPageSnapshot,
   type DailyDigestRunNowResult,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -34,16 +36,15 @@ import {
   advanceAwayClock,
   bucketActivity,
   digestWindow,
+  countByBranch,
+  digestThreadEntry,
+  parseCommitLog,
+  parseStatusLines,
   planDailyDigests,
-  threadActivityMs,
   windowThreads,
 } from "./dailyDigestPlan.ts";
 import { digestSnapshotPath } from "./dailyDigestAsset.ts";
-import {
-  type DailyDigestPageContent,
-  DailyDigestPageSnapshot,
-  renderDailyDigestSnapshot,
-} from "./dailyDigestPage.ts";
+import { renderDailyDigestSnapshot } from "./dailyDigestPage.ts";
 import { dailyDigestPrompt, isoAt } from "./dailyDigestPrompt.ts";
 
 const AWAY_POLL = "30 seconds";
@@ -59,6 +60,9 @@ const IMAGE_MIME_TYPES: Record<string, string> = {
   ico: "image/x-icon",
 };
 const HOUR_MS = 60 * 60 * 1_000;
+// Enough for the page's lists; the counts stay exact.
+const MAX_LISTED = 40;
+const encodeSnapshot = Schema.encodeEffect(Schema.fromJsonString(DailyDigestPageSnapshot));
 
 export class DailyDigestService extends Context.Service<
   DailyDigestService,
@@ -195,18 +199,12 @@ export const layer = Layer.effect(
       return { threadIds };
     });
 
-    const commitTimes = (workspaceRoot: string, window: { sinceMs: number; untilMs: number }) =>
+    const gitLines = (workspaceRoot: string, operation: string, args: ReadonlyArray<string>) =>
       git
         .execute({
-          operation: "DailyDigest.commitTimes",
+          operation,
           cwd: workspaceRoot,
-          args: [
-            "log",
-            "--branches",
-            `--since=${isoAt(window.sinceMs)}`,
-            `--until=${isoAt(window.untilMs)}`,
-            "--format=%ct",
-          ],
+          args: [...args],
           allowNonZeroExit: true,
           timeoutMs: 15_000,
           maxOutputBytes: 1_000_000,
@@ -214,14 +212,50 @@ export const layer = Layer.effect(
         .pipe(
           Effect.map((result) =>
             result.exitCode === 0
-              ? result.stdout
-                  .split("\n")
-                  .filter((line) => line.trim() !== "")
-                  .map((line) => Number(line) * 1_000)
+              ? result.stdout.split("\n").filter((line) => line.trim() !== "")
               : [],
           ),
-          Effect.orElseSucceed((): ReadonlyArray<number> => []),
+          Effect.orElseSucceed((): ReadonlyArray<string> => []),
         );
+
+    const windowCommits = (workspaceRoot: string, window: { sinceMs: number; untilMs: number }) =>
+      gitLines(workspaceRoot, "DailyDigest.commits", [
+        "log",
+        "--branches",
+        "--source",
+        `--since=${isoAt(window.sinceMs)}`,
+        `--until=${isoAt(window.untilMs)}`,
+        "--format=%h%x1f%ct%x1f%S%x1f%s",
+      ]).pipe(Effect.map(parseCommitLog));
+
+    const repoStats = (workspaceRoot: string) =>
+      Effect.all({
+        // Short status names paths from the project folder and leaves out the rest of the repo.
+        status: gitLines(workspaceRoot, "DailyDigest.uncommitted", [
+          "status",
+          "--short",
+          "--",
+          ".",
+        ]),
+        unpushed: gitLines(workspaceRoot, "DailyDigest.unpushed", [
+          "log",
+          "--branches",
+          "--not",
+          "--remotes",
+          "--source",
+          "--format=%S",
+        ]),
+      }).pipe(
+        Effect.map(({ status, unpushed }) => {
+          const files = parseStatusLines(status);
+          return {
+            uncommittedFiles: files.length,
+            unpushedCommits: unpushed.length,
+            files: files.slice(0, MAX_LISTED),
+            unpushedBranches: countByBranch(unpushed).slice(0, MAX_LISTED),
+          };
+        }),
+      );
 
     // A missing or oversized image would fail the whole publish, so it is left out instead.
     const readImage = (path: string) => {
@@ -266,7 +300,7 @@ export const layer = Layer.effect(
         .getShellSnapshot()
         .pipe(Effect.mapError(fail("Could not list threads.")));
       const window = digestWindow(thread, [...shells.threads, ...shells.archivedThreads]);
-      const times = yield* commitTimes(project.workspaceRoot, window);
+      const commits = yield* windowCommits(project.workspaceRoot, window);
       const environmentId = yield* environment.getEnvironmentId;
       const imagePaths = content.visuals.flatMap((visual) =>
         visual.kind === "image" ? [visual.path] : [],
@@ -276,9 +310,13 @@ export const layer = Layer.effect(
           Effect.map((dataUri) => (dataUri === null ? [] : [[path, dataUri] as const])),
         ),
       );
-      const iconPath = yield* favicons
-        .resolvePath(project.workspaceRoot, project.faviconPath ?? undefined)
-        .pipe(Effect.orElseSucceed(() => null));
+      // Like the app, a chosen emoji or monogram wins over the favicon.
+      const iconPath =
+        project.projectIcon?.kind === "emoji" || project.projectIcon?.kind === "monogram"
+          ? null
+          : yield* favicons
+              .resolvePath(project.workspaceRoot, project.faviconPath ?? undefined)
+              .pipe(Effect.orElseSucceed(() => null));
       const icon = iconPath === null ? null : yield* readImage(iconPath);
       const snapshot: DailyDigestPageSnapshot = {
         content,
@@ -286,14 +324,18 @@ export const layer = Layer.effect(
           projectTitle: project.title,
           environmentId,
           ...window,
-          activity: bucketActivity(times, window),
-          threads: windowThreads(thread, shells.threads, window).map((entry) => ({
-            id: entry.id,
-            title: entry.title,
-            status: entry.status,
-            activityMs: threadActivityMs(entry),
-          })),
+          activity: bucketActivity(
+            commits.map((commit) => commit.timeMs),
+            window,
+          ),
+          commits: commits.slice(0, MAX_LISTED),
+          threads: windowThreads(thread, shells.threads, window).map(digestThreadEntry),
+          repo: yield* repoStats(project.workspaceRoot),
           ...(icon === null ? {} : { icon }),
+          ...(project.projectIcon?.kind === "emoji" ? { emoji: project.projectIcon.emoji } : {}),
+          ...(project.projectIcon?.kind === "monogram"
+            ? { monogram: { text: project.projectIcon.text, color: project.projectIcon.color } }
+            : {}),
         },
         images: Object.fromEntries(images.flat()),
       };
@@ -314,9 +356,9 @@ export const layer = Layer.effect(
       if (htmlPath === null) {
         return yield* new DailyDigestError({ message: "Invalid digest page id." });
       }
-      const json = yield* Schema.encodeEffect(Schema.fromJsonString(DailyDigestPageSnapshot))(
-        snapshot,
-      ).pipe(Effect.mapError(fail("Could not encode the digest page.")));
+      const json = yield* encodeSnapshot(snapshot).pipe(
+        Effect.mapError(fail("Could not encode the digest page.")),
+      );
       yield* fileSystem
         .writeFileString(digestSnapshotPath(htmlPath), json)
         .pipe(Effect.mapError(fail("Could not keep the digest page.")));

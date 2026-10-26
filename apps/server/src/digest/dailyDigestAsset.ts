@@ -3,7 +3,9 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 
-import { DailyDigestPageSnapshot, renderDailyDigestSnapshot } from "./dailyDigestPage.ts";
+import { DailyDigestPageSnapshot } from "@t3tools/contracts";
+
+import { renderDailyDigestSnapshot } from "./dailyDigestPage.ts";
 
 export const digestSnapshotPath = (htmlPath: string) => htmlPath.replace(/\.html$/, ".digest.json");
 
@@ -28,4 +30,14 @@ export const servedDigestPage = Effect.fn("DailyDigest.servedPage")(function* (h
       ),
     ),
   );
+});
+
+/** A digest page's snapshot for clients that render the digest themselves, or null. */
+export const digestSnapshotJson = Effect.fn("DailyDigest.snapshotJson")(function* (
+  htmlPath: string,
+) {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const snapshotPath = digestSnapshotPath(htmlPath);
+  if (snapshotPath === htmlPath || !(yield* fileSystem.exists(snapshotPath))) return null;
+  return yield* fileSystem.readFileString(snapshotPath);
 });

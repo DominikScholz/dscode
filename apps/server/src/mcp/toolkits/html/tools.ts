@@ -1,4 +1,4 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
+import { DailyDigestPageContent, OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
   DIGEST_PUBLISH_TOOL_NAME,
   HTML_RENDER_COLUMN_WIDTH,
@@ -14,7 +14,6 @@ import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
 import * as DailyDigestService from "../../../digest/DailyDigestService.ts";
-import { DailyDigestPageContent } from "../../../digest/dailyDigestPage.ts";
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";

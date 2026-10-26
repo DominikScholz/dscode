@@ -11,7 +11,11 @@ import * as DateTime from "effect/DateTime";
 import {
   advanceAwayClock,
   bucketActivity,
+  countByBranch,
+  digestThreadEntry,
   digestWindow,
+  parseCommitLog,
+  parseStatusLines,
   planDailyDigests,
   windowThreads,
 } from "./dailyDigestPlan.ts";
@@ -177,5 +181,47 @@ describe("windowThreads", () => {
       window,
     );
     expect(listed.map((entry) => entry.id)).toEqual(["recent", "still-running"]);
+  });
+});
+
+describe("digestThreadEntry", () => {
+  it("carries what the sidebar row shows: branch, provider mark, and an unread Done", () => {
+    const entry = digestThreadEntry(
+      thread("t", "a", {
+        branch: "feat/digest",
+        providerInstanceId: ProviderInstanceId.make("claudeAgent"),
+        status: "completed",
+        latestRunCompletedAt: at(1),
+        lastVisitedAt: at(3),
+      }),
+    );
+    expect(entry).toMatchObject({ branch: "feat/digest", provider: "claude", done: true });
+    expect(digestThreadEntry(thread("u", "a"))).toMatchObject({ provider: "openai" });
+    expect(
+      digestThreadEntry(
+        thread("v", "a", {
+          status: "completed",
+          latestRunCompletedAt: at(3),
+          lastVisitedAt: at(1),
+        }),
+      ),
+    ).not.toHaveProperty("done");
+  });
+});
+
+describe("git output parsers", () => {
+  it("reads commits, changed files, and unpushed commits per branch", () => {
+    expect(parseCommitLog(["abc1234\x1f1793000000\x1frefs/heads/feat/x\x1fAdd a\x1fb"])).toEqual([
+      { hash: "abc1234", timeMs: 1_793_000_000_000, subject: "Add a\x1fb", branch: "feat/x" },
+    ]);
+    expect(parseStatusLines([" M src/a.ts", "?? notes.md", "R  old.ts -> new.ts"])).toEqual([
+      { status: "M", path: "src/a.ts" },
+      { status: "??", path: "notes.md" },
+      { status: "R", path: "new.ts" },
+    ]);
+    expect(countByBranch(["refs/heads/a", "refs/heads/b", "refs/heads/b"])).toEqual([
+      { branch: "b", count: 2 },
+      { branch: "a", count: 1 },
+    ]);
   });
 });

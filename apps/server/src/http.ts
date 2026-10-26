@@ -49,7 +49,7 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
-import { servedDigestPage } from "./digest/dailyDigestAsset.ts";
+import { digestSnapshotJson, servedDigestPage } from "./digest/dailyDigestAsset.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
@@ -452,6 +452,15 @@ export const layerAssetRoute = HttpRouter.add(
           }),
         ),
       );
+    }
+    if (url.value.searchParams.has("digest")) {
+      const snapshot = yield* digestSnapshotJson(asset.path).pipe(Effect.orElseSucceed(() => null));
+      return snapshot === null
+        ? HttpServerResponse.text("Not Found", { status: 404 })
+        : HttpServerResponse.text(snapshot, {
+            contentType: "application/json",
+            headers: { "cache-control": "private, no-cache", "x-content-type-options": "nosniff" },
+          });
     }
     return yield* assetFileResponse(
       asset,

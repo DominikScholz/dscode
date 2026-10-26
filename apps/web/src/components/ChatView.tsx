@@ -35,6 +35,9 @@ import {
 } from "./ChatView.logic";
 import { useLogicalProjectEnvironments } from "../hooks/useLogicalProjectEnvironments";
 import { useStableCallback } from "../hooks/useStableCallback";
+import { HtmlRenderFrame } from "./chat/HtmlRenderFrame";
+import type { TimelineRow } from "./chat/timelineRowContext";
+import { DigestPage } from "./digest/DigestPage";
 import { useProjectScriptEditing } from "./chat/useProjectScriptEditing";
 import { RightPanelSurfaceContent } from "./chat/RightPanelSurfaceContent";
 import { usePendingThreadRequests } from "./chat/usePendingThreadRequests";
@@ -628,6 +631,22 @@ export default function ChatView(props: ChatViewProps) {
     return inserted;
   };
   const citeAssistantTextStable = useStableCallback(citeAssistantText);
+  const renderDigestPage = useStableCallback(
+    (row: Extract<TimelineRow, { kind: "html-render" }>) => (
+      <DigestPage
+        environmentId={environmentId}
+        threadRef={routeThreadRef}
+        htmlRender={row.htmlRender}
+        fallback={
+          <HtmlRenderFrame
+            environmentId={environmentId}
+            htmlRender={row.htmlRender}
+            threadRef={routeThreadRef}
+          />
+        }
+      />
+    ),
+  );
   const [isWorkspaceFileDragActive, setIsWorkspaceFileDragActive] = useState(false);
   const [optimisticUserMessages, setOptimisticUserMessages] = useState<ChatMessage[]>([]);
   // Draft ids survive promotion and expire on navigation, keeping the pending resend scoped correctly.
@@ -3286,6 +3305,7 @@ export default function ChatView(props: ChatViewProps) {
               <ThreadTimeline
                 threadDetailRef={routeThreadDetailRef}
                 pageOnly={isDigestThread}
+                {...(isDigestThread ? { renderHtmlRender: renderDigestPage } : {})}
                 entriesInput={timelineEntriesInput}
                 draftEntries={isServerThread ? null : draftTimelineEntries}
                 activeThreadKey={activeThreadKey}

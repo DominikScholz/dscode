@@ -4,8 +4,8 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Schema from "effect/Schema";
 
-import { digestSnapshotPath, servedDigestPage } from "./dailyDigestAsset.ts";
-import { DailyDigestPageSnapshot } from "./dailyDigestPage.ts";
+import { digestSnapshotJson, digestSnapshotPath, servedDigestPage } from "./dailyDigestAsset.ts";
+import { DailyDigestPageSnapshot } from "@t3tools/contracts";
 
 const snapshot: DailyDigestPageSnapshot = {
   content: {
@@ -62,4 +62,11 @@ it.layer(NodeServices.layer)("served digest page", (it) => {
       expect(yield* servedDigestPage(yield* writePage('{"content":{}}'))).toBeNull();
     }),
   );
+
+  it("hands clients the snapshot so they can render the digest themselves", () =>
+    Effect.gen(function* () {
+      const json = encodeSnapshot(snapshot);
+      expect(yield* digestSnapshotJson(yield* writePage(json))).toBe(json);
+      expect(yield* digestSnapshotJson(yield* writePage(null))).toBeNull();
+    }));
 });

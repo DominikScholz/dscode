@@ -1,5 +1,5 @@
 import * as Schema from "effect/Schema";
-import { deriveProjectIdentity } from "../../projectIdentity";
+import { deriveProjectIdentity } from "@t3tools/shared/projectIdentity";
 import { ProjectMonogram } from "../ProjectMonogram";
 import {
   ProjectMonogramText,

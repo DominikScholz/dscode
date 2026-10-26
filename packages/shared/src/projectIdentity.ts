@@ -1,5 +1,4 @@
-import { PROJECT_ICON_COLORS } from "./projectIconColors";
-import type { ProjectIconColor } from "@t3tools/contracts";
+import { ProjectIconColor } from "@t3tools/contracts";
 
 export interface ProjectIdentity {
   readonly monogram: string;
@@ -25,14 +24,16 @@ function projectMonogram(projectName: string): string {
 }
 
 function projectColor(projectName: string): ProjectIconColor {
+  const colors = ProjectIconColor.literals;
   const seed = normalizeProjectName(projectName).toLocaleLowerCase("en-US") || "project";
   let index = 0;
   for (const glyph of seed) {
-    index = (index * 31 + (glyph.codePointAt(0) ?? 0)) % PROJECT_ICON_COLORS.length;
+    index = (index * 31 + (glyph.codePointAt(0) ?? 0)) % colors.length;
   }
-  return PROJECT_ICON_COLORS[index]?.value ?? "blue";
+  return colors[index] ?? "blue";
 }
 
+/** The monogram and color a project shows when it has no icon of its own. */
 export function deriveProjectIdentity(projectName: string): ProjectIdentity {
   return {
     monogram: projectMonogram(projectName),

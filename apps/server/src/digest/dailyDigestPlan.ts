@@ -144,3 +144,65 @@ export function windowThreads(
     )
     .toSorted((left, right) => threadActivityMs(right) - threadActivityMs(left));
 }
+
+/** A window thread as the digest's thread list shows it, mirroring its sidebar row. */
+export function digestThreadEntry(thread: OrchestrationV2ThreadShell) {
+  const instance = thread.providerInstanceId.toLowerCase();
+  const provider = instance.includes("claude")
+    ? ("claude" as const)
+    : instance.includes("codex") || instance.includes("openai")
+      ? ("openai" as const)
+      : undefined;
+  const done =
+    thread.status === "completed" &&
+    millis(thread.latestRunCompletedAt) > millis(thread.lastVisitedAt);
+  return {
+    id: thread.id,
+    title: thread.title,
+    status: thread.status,
+    activityMs: threadActivityMs(thread),
+    ...(thread.branch === null ? {} : { branch: thread.branch }),
+    ...(provider === undefined ? {} : { provider }),
+    ...(done ? { done } : {}),
+  };
+}
+
+const branchName = (ref: string) => ref.replace(/^refs\/heads\//, "");
+
+/** Lines of `git log --source --format=%h%x1f%ct%x1f%S%x1f%s`, newest first. */
+export function parseCommitLog(lines: ReadonlyArray<string>) {
+  return lines.flatMap((line) => {
+    const [hash, seconds, ref, ...subject] = line.split("\x1f");
+    const timeMs = Number(seconds) * 1_000;
+    if (!hash || !Number.isFinite(timeMs)) return [];
+    return [
+      {
+        hash,
+        timeMs,
+        subject: subject.join("\x1f").trim() || hash,
+        ...(ref ? { branch: branchName(ref) } : {}),
+      },
+    ];
+  });
+}
+
+/** Lines of `git status --short`: the two status letters and the path, renames by their new name. */
+export function parseStatusLines(lines: ReadonlyArray<string>) {
+  return lines.flatMap((line) => {
+    if (line.length < 4) return [];
+    const path = line.slice(3).split(" -> ").at(-1)?.trim() ?? "";
+    return path === "" ? [] : [{ status: line.slice(0, 2).trim() || "?", path }];
+  });
+}
+
+/** Lines of `git log --source --format=%S`: commits counted per branch, most first. */
+export function countByBranch(refs: ReadonlyArray<string>) {
+  const counts = new Map<string, number>();
+  for (const ref of refs) {
+    const branch = branchName(ref.trim());
+    if (branch !== "") counts.set(branch, (counts.get(branch) ?? 0) + 1);
+  }
+  return [...counts]
+    .map(([branch, count]) => ({ branch, count }))
+    .toSorted((left, right) => right.count - left.count);
+}

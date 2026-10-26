@@ -1,6 +1,8 @@
 import { describe, expect, it } from "@effect/vitest";
 
-import { type DailyDigestPageContent, renderDailyDigestPage } from "./dailyDigestPage.ts";
+import type { DailyDigestPageContent } from "@t3tools/contracts";
+
+import { renderDailyDigestPage } from "./dailyDigestPage.ts";
 
 const context = {
   projectTitle: "dscode",
@@ -47,12 +49,48 @@ describe("renderDailyDigestPage", () => {
     expect(html).toContain("3 commits");
   });
 
-  it("shows the project's icon and falls back to its initial", () => {
+  it("shows the project's icon like the app, down to its derived monogram", () => {
     const icon = "data:image/svg+xml;base64,PHN2Zy8+";
     expect(renderDailyDigestPage(content, { ...context, icon })).toContain(
       `<span class="tile icon"><img src="${icon}" alt=""></span>`,
     );
-    expect(renderDailyDigestPage(content, context)).toContain('<span class="tile">D</span>');
+    expect(renderDailyDigestPage(content, { ...context, emoji: "🚀" })).toContain(
+      '<span class="tile emoji">🚀</span>',
+    );
+    expect(
+      renderDailyDigestPage(content, { ...context, monogram: { text: "T3", color: "blue" } }),
+    ).toMatch(/<span class="tile mono" style="--mono:light-dark\(#2563eb,#60a5fa\)">T3<\/span>/);
+    expect(renderDailyDigestPage(content, { ...context, projectTitle: "server" })).toMatch(
+      /<span class="tile mono"[^>]*>SR<\/span>/,
+    );
+  });
+
+  it("lists the commits, changed files, and unpushed branches under their totals", () => {
+    const html = renderDailyDigestPage(content, {
+      ...context,
+      commits: Array.from({ length: 8 }, (_, index) => ({
+        hash: `c${index}`,
+        subject: index === 0 ? "Fix <script>" : `Commit ${index}`,
+        timeMs: context.untilMs - index * 60_000,
+        branch: "main",
+      })),
+      repo: {
+        uncommittedFiles: 2,
+        unpushedCommits: 5,
+        files: [
+          { status: "M", path: "src/a.ts" },
+          { status: "??", path: "notes.md" },
+        ],
+        unpushedBranches: [],
+      },
+    });
+    expect(html).toContain("<h3>Commits</h3><strong>3</strong>");
+    expect(html).toContain("<span>Fix &lt;script&gt;</span><small><code>c0</code><i>main</i>");
+    expect(html).not.toContain("<code>c6</code>");
+    expect(html).toContain("<h3>Uncommitted files</h3><strong>2</strong>");
+    expect(html).toContain('<code class="st">??</code><span>notes.md</span>');
+    expect(html).toContain("<h3>Unpushed commits</h3><strong>5</strong>");
+    expect(html).toContain("Everything is pushed.");
   });
 
   it("leaves out sections with nothing in them", () => {
@@ -90,6 +128,6 @@ describe("renderDailyDigestPage", () => {
   it("always lists the window's threads with links", () => {
     const html = renderDailyDigestPage(content, context);
     expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A2"');
-    expect(html).toContain("<b>Bench &lt;fast&gt;</b><span>Running</span>");
+    expect(html).toContain('<b>Bench &lt;fast&gt;</b><em class="run">Working</em>');
   });
 });

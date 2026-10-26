@@ -31,6 +31,10 @@
       "types": "./src/themePreview.ts",
       "import": "./src/themePreview.ts"
     },
+    "./projectIdentity": {
+      "types": "./src/projectIdentity.ts",
+      "import": "./src/projectIdentity.ts"
+    },
     "./projectFavicon": {
       "types": "./src/projectFavicon.ts",
       "import": "./src/projectFavicon.ts"
