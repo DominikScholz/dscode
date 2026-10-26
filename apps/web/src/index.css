@@ -1893,12 +1893,13 @@ html[data-theme-id] [data-app-sidebar] {
    own colour (--tile-color), and a wide, blurred dark shadow that sets it into the card. */
 @utility provider-tile {
   background-color: var(--tile-color);
-  /* Listed top first: a faint light frame, a soft dark shadow falling below the tile that sits
-     over the halo, then the halo itself. */
+  /* Listed top first: a dim opaque frame tinted by the tile, a shadow cast below it, then the halo.
+     The shadow's offset plus inset spread outruns its blur, so it pools below and never rises
+     past the top edge. */
   box-shadow:
-    0 0 0 2px rgb(255 255 255 / 0.16),
-    0 3px 8px rgb(0 0 0 / 0.45),
-    0 0 26px 4px color-mix(in oklab, var(--tile-color) 22%, transparent);
+    0 0 0 2px color-mix(in oklab, var(--tile-color) 18%, oklch(0.3 0.005 264)),
+    0 18px 16px -2px rgb(0 0 0 / 0.45),
+    0 0 30px 5px color-mix(in oklab, var(--tile-color) 26%, transparent);
 }
 
 /* The dimmed app behind the Usage window, in neutral black rather than the theme's tint. */
