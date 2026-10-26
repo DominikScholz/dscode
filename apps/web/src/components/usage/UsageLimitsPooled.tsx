@@ -593,30 +593,32 @@ function ProviderHeader({
     ),
   );
   return (
-    <div className="relative flex min-h-15 flex-wrap items-center gap-y-2 py-3 groove-under">
+    // The tile sits as far from the card's edge as from the top and bottom, and as far again
+    // from the name, as on Fey's position card.
+    <div className="relative flex flex-wrap items-center gap-y-2 py-7 groove-under">
       {/* As wide as the limit rows' label column, so Plan starts where the bars do. */}
-      <span className="flex w-40 shrink-0 items-center gap-4">
+      <span className="flex w-40 shrink-0 items-center gap-7">
         <span
-          className="relative flex size-7 shrink-0 items-center justify-center rounded-md provider-tile"
+          className="relative flex size-10 shrink-0 items-center justify-center rounded-md provider-tile"
           style={{ "--tile-color": color } as CSSProperties}
         >
           <ProviderInstanceIcon
             driverKind={pool.driver}
             displayName={label}
             indicatorBackground="var(--background)"
-            className="size-4"
+            className="size-6"
             // Brand tiles carry a white mark, as Claude's own icon does; a light tile a dark one.
             iconClassName={cn(
-              "size-4",
+              "size-6",
               color.startsWith("#") ? "fill-white text-white" : "fill-background text-background",
             )}
           />
         </span>
-        <h2 className="min-w-0 truncate text-label font-semibold text-foreground">{label}</h2>
+        <h2 className="min-w-0 truncate text-base font-semibold text-foreground">{label}</h2>
       </span>
       <span className="flex flex-1 flex-wrap items-center gap-x-12 gap-y-2">
         {plans.length > 0 ? (
-          <span className="text-xs text-foreground/60">
+          <span className="text-sm text-foreground/60">
             Plan
             <span className="ms-1.5 font-semibold text-foreground capitalize">
               {plans.join(", ")}
@@ -624,13 +626,13 @@ function ProviderHeader({
           </span>
         ) : null}
         {pool.accounts.length > 1 ? (
-          <span className="text-xs text-foreground/60">
+          <span className="text-sm text-foreground/60">
             Accounts
             <span className="ms-1.5 font-semibold text-foreground">{pool.accounts.length}</span>
           </span>
         ) : null}
         {Number.isFinite(nextReset) ? (
-          <span className="text-xs text-foreground/60 md:ms-auto">
+          <span className="text-sm text-foreground/60 md:ms-auto">
             Next reset
             <span className="ms-1.5 font-semibold text-foreground">
               in {formatDuration(nextReset - now)}
@@ -652,11 +654,11 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
   const windows = displayLimitWindows(pool);
   return (
     <section
-      className="relative isolate overflow-hidden rounded-xl px-7 pb-1.5 usage-card-lit"
+      className="relative isolate overflow-hidden px-7 pb-1.5 usage-card-lit"
       // Theme greys read far brighter than brand hues at the same strength, so they glow less.
       style={
         {
-          "--tile-glow": `color-mix(in oklab, ${color} ${color.startsWith("#") ? 14 : 8}%, transparent)`,
+          "--tile-glow": `color-mix(in oklab, ${color} ${color.startsWith("#") ? 9 : 5}%, transparent)`,
         } as CSSProperties
       }
     >

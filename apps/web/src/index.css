@@ -1840,32 +1840,26 @@ html[data-theme-id] [data-app-sidebar] {
 
 /* A card lit by the provider tile in its top-left corner: a soft pool of the tile's colour
    (--tile-glow) behind the content, and an edge that brightens only near the tile, fading to the
-   plain hairline elsewhere, as on Fey's position cards. The edge is a masked overlay. */
+   plain hairline elsewhere, as on Fey's position cards. Its radius is about a third of the tile's
+   width, as Fey's is. The edge is a masked overlay. */
 @utility usage-card-lit {
   position: relative;
+  border-radius: 0.875rem;
   background-color: var(--usage-card-fill);
   background-image:
-    radial-gradient(
-      15rem 9rem at 2.625rem 1.875rem,
-      var(--tile-glow, transparent),
-      transparent 100%
-    ),
+    radial-gradient(15rem 9rem at 3rem 3rem, var(--tile-glow, transparent), transparent 100%),
     radial-gradient(
       90% 220% at 0% 0%,
-      color-mix(in oklab, var(--tile-glow, transparent) 38%, transparent),
+      color-mix(in oklab, var(--tile-glow, transparent) 22%, transparent),
       transparent 100%
     );
 
   @variant dark {
     background-image:
-      radial-gradient(
-        15rem 9rem at 2.625rem 1.875rem,
-        var(--tile-glow, transparent),
-        transparent 100%
-      ),
+      radial-gradient(15rem 9rem at 3rem 3rem, var(--tile-glow, transparent), transparent 100%),
       radial-gradient(
         90% 220% at 0% 0%,
-        color-mix(in oklab, var(--tile-glow, transparent) 38%, transparent),
+        color-mix(in oklab, var(--tile-glow, transparent) 22%, transparent),
         transparent 100%
       ),
       var(--surface-grain-fine);
@@ -1880,7 +1874,7 @@ html[data-theme-id] [data-app-sidebar] {
     padding: 1px;
     pointer-events: none;
     background: radial-gradient(
-      22rem 10rem at 2.625rem 1.875rem,
+      22rem 10rem at 3rem 3rem,
       var(--usage-lit-strong),
       var(--usage-lit-mid) 40%,
       var(--usage-card-edge) 100%
@@ -1899,10 +1893,12 @@ html[data-theme-id] [data-app-sidebar] {
    own colour (--tile-color), and a wide, blurred dark shadow that sets it into the card. */
 @utility provider-tile {
   background-color: var(--tile-color);
+  /* Listed top first: a faint light frame, a soft dark shadow falling below the tile that sits
+     over the halo, then the halo itself. */
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.25),
-    0 0 34px 8px color-mix(in oklab, var(--tile-color) 46%, transparent),
-    0 3px 14px 2px rgb(0 0 0 / 0.45);
+    0 0 0 2px rgb(255 255 255 / 0.16),
+    0 3px 8px rgb(0 0 0 / 0.45),
+    0 0 26px 4px color-mix(in oklab, var(--tile-color) 22%, transparent);
 }
 
 /* The dimmed app behind the Usage window, in neutral black rather than the theme's tint. */
