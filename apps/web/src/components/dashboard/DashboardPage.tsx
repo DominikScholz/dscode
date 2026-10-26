@@ -10,7 +10,6 @@ import * as Schema from "effect/Schema";
 
 import { isElectron } from "../../env";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { cn } from "../../lib/utils";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -57,7 +56,6 @@ const DEFAULT_DASHBOARD_SECTION_FILTER: readonly DashboardSection[] = [
 ];
 
 export function DashboardPage() {
-  useEscapeToGoBack();
   // Scratch threads have no repository to graph.
   const groups = useSettingsProjectGroups().filter((group) => !group.isScratch);
   const threads = useThreadShells();

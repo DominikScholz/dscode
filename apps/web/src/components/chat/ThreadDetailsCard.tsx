@@ -123,7 +123,7 @@ export function ThreadDetailsCard({
   const card = (
     <div
       className={cn(
-        "relative isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-3xl bg-(--panel-surface) bg-(image:--panel-sheen) shadow-(--panel-drop) panel-edge",
+        "dropdown-glass isolate contain-paint grid max-h-full grid-rows-[minmax(0,1fr)] overflow-hidden rounded-2xl",
         mode === "popover" &&
           "max-h-[min(calc(100dvh-6.5rem),calc(var(--available-height,100dvh)-1rem))]",
       )}

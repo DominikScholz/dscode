@@ -39,6 +39,7 @@ export function useAppNavVariant() {
     select: (location) => new URLSearchParams(location.searchStr).get("nav"),
   });
   const requestedVariant = isAppNavVariant(requested) ? requested : null;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Persist URL navigation overrides to local storage across route changes.
   useEffect(() => {
     if (requestedVariant) setStoredVariant(requestedVariant);
   }, [requestedVariant, setStoredVariant]);

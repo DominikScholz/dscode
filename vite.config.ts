@@ -2,6 +2,7 @@ import "vite-plus/test/config";
 import { defineConfig } from "vite-plus";
 import * as NodeURL from "node:url";
 import { remoteCacheUrl } from "./infra/task-cache/src/remoteCache.ts";
+import { cachedTestTasks } from "./scripts/lib/cached-tests.ts";
 
 const DOM_TEST_ENVIRONMENT_ALLOWLIST: Array<string> = [];
 
@@ -89,6 +90,7 @@ const taskCacheConfig = {
 export default defineConfig({
   run: {
     cache: taskCacheConfig,
+    tasks: cachedTestTasks(process.env.T3_CACHED_TESTS),
   },
   resolve: {
     alias: {
@@ -214,6 +216,39 @@ export default defineConfig({
       perf: "warn",
     },
     rules: {
+      "oxc/no-accumulating-spread": "error",
+      "eslint/no-control-regex": "off",
+      "typescript/no-this-alias": "off",
+      "unicorn/prefer-add-event-listener": "off",
+      "unicorn/prefer-string-starts-ends-with": "off",
+      "unicorn/prefer-set-has": "off",
+      "unicorn/prefer-array-find": "off",
+      "unicorn/no-new-array": "off",
+      "unicorn/no-array-reverse": "off",
+      "react/no-object-type-as-default-prop": "off",
+      "react/jsx-no-constructed-context-values": "off",
+      "react/memo-dependencies": "error",
+      "react/purity": "error",
+      "react/refs": "error",
+      "react/exhaustive-effect-dependencies": "error",
+      "react/set-state-in-effect": "error",
+      "react/immutability": "error",
+      "react/no-array-index-key": "error",
+      "react/no-unstable-nested-components": "error",
+      "react/static-components": "error",
+      "react/capitalized-calls": "error",
+      "typescript/no-extraneous-class": "error",
+      "eslint/no-empty-pattern": "error",
+      "eslint/no-new": "error",
+      "unicorn/no-useless-spread": "error",
+      "eslint/no-unused-vars": [
+        "error",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_", caughtErrorsIgnorePattern: "^_" },
+      ],
+      "eslint/no-unsafe-optional-chaining": "error",
+      "eslint/no-unneeded-ternary": "error",
+      "unicorn/no-useless-fallback-in-spread": "error",
+      "unicorn/require-module-specifiers": "error",
       "unicorn/no-array-sort": "off",
       "unicorn/consistent-function-scoping": "off",
       "oxc/no-map-spread": "off",
@@ -244,7 +279,7 @@ export default defineConfig({
         { paths: [...RESTRICTED_IMPORT_PATHS, RESTRICTED_PULL_REQUEST_GLYPH_IMPORTS] },
       ],
       "t3code/no-global-process-runtime": "error",
-      "t3code/no-inline-schema-compile": "warn",
+      "t3code/no-inline-schema-compile": "error",
       "t3code/no-low-value-comments": "error",
       "t3code/no-manual-effect-runtime-in-tests": "error",
       "t3code/no-native-title-tooltip": "error",
@@ -279,28 +314,6 @@ export default defineConfig({
       {
         files: ["apps/web/src/**/*.browser.test.{ts,tsx}"],
         rules: { "t3code/no-frame-waits-in-browser-tests": "error" },
-      },
-      {
-        // Burn-down list: these files still have polling loops, so they stay at "warn".
-        // Remove a file when you convert its loops. New polling loops in all other
-        // test files fail lint. Do not add new files to this list.
-        files: [
-          "apps/mobile/src/features/agent-awareness/remoteRegistration.test.ts",
-          "apps/server/src/background/HostPowerMonitor.test.ts",
-          "apps/server/src/orchestration-v2/Adapters/AcpAdapterV2.test.ts",
-          "apps/server/src/orchestration-v2/FoundationPersistence.test.ts",
-          "apps/server/src/project/ProjectEnrichmentService.test.ts",
-          "apps/server/src/project/ProjectService.test.ts",
-          "apps/server/src/scheduledTasks/ScheduledTaskService.webhook.test.ts",
-          "apps/server/src/usage/UsageService.test.ts",
-          "packages/client-runtime/src/connection/supervisor.test.ts",
-          "packages/client-runtime/src/rpc/client.test.ts",
-          "packages/client-runtime/src/rpc/session.test.ts",
-          "packages/client-runtime/src/state/shell-sync.test.ts",
-          "packages/client-runtime/src/state/threads-sync.test.ts",
-          "packages/shared/src/atomicWrite.test.ts",
-        ],
-        rules: { "t3code/no-polling-loop-in-tests": "warn" },
       },
       {
         files: ["apps/**/src/**", "packages/**/src/**"],
@@ -550,10 +563,10 @@ export default defineConfig({
           "react/jsx-no-constructed-context-values": "off",
           "react/memo-dependencies": "error",
           "react/preserve-manual-memoization": "error",
-          // oxlint 1.88 treats `new Date()` as impure (oxc#26894) and also flags it inside event
-          // handlers (oxc#27309). The compiler we ship (oxc-transform-react) still compiles
-          // those files, and reactCompilerCoverage.test.ts fails on real bailouts.
-          "react/purity": "warn",
+          // Render-time clock reads use @t3tools/client-runtime/clock or state seeded with the
+          // time; any other read carries a suppression that says why. oxlint also flags time reads
+          // inside event handlers (oxc#27309); those suppressions cite it.
+          "react/purity": "error",
           "react/refs": "error",
           "react/set-state-in-effect": "error",
           "react/set-state-in-render": "error",
@@ -582,6 +595,10 @@ export default defineConfig({
         // Directives hide bailouts from mobile's compiler-coverage check; retain hooks until its allowlist is empty.
         files: ["apps/mobile/src/**/*.{ts,tsx}"],
         rules: { "t3code/no-manual-memo": ["error", { allowMemoHooks: true }] },
+      },
+      {
+        files: ["apps/web/src/**", "apps/mobile/src/**", "packages/*/src/**"],
+        rules: { "t3code/react-effect-budget": "error" },
       },
       {
         // React Compiler caches use* functions only if they call a hook.

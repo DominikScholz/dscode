@@ -17,6 +17,7 @@ let lastProjectGraph: ProjectGraphVisit | null = null;
 /** Keeps the graph URL, with its checkout and Git source, for the app navigation to return to. */
 export function useRememberProjectGraph(projectKey: string) {
   const href = useLocation({ select: (location) => location.href });
+  // oxlint-disable-next-line t3code/react-effect-budget -- Record committed graph URLs for navigation from other routes.
   useEffect(() => {
     lastProjectGraph = { projectKey, href };
   }, [projectKey, href]);

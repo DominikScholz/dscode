@@ -319,6 +319,7 @@ function AuthorAvatar({ node }: { node: GraphNode }) {
   const direct = [author.avatarUrl, author.gravatarUrl].find((url) => url && !failed.includes(url));
   const email = node.author?.email.trim().toLowerCase() ?? "";
   const [resolved, setResolved] = useState<{ email: string; url: string | null } | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Resolve missing author avatars and discard responses after the row changes.
   useEffect(() => {
     if (direct || !email) return;
     let active = true;

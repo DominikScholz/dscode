@@ -114,8 +114,11 @@ export const layerAnalytics = Layer.effect(
   Effect.gen(function* () {
     const analytics = yield* AnalyticsService.AnalyticsService;
     return {
-      record: (properties: Readonly<Record<string, unknown>>) =>
-        analytics.record("provider.turn.completed", properties),
+      record: Effect.fn("ProviderTurnAnalytics.record")(function (
+        properties: Readonly<Record<string, unknown>>,
+      ) {
+        return analytics.record("provider.turn.completed", properties);
+      }),
     };
   }),
 );
@@ -830,6 +833,7 @@ export const layer: Layer.Layer<
                   ),
                 ),
               ),
+              // @effect-diagnostics-next-line flatMapConditionalToFilterOrFail:off - The predicate narrows the captured event for the subagent update.
               Effect.flatMap((storedEvents) =>
                 storedEvents.length === 0 || input.event.type !== "subagent.updated"
                   ? Effect.succeed(storedEvents)

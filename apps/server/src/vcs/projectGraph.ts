@@ -19,18 +19,16 @@ export const readProjectGraph = Effect.fn("GitVcsDriver.projectGraph")(function*
       timeoutMs: 30_000,
       maxOutputBytes: 16 * 1024 * 1024,
     }).pipe(
-      Effect.flatMap((result) =>
-        result.stdoutTruncated
-          ? Effect.fail(
-              new GitCommandError({
-                operation: "GitVcsDriver.projectGraph",
-                cwd,
-                command: "git",
-                detail:
-                  "The repository graph exceeds the output limit. Refusing to display an incomplete branch inventory.",
-              }),
-            )
-          : Effect.succeed(result),
+      Effect.filterOrFail(
+        (result) => !result.stdoutTruncated,
+        () =>
+          new GitCommandError({
+            operation: "GitVcsDriver.projectGraph",
+            cwd,
+            command: "git",
+            detail:
+              "The repository graph exceeds the output limit. Refusing to display an incomplete branch inventory.",
+          }),
       ),
     );
   const [refs, worktreeResult, defaultResult, currentResult] = yield* Effect.all(

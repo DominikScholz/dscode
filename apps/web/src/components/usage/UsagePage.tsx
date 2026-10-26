@@ -82,6 +82,7 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { Popover, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import { WorkspacePageContainer } from "../WorkspacePageContainer";
+import { WorkspaceBreadcrumbText } from "../WorkspaceBreadcrumb";
 import { UsageLimitsSection } from "./UsageLimits";
 import { UsagePriceOverrides } from "./UsagePriceOverrides";
 import { UsageProviderChart, usageChartSlot } from "./UsageProviderChart";
@@ -400,6 +401,25 @@ export function UsagePage() {
       </div>
       <div className="ms-auto hidden shrink-0 items-center gap-2 @4xl/usage-header:flex">
         <ToggleGroup
+          aria-label="Usage period"
+          variant="segmented"
+          value={[String(windowDays)]}
+          disabled={showingLimits}
+          // Limits are always current; the New design hides the period instead of greying it.
+          // It sits before the metric tabs so hiding it never moves them.
+          className={showingLimits ? "redesign:hidden" : undefined}
+          onValueChange={(next) => {
+            const value = next[0];
+            if (value) selectWindow(Number(value));
+          }}
+        >
+          {WINDOW_OPTIONS.map((option) => (
+            <Toggle key={option.days} value={String(option.days)} title={shortcutTitle(option)}>
+              {option.label}
+            </Toggle>
+          ))}
+        </ToggleGroup>
+        <ToggleGroup
           aria-label="Usage metric"
           variant="pill"
           size="sm"
@@ -418,6 +438,33 @@ export function UsagePage() {
         {refreshButton}
       </div>
       <div className="ms-auto flex shrink-0 items-center gap-1 @4xl/usage-header:hidden">
+        <Select
+          value={String(windowDays)}
+          disabled={showingLimits}
+          onValueChange={(value) => selectWindow(Number(value))}
+        >
+          <SelectTrigger
+            aria-label="Usage period"
+            size="compact"
+            variant="ghost"
+            className={cn("w-auto min-w-0", showingLimits && "redesign:hidden")}
+          >
+            <SelectValue>
+              {WINDOW_OPTIONS.find((option) => option.days === windowDays)?.label}
+            </SelectValue>
+          </SelectTrigger>
+          <SelectPopup align="end" alignItemWithTrigger={false}>
+            {WINDOW_OPTIONS.map((option) => (
+              <SelectItem
+                key={option.days}
+                value={String(option.days)}
+                title={shortcutTitle(option)}
+              >
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectPopup>
+        </Select>
         <Select
           value={metric}
           onValueChange={(value) => {
@@ -1328,16 +1375,21 @@ function UsageEnvironmentFilter({
 
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
-        <span className="min-w-0 truncate">{label}</span>
-        {showUsageStatus && hasIssue ? (
-          <CircleAlertIcon
-            className="text-warning-foreground"
-            aria-label="Some environments could not report usage"
-          />
-        ) : (
-          <ChevronDownIcon aria-hidden />
-        )}
+      <MenuTrigger render={<InlineButton />} className="group/usage-environment min-w-0 max-w-full">
+        <WorkspaceBreadcrumbText>{label}</WorkspaceBreadcrumbText>
+        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
+          {showUsageStatus && hasIssue ? (
+            <CircleAlertIcon
+              className="size-3.5 text-warning-foreground"
+              aria-label="Some environments could not report usage"
+            />
+          ) : (
+            <ChevronDownIcon
+              className="size-3.5 opacity-0 transition-opacity group-hover/usage-environment:opacity-100 group-focus-visible/usage-environment:opacity-100 group-data-popup-open/usage-environment:opacity-100 redesign:opacity-60 redesign:group-hover/usage-environment:opacity-100 redesign:group-focus-visible/usage-environment:opacity-100 redesign:group-data-popup-open/usage-environment:opacity-100"
+              aria-hidden
+            />
+          )}
+        </span>
       </MenuTrigger>
       <MenuPopup align="start">
         <MenuCheckboxItem
@@ -1445,7 +1497,10 @@ function UsageProviderFilter({
     <Menu>
       <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
         <span className="min-w-0 truncate">{label}</span>
-        <ChevronDownIcon aria-hidden />
+        <ChevronDownIcon
+          className="size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover/usage-provider:opacity-100 group-focus-visible/usage-provider:opacity-100 group-data-popup-open/usage-provider:opacity-100 redesign:opacity-60 redesign:group-hover/usage-provider:opacity-100 redesign:group-focus-visible/usage-provider:opacity-100 redesign:group-data-popup-open/usage-provider:opacity-100"
+          aria-hidden
+        />
       </MenuTrigger>
       <MenuPopup align="start">
         <MenuCheckboxItem

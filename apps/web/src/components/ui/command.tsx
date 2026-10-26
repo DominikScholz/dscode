@@ -1,5 +1,6 @@
 import { Dialog as CommandDialogPrimitive } from "@base-ui/react/dialog";
 import { SearchIcon } from "lucide-react";
+import { useRef } from "react";
 import type * as React from "react";
 import { cn } from "~/lib/utils";
 import {
@@ -55,11 +56,15 @@ function CommandDialogPopup({
 }: CommandDialogPrimitive.Popup.Props & {
   onBackdropPointerDown?: React.PointerEventHandler<HTMLDivElement>;
 }) {
+  const popupRef = useRef<HTMLDivElement>(null);
   return (
     <CommandDialogPortal>
       <CommandDialogBackdrop onPointerDown={onBackdropPointerDown} />
       <CommandDialogViewport>
         <CommandDialogPrimitive.Popup
+          // The first tabbable can be an input addon, such as a submenu's Back button.
+          initialFocus={() => popupRef.current?.querySelector("input") ?? true}
+          ref={popupRef}
           className={cn(
             DIALOG_POPUP_BASE_CLASS,
             "popup-surface panel-edge pointer-events-auto max-h-105 max-w-xl rounded-3xl text-foreground",
@@ -214,7 +219,7 @@ function CommandFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       className={cn(
-        "relative flex items-center justify-between gap-2 border-t border-border px-[var(--command-content-inset)] py-2.5 font-medium text-muted-foreground text-xs [&_[data-slot=kbd-group]]:font-sans [&_[data-slot=kbd]]:bg-(--popup-row-selected) [&_[data-slot=kbd]]:text-foreground [&_[data-slot=kbd]]:shadow-(--panel-drop) [&_[data-slot=kbd]]:ring-0",
+        "relative flex items-center justify-between gap-2 rounded-b-[calc(var(--radius-2xl)-1px)] bg-foreground/[0.025] redesign:border-t redesign:border-foreground/[0.07] px-[var(--command-content-inset)] py-2.5 font-medium text-sm text-muted-foreground [&_[data-slot=kbd-group]]:font-sans [&_[data-slot=kbd]]:bg-foreground/[0.08] [&_[data-slot=kbd]]:text-foreground [&_[data-slot=kbd]]:ring-0",
         className,
       )}
       data-slot="command-footer"
