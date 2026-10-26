@@ -42,14 +42,13 @@ import { OpenAI } from "../Icons";
 import { Alert, AlertTitle } from "../ui/alert";
 import { Popover, PopoverCreateHandle, PopoverPopup, PopoverTrigger } from "../ui/popover";
 import {
-  PaceIcon,
   ResetCreditDialog,
   barColor,
   usePaceMark,
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
-import { LeftFigure, LIMIT_ROW_CLASS, LimitRow, StatLabel } from "./UsageLimitPace";
+import { LIMIT_ROW_CLASS, LimitFigure, LimitRow } from "./UsageLimitPace";
 
 function accountInitials(email: string): string {
   const [local = "", domain = ""] = email.split("@");
@@ -558,19 +557,22 @@ function PoolWindowCard({
   }
   return (
     <div className={LIMIT_ROW_CLASS}>
-      <StatLabel label={label ?? pool.label} description={description} />
-      <div className="order-3 col-span-2 md:order-none md:col-span-1">
-        <PoolBar pool={pool} color={color} now={now} />
-      </div>
-      <LeftFigure
+      <LimitFigure
+        label={label ?? pool.label}
+        description={description}
         percent={pool.remainingPercent}
         note={
-          <span className="inline-flex items-center gap-1.5">
-            {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
-            {nextRefill && pool.columns.length > 1 ? `↻ +${nextRefill.restoresPercent}%` : null}
-          </span>
+          nextRefill && pool.columns.length > 1 ? (
+            <span className="text-xs font-medium text-foreground tabular-nums">
+              ↻ +{nextRefill.restoresPercent}%
+            </span>
+          ) : null
         }
       />
+      {/* Each segment carries its own reset, so the bar takes the reset column too. */}
+      <div className="col-span-2 md:col-span-2">
+        <PoolBar pool={pool} color={color} now={now} />
+      </div>
     </div>
   );
 }
@@ -639,35 +641,31 @@ function BankedResets({
   readonly accounts: readonly LimitAccount[];
   readonly now: number;
 }) {
-  const banked = accounts.filter(
-    (account) => (account.limits.resetCredits?.availableCount ?? 0) > 0,
-  );
+  const banked = accounts.flatMap((account) => {
+    const credits = account.limits.resetCredits;
+    return credits && credits.availableCount > 0 ? [{ account, credits }] : [];
+  });
   const [only] = banked;
   if (only === undefined) return null;
-  const count = banked.reduce(
-    (total, account) => total + (account.limits.resetCredits?.availableCount ?? 0),
-    0,
-  );
-  const expiries = banked.flatMap((account) => {
-    const at = Date.parse(account.limits.resetCredits?.nextExpiresAt ?? "");
+  const count = banked.reduce((total, entry) => total + entry.credits.availableCount, 0);
+  const expiries = banked.flatMap(({ credits }) => {
+    const at = Date.parse(credits.nextExpiresAt ?? "");
     return Number.isFinite(at) ? [at] : [];
   });
   const expiresIn = expiries.length > 0 ? formatDuration(Math.min(...expiries) - now) : null;
   return (
-    <span className="flex items-center gap-3 text-sm text-foreground/60 md:ms-auto">
-      <span>
-        Banked resets
-        <span className="ms-1.5 inline-flex items-center gap-1 align-[-0.125em] font-semibold text-foreground tabular-nums">
-          <TicketIcon aria-hidden className="size-3.5" />
-          {count}
-        </span>
+    <span className="flex items-center gap-3 text-sm md:ms-auto">
+      <span className="inline-flex items-center gap-1.5 tabular-nums">
+        <TicketIcon aria-hidden className="size-3.5 text-foreground/60" />
+        <span className="font-semibold text-foreground">{count}</span>
+        <span className="sr-only">{count === 1 ? "reset credit" : "reset credits"} banked</span>
         {expiresIn ? (
-          <span className="ms-1.5 text-xs text-foreground/45">next expires in {expiresIn}</span>
+          <span className="text-xs text-foreground/52">· next expires in {expiresIn}</span>
         ) : null}
       </span>
       {/* Pooled accounts redeem from their own segment, where it is clear which one spends. */}
-      {banked.length === 1 && only.redeem ? (
-        <UseResetCredit account={only} redeemAt={only.redeem} />
+      {banked.length === 1 && only.account.redeem ? (
+        <UseResetCredit account={only.account} redeemAt={only.account.redeem} />
       ) : null}
     </span>
   );
@@ -694,7 +692,7 @@ function UseResetCredit({
           disabled={redeem.busy || !redeem.canManageProviders}
           onClick={() => redeem.setConfirming(true)}
         >
-          {redeem.busy ? "Using…" : "Use one"}
+          {redeem.busy ? "Using…" : "Use reset"}
         </Button>
       )}
       <ResetCreditDialog

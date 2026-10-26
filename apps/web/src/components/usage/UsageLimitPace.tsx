@@ -69,44 +69,36 @@ export function StatLabel({
   );
 }
 
-/** What is left, large, with one quiet line under it. */
-export function LeftFigure({
+/** A limit's name over what is left, large, as main shows it; a warning only when it runs out. */
+export function LimitFigure({
+  label,
+  description,
   percent,
   note,
-  tone = "muted",
 }: {
+  readonly label: string;
+  readonly description?: string | undefined;
   readonly percent: number;
   readonly note?: ReactNode;
-  readonly tone?: "muted" | "warning" | "destructive";
 }) {
   return (
-    <span className="order-2 flex flex-col items-end text-end md:order-none md:ps-8">
-      <span className="text-figure leading-5 font-semibold text-foreground tabular-nums">
-        {Math.round(percent)}%
-        <span className="ms-1 text-xs font-normal text-foreground/58">left</span>
-      </span>
-      {note ? (
-        <span
-          className={cn(
-            "mt-1 text-xs leading-4",
-            tone === "destructive"
-              ? "text-destructive-foreground"
-              : tone === "warning"
-                ? "font-medium whitespace-nowrap text-destructive-foreground"
-                : "text-foreground/52",
-          )}
-        >
-          {note}
+    <div className="flex min-w-0 flex-col gap-1">
+      <StatLabel label={label} description={description} />
+      <span className="flex items-baseline gap-2">
+        <span className="text-3xl leading-none font-semibold text-foreground tabular-nums">
+          {Math.round(percent)}%
         </span>
-      ) : null}
-    </span>
+        <span className="text-sm text-foreground/58">left</span>
+      </span>
+      {note}
+    </div>
   );
 }
 
 export const LIMIT_ROW_CLASS =
-  "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-x-6 gap-y-3 py-5 md:grid-cols-[10rem_minmax(0,1fr)_12rem] md:gap-x-0";
+  "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-6 gap-y-3 py-5 md:grid-cols-[10rem_minmax(0,1fr)_6rem] md:gap-x-0";
 
-/** One row of a provider's limits: its name, the bar upstream draws, and what is left. */
+/** One row of a provider's limits: what is left, the bar, and when it resets. */
 export function LimitRow({
   label,
   description,
@@ -132,6 +124,8 @@ export function LimitRow({
   const runsOutEarly = forecasting && !reached && runsOutAt !== null;
   const leftAtReset = !forecasting ? left : runsOutEarly ? 0 : Math.max(0, 100 - projectedPercent);
   const timeLeft = Math.round((1 - elapsed) * 100);
+  // Points spent beyond even pace; the bar tints that stretch rather than labelling it.
+  const behind = forecasting && !reached ? Math.max(0, timeLeft - left) : 0;
   const [barRef, paceMark] = usePaceMark(timeLeft);
   const endMs = Date.parse(window.resetsAt ?? "");
   const forecast = reached
@@ -142,36 +136,10 @@ export function LimitRow({
         ? `Runs out ${windowTime(runsOutAt, now, hour12)}`
         : `About ${Math.round(leftAtReset)}% at reset`;
 
-  // Two baseline rows: name and what is left, then the reset and the forecast, with the bar
-  // spanning both between them.
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-x-6 gap-y-1 py-6 md:grid-cols-[10rem_minmax(0,1fr)_12rem] md:gap-x-0">
-      <div className="col-start-1 row-start-1 min-w-0">
-        <StatLabel label={label} description={description} />
-      </div>
-      {Number.isFinite(endMs) ? (
-        <span className="col-start-1 row-start-2 text-xs leading-none text-foreground/52 tabular-nums">
-          Resets in {formatDuration(endMs - now)}
-        </span>
-      ) : null}
-      <span className="col-start-2 row-start-1 justify-self-end text-figure leading-none font-semibold text-foreground tabular-nums md:col-start-3">
-        {Math.round(left)}%<span className="ms-1 text-xs font-normal text-foreground/58">left</span>
-      </span>
-      <span
-        className={cn(
-          "col-start-2 row-start-2 justify-self-end text-xs leading-none md:col-start-3",
-          reached || runsOutEarly
-            ? "inline-flex items-center gap-1.5 font-medium whitespace-nowrap text-destructive-foreground"
-            : "text-foreground/52",
-        )}
-      >
-        {reached || runsOutEarly ? (
-          <AlertTriangleIcon aria-hidden className="-my-1 size-3.5 shrink-0" />
-        ) : null}
-        {forecast}
-      </span>
-      {/* Line boxes carry space above the capitals; the nudge centres the bar on the visible text. */}
-      <div className="col-span-2 row-start-3 self-center md:col-span-1 md:col-start-2 md:row-span-2 md:row-start-1 md:translate-y-0.5">
+    <div className={LIMIT_ROW_CLASS}>
+      <LimitFigure label={label} description={description} percent={left} />
+      <div className="relative order-3 col-span-2 md:order-none md:col-span-1">
         <Tooltip>
           <TooltipTrigger
             render={
@@ -185,25 +153,18 @@ export function LimitRow({
             }
           >
             <div className="absolute inset-0" style={paceMark?.gap}>
-              <div className="absolute inset-x-0 inset-y-1.75 rounded-full bg-foreground/8" />
+              <div className="absolute inset-x-0 inset-y-1.75 rounded-full limit-track" />
+              {behind >= 2 ? (
+                <div
+                  className="absolute inset-y-1.75 pace-deficit"
+                  style={{ left: `${left}%`, width: `${behind}%` }}
+                />
+              ) : null}
               {left > 0 ? (
                 <div
-                  className="absolute inset-y-1.75 left-0 overflow-hidden rounded-full"
-                  style={{ width: `${left}%` }}
-                >
-                  <div
-                    className="absolute inset-y-0 left-0"
-                    style={{ width: `${(leftAtReset / left) * 100}%`, backgroundColor: color }}
-                  />
-                  <div
-                    className="absolute inset-y-0 right-0"
-                    style={{
-                      width: `${100 - (leftAtReset / left) * 100}%`,
-                      // Projected use is striped in full colour.
-                      backgroundImage: `repeating-linear-gradient(135deg, ${color} 0 2.5px, transparent 2.5px 6px)`,
-                    }}
-                  />
-                </div>
+                  className="absolute inset-y-1.75 left-0 rounded-full limit-fill"
+                  style={{ width: `${left}%`, backgroundColor: color }}
+                />
               ) : null}
             </div>
             {paceMark ? (
@@ -217,7 +178,14 @@ export function LimitRow({
           <TooltipPopup side="top">
             <div className="flex max-w-64 flex-col gap-0.5 text-start">
               <span className="text-foreground">
-                {Math.round(left)}% left · {timeLeft}% of the window left
+                {forecast} · {timeLeft}% of the window left
+              </span>
+              <span className="text-muted-foreground">
+                {behind >= 2
+                  ? `${Math.round(behind)}% behind even pace`
+                  : left > timeLeft
+                    ? `${Math.round(left - timeLeft)}% ahead of even pace`
+                    : "On even pace"}
               </span>
               {Number.isFinite(endMs) ? (
                 <span className="text-muted-foreground">
@@ -225,13 +193,26 @@ export function LimitRow({
                 </span>
               ) : null}
               <span className="text-muted-foreground">
-                The line is where even spending would be. The striped end is what your pace so far
-                uses before the reset. {forecast}.
+                The line is where even spending would be; the red glow is how far past it you are.
               </span>
             </div>
           </TooltipPopup>
         </Tooltip>
+        {/* Hangs below the bar so a warning never makes its row taller than the others. */}
+        {reached || runsOutEarly ? (
+          <span className="absolute top-full inline-flex items-center gap-1.5 text-xs font-medium whitespace-nowrap text-destructive-foreground">
+            <AlertTriangleIcon aria-hidden className="size-3.5 shrink-0" />
+            {forecast}
+          </span>
+        ) : null}
       </div>
+      {Number.isFinite(endMs) ? (
+        <span className="justify-self-end text-xs text-foreground/60 tabular-nums">
+          <span aria-hidden>↻ </span>
+          <span className="sr-only">Resets in </span>
+          {formatDuration(endMs - now)}
+        </span>
+      ) : null}
     </div>
   );
 }
