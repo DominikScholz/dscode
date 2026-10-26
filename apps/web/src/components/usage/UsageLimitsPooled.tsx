@@ -587,11 +587,6 @@ function ProviderHeader({
   readonly now: number;
 }) {
   const plans = [...new Set(pool.accounts.flatMap((account) => account.plan ?? []))];
-  const nextReset = Math.min(
-    ...pool.windows.flatMap((window) =>
-      window.resets.map((reset) => reset.at).filter((at) => at > now),
-    ),
-  );
   return (
     // The tile sits as far from the card's edge as from the top and bottom, and as far again
     // from the name, as on Fey's position card.
@@ -631,16 +626,84 @@ function ProviderHeader({
             <span className="ms-1.5 font-semibold text-foreground">{pool.accounts.length}</span>
           </span>
         ) : null}
-        {Number.isFinite(nextReset) ? (
-          <span className="text-sm text-foreground/60 md:ms-auto">
-            Next reset
-            <span className="ms-1.5 font-semibold text-foreground">
-              in {formatDuration(nextReset - now)}
-            </span>
-          </span>
-        ) : null}
+        <BankedResets accounts={pool.accounts} now={now} />
       </span>
     </div>
+  );
+}
+
+function BankedResets({
+  accounts,
+  now,
+}: {
+  readonly accounts: readonly LimitAccount[];
+  readonly now: number;
+}) {
+  const banked = accounts.filter(
+    (account) => (account.limits.resetCredits?.availableCount ?? 0) > 0,
+  );
+  const [only] = banked;
+  if (only === undefined) return null;
+  const count = banked.reduce(
+    (total, account) => total + (account.limits.resetCredits?.availableCount ?? 0),
+    0,
+  );
+  const expiries = banked.flatMap((account) => {
+    const at = Date.parse(account.limits.resetCredits?.nextExpiresAt ?? "");
+    return Number.isFinite(at) ? [at] : [];
+  });
+  const expiresIn = expiries.length > 0 ? formatDuration(Math.min(...expiries) - now) : null;
+  return (
+    <span className="flex items-center gap-3 text-sm text-foreground/60 md:ms-auto">
+      <span>
+        Banked resets
+        <span className="ms-1.5 inline-flex items-center gap-1 align-[-0.125em] font-semibold text-foreground tabular-nums">
+          <TicketIcon aria-hidden className="size-3.5" />
+          {count}
+        </span>
+        {expiresIn ? (
+          <span className="ms-1.5 text-xs text-foreground/45">next expires in {expiresIn}</span>
+        ) : null}
+      </span>
+      {/* Pooled accounts redeem from their own segment, where it is clear which one spends. */}
+      {banked.length === 1 && only.redeem ? (
+        <UseResetCredit account={only} redeemAt={only.redeem} />
+      ) : null}
+    </span>
+  );
+}
+
+function UseResetCredit({
+  account,
+  redeemAt,
+}: {
+  readonly account: LimitAccount;
+  readonly redeemAt: NonNullable<LimitAccount["redeem"]>;
+}) {
+  const redeem = useResetCredit(redeemAt.environmentId, redeemAt.input);
+  return (
+    <>
+      {redeem.status ? (
+        <span role="status" className="text-xs text-foreground/60">
+          <AccountName account={account} className="font-medium text-foreground" /> {redeem.status}
+        </span>
+      ) : (
+        <Button
+          variant="ghost-muted"
+          size="xs"
+          disabled={redeem.busy || !redeem.canManageProviders}
+          onClick={() => redeem.setConfirming(true)}
+        >
+          {redeem.busy ? "Using…" : "Use one"}
+        </Button>
+      )}
+      <ResetCreditDialog
+        open={redeem.confirming}
+        onOpenChange={redeem.setConfirming}
+        onConfirm={() => void redeem.redeem()}
+        disabled={!redeem.canManageProviders}
+      />
+    </>
   );
 }
 

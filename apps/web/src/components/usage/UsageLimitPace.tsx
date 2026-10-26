@@ -149,9 +149,11 @@ export function LimitRow({
       <div className="col-start-1 row-start-1 min-w-0">
         <StatLabel label={label} description={description} />
       </div>
-      <span className="col-start-1 row-start-2 text-xs leading-none text-foreground/52">
-        Resets {windowTime(endMs, now, hour12)}
-      </span>
+      {Number.isFinite(endMs) ? (
+        <span className="col-start-1 row-start-2 text-xs leading-none text-foreground/52 tabular-nums">
+          Resets in {formatDuration(endMs - now)}
+        </span>
+      ) : null}
       <span className="col-start-2 row-start-1 justify-self-end text-figure leading-none font-semibold text-foreground tabular-nums md:col-start-3">
         {Math.round(left)}%<span className="ms-1 text-xs font-normal text-foreground/58">left</span>
       </span>
@@ -217,6 +219,11 @@ export function LimitRow({
               <span className="text-foreground">
                 {Math.round(left)}% left · {timeLeft}% of the window left
               </span>
+              {Number.isFinite(endMs) ? (
+                <span className="text-muted-foreground">
+                  Resets {windowTime(endMs, now, hour12)}
+                </span>
+              ) : null}
               <span className="text-muted-foreground">
                 The line is where even spending would be. The striped end is what your pace so far
                 uses before the reset. {forecast}.
