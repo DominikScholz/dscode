@@ -156,13 +156,13 @@ export function LimitRow({
               <div className="absolute inset-x-0 inset-y-1.75 rounded-full limit-track" />
               {behind >= 2 ? (
                 <div
-                  className="absolute inset-y-1.75 pace-deficit"
+                  className="absolute inset-y-1.75 pace-shortfall"
                   style={{ left: `${left}%`, width: `${behind}%` }}
                 />
               ) : null}
               {left > 0 ? (
                 <div
-                  className="absolute inset-y-1.75 left-0 rounded-full limit-fill"
+                  className="absolute inset-y-1.75 left-0 rounded-full"
                   style={{ width: `${left}%`, backgroundColor: color }}
                 />
               ) : null}
@@ -170,7 +170,10 @@ export function LimitRow({
             {paceMark ? (
               <span
                 aria-hidden
-                className="absolute inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full bg-foreground"
+                className={cn(
+                  "absolute inset-y-0.5 w-0.5 -translate-x-1/2 rounded-full",
+                  behind >= 2 ? "bg-destructive" : "bg-foreground",
+                )}
                 style={paceMark.tick}
               />
             ) : null}
@@ -193,7 +196,7 @@ export function LimitRow({
                 </span>
               ) : null}
               <span className="text-muted-foreground">
-                The line is where even spending would be; the red glow is how far past it you are.
+                The line is where even spending would be; red is how far past it you are.
               </span>
             </div>
           </TooltipPopup>
