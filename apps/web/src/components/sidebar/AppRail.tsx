@@ -123,7 +123,7 @@ function AppRailItem({ item }: { item: AppNavItem }) {
             aria-current={item.active ? "page" : undefined}
             onClick={item.onClick}
             className={cn(
-              "flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-[18px]",
+              "flex size-9 cursor-pointer items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-[18px]",
               item.active
                 ? "relative bg-(--panel-surface) text-foreground panel-edge"
                 : "hover:bg-(--panel-surface) hover:text-foreground",
@@ -154,9 +154,9 @@ export const AppRail = memo(function AppRail({ seamless }: { seamless: boolean }
         // Without a visible edge the icons hug the sidebar, so the gap to the
         // thread cards matches the gap to the window edge. The canvas fill is
         // still opaque: a collapsed sidebar tucks its edge under the rail.
-        seamless ? "items-end bg-background" : "items-center",
+        seamless ? "items-end bg-background surface-grain" : "items-center",
         !seamless &&
-          "bg-(--rail-surface) shadow-(--rail-shadow) after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-(image:--rail-edge)",
+          "bg-(--rail-surface) surface-grain shadow-(--rail-shadow) after:pointer-events-none after:absolute after:inset-y-0 after:right-0 after:w-px after:bg-(image:--rail-edge)",
       )}
     >
       {primary.map((item) => (
@@ -178,7 +178,7 @@ function SidebarNavMenuItem({ item }: { item: AppNavItem }) {
       aria-current={item.active ? "page" : undefined}
       onClick={item.onClick}
       className={cn(
-        "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-4 [&_svg]:shrink-0",
+        "flex h-8 w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 text-left text-sm outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-4 [&_svg]:shrink-0",
         item.active
           ? "relative bg-(--panel-surface) text-foreground panel-edge"
           : "text-muted-foreground hover:bg-(--panel-surface) hover:text-foreground",

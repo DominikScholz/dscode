@@ -131,7 +131,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             className={cn(
               // Same tile as send, but dark and monochrome: a raised panel chip
               // with a light stop square, so it never competes with send.
-              "relative flex shrink-0 cursor-pointer items-center justify-center rounded-xl bg-(--panel-surface-hover) text-foreground shadow-(--panel-drop) panel-edge squircle transition-colors duration-150 hover:bg-(--panel-surface-active) disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none",
+              "relative flex shrink-0 cursor-pointer items-center justify-center rounded-xl bg-(--panel-surface-hover) text-foreground shadow-(--panel-drop) panel-edge transition-colors duration-150 hover:bg-(--panel-surface-active) disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-9 sm:size-8",
             )}
             {...pointerFocusProps}
@@ -307,7 +307,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
       type={showResume ? "button" : "submit"}
       className={cn(
         // The composer's focal control: a soft off-white tile with a dark arrow.
-        "relative isolate flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-foreground/90 text-background shadow-(--panel-drop) squircle transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-foreground disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none sm:h-8 sm:w-8 [&_svg]:pointer-events-none",
+        "relative isolate flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-foreground/90 text-background shadow-(--panel-drop) transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-foreground disabled:pointer-events-none disabled:bg-foreground/8 disabled:text-foreground/40 disabled:shadow-none sm:h-8 sm:w-8 [&_svg]:pointer-events-none",
       )}
       {...pointerFocusProps}
       onClick={showResume ? onResume : onSubmitMessage}
@@ -358,7 +358,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             <button
               type="button"
               className={cn(
-                "relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 font-medium text-xs tabular-nums outline-none squircle transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 sm:px-2.5 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+                "relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 font-medium text-xs tabular-nums outline-none transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 sm:px-2.5 [&_svg]:pointer-events-none [&_svg]:size-3.5",
                 keepFullHistory
                   ? "text-muted-foreground hover:bg-(--panel-surface-hover) hover:text-foreground"
                   : "bg-(--panel-surface-hover) bg-(image:--panel-glow-warning) text-foreground shadow-(--panel-drop) panel-edge [--panel-edge-gradient:var(--panel-edge-warning)] hover:bg-(--panel-surface-active)",

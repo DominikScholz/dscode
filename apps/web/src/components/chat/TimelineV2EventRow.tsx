@@ -136,7 +136,7 @@ export function V2EventTimelineRow({ row }: { row: Extract<TimelineRow, { kind: 
   return (
     <section
       className={cn(
-        "rounded-2xl border px-4 py-3 squircle",
+        "rounded-2xl border px-4 py-3",
         presentation.tone === "warning" && "border-warning/25 bg-warning/5",
         presentation.tone === "danger" && "border-destructive/25 bg-destructive/5",
         presentation.tone === "success" && "border-success/20 bg-success/5",
@@ -303,7 +303,7 @@ const V2SubagentGroup = memo(function V2SubagentGroup({
         {/* Virtualized rows must settle before disclosure scroll anchoring resumes. */}
         <CollapsiblePanel animate={false}>
           {expanded ? (
-            <div className="mt-1 mb-1 rounded-2xl border border-border/60 bg-card/30 p-1 squircle">
+            <div className="mt-1 mb-1 rounded-2xl border border-border/60 bg-card/30 p-1 ">
               {members.map((item) => (
                 <V2LifecycleRow
                   environmentId={ctx.activeThreadEnvironmentId}

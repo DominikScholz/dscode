@@ -3269,7 +3269,7 @@ export default function ChatView(props: ChatViewProps) {
             />
             {/* Reaches up under the floating header so messages scroll behind it;
                 the timeline pads its top by the same amount. */}
-            <div className="relative -mt-(--chat-header-overlay) flex min-h-0 flex-1 flex-col bg-background [--chat-header-overlay:var(--workspace-topbar-height)]">
+            <div className="relative -mt-(--chat-header-overlay) flex min-h-0 flex-1 flex-col bg-background surface-grain [--chat-header-overlay:var(--workspace-topbar-height)]">
               <ThreadTimeline
                 threadDetailRef={routeThreadDetailRef}
                 entriesInput={timelineEntriesInput}

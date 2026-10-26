@@ -166,7 +166,7 @@ function ChartDot({
       aria-hidden="true"
       className={cn(
         "pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-current",
-        glow ? "size-2 chart-glow" : "size-1.5",
+        glow ? "size-1.5 chart-glow" : "size-1.5",
       )}
       style={{ left: percentLeft(point.x), top: percentTop(point.y), color }}
     />
@@ -251,7 +251,7 @@ function UsageChartPlot({
   readonly bars: ReturnType<typeof buildChart>["bars"];
   readonly slotTotals: readonly number[];
   readonly stepX: number;
-  readonly marker: { readonly index: number; readonly label: string } | null;
+  readonly marker: { readonly index: number; readonly value: string } | null;
   readonly loadingProviders: ReadonlySet<UsageProviderKind>;
   readonly format: (value: number) => string;
   readonly formatTooltipPeriod: (period: string) => string;
@@ -332,11 +332,8 @@ function UsageChartPlot({
           <div
             key={line.provider}
             aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 border-t border-dotted"
-            style={{
-              top: percentTop(line.averageY),
-              borderColor: `color-mix(in srgb, ${PROVIDER_PRESENTATION[line.provider].color} 55%, transparent)`,
-            }}
+            className="pointer-events-none absolute inset-x-0 border-t border-dashed border-foreground/20"
+            style={{ top: percentTop(line.averageY) }}
           />
         ) : null,
       )}
@@ -346,8 +343,9 @@ function UsageChartPlot({
           className="pointer-events-none absolute inset-y-0 border-l border-dashed border-foreground/20"
           style={{ left: percentLeft(marker.index * stepX) }}
         >
-          <span className="absolute top-0 left-1.5 whitespace-nowrap text-3xs text-muted-foreground tabular-nums">
-            {marker.label}
+          <span className="absolute top-0 left-1.5 flex flex-col gap-0.75 text-2xs leading-none whitespace-nowrap">
+            <span className="text-foreground/40">Today</span>
+            <span className="font-medium text-foreground/55">{marker.value}</span>
           </span>
         </div>
       )}
@@ -358,21 +356,31 @@ function UsageChartPlot({
         role="img"
         aria-label={ariaLabel}
       >
-        {bars.map((bar, index) =>
-          bar.height === 0 ? null : (
-            <rect
-              // oxlint-disable-next-line react/no-array-index-key -- Bars are positional slots of a fixed window.
-              key={index}
-              x={bar.x}
-              y={bar.y}
-              width={bar.width}
-              height={bar.height}
-              fill="currentColor"
-              shapeRendering="crispEdges"
-              className={index === hoverIndex ? "text-foreground/60" : "text-foreground/20"}
-            />
-          ),
-        )}
+        {/* Every slot draws as a thin bar, quiet ones as a stub, so the band reads as one comb. */}
+        {bars.map((bar, index) => (
+          <line
+            // oxlint-disable-next-line react/no-array-index-key -- Bars are positional slots of a fixed window.
+            key={index}
+            x1={bar.x + bar.width / 2}
+            x2={bar.x + bar.width / 2}
+            y1={VIEW_HEIGHT}
+            y2={bar.height === 0 ? VIEW_HEIGHT - 2 : bar.y}
+            stroke="currentColor"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+            shapeRendering="crispEdges"
+            className={
+              bar.height === 0
+                ? "text-foreground/16"
+                : index === hoverIndex
+                  ? "text-foreground/70"
+                  : index === bars.length - 1
+                    ? "text-foreground/55"
+                    : "text-foreground/30"
+            }
+          />
+        ))}
+
         {hoverIndex === null ? null : (
           <line
             x1={hoverIndex * stepX}
@@ -385,14 +393,15 @@ function UsageChartPlot({
             vectorEffect="non-scaling-stroke"
           />
         )}
-        {lines.map(({ provider, path }) => (
+        {/* Lines sort largest first; draw that one last so it sits on top, the rest as context. */}
+        {lines.toReversed().map(({ provider, path }) => (
           <path
             key={provider}
             d={path}
-            className={lineClassName(provider)}
+            className={cn(lineClassName(provider), provider !== lines[0]?.provider && "opacity-70")}
             fill="none"
             stroke={PROVIDER_PRESENTATION[provider].color}
-            strokeWidth={1.5}
+            strokeWidth={provider === lines[0]?.provider ? 1.25 : 1}
             strokeLinejoin="round"
             strokeLinecap="round"
             vectorEffect="non-scaling-stroke"
@@ -407,7 +416,8 @@ function UsageChartPlot({
             key={provider}
             point={point}
             color={PROVIDER_PRESENTATION[provider].color}
-            glow={hoverIndex === null}
+            // One ringed end point, on the leading series; rings on both collide when they meet.
+            glow={hoverIndex === null && provider === lines[0]?.provider}
           />
         );
       })}
@@ -477,11 +487,9 @@ export function UsageProviderChart({
     todayIndex > 0 && todayIndex < periods.length - 1
       ? {
           index: todayIndex,
-          label: `Today ${format(slotTotals.slice(todayIndex).reduce((sum, value) => sum + value, 0))}`,
+          value: format(slotTotals.slice(todayIndex).reduce((sum, value) => sum + value, 0)),
         }
       : null;
-  const middle = periods[Math.floor(periods.length / 2)];
-  const last = periods.at(-1);
 
   // Average labels live in a gutter beside the plot so they never sit on a line.
   const averageLabels: { provider: UsageProviderKind; value: number; y: number }[] = [];
@@ -496,7 +504,7 @@ export function UsageProviderChart({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-1">
       <div className="flex gap-3">
         <div className="min-w-0 flex-1">
           <UsageChartPlot
@@ -516,22 +524,19 @@ export function UsageProviderChart({
           {averageLabels.map((label) => (
             <span
               key={label.provider}
-              className="absolute left-0 -translate-y-1/2 whitespace-nowrap text-3xs tabular-nums uppercase"
-              style={{
-                top: percentTop(label.y),
-                color: PROVIDER_PRESENTATION[label.provider].color,
-              }}
+              className="absolute right-0 -translate-y-1/2 whitespace-nowrap text-2xs"
+              style={{ top: percentTop(label.y) }}
             >
-              Avg {format(label.value)}
+              <span className="text-foreground/40">Avg </span>
+              <span
+                className="font-semibold"
+                style={{ color: PROVIDER_PRESENTATION[label.provider].color }}
+              >
+                {format(label.value)}
+              </span>
             </span>
           ))}
         </div>
-      </div>
-
-      <div className="flex justify-between pe-23 text-3xs text-muted-foreground uppercase">
-        <span>{periods[0] === undefined ? "" : formatPeriod(periods[0])}</span>
-        <span>{middle === undefined ? "" : formatPeriod(middle)}</span>
-        <span>{last === undefined ? "" : formatPeriod(last)}</span>
       </div>
     </div>
   );

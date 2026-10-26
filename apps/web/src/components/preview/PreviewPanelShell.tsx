@@ -159,7 +159,7 @@ function PreviewPanelShellFrame(
           "h-full min-h-0 w-full",
           collapsible && "overflow-clip",
           isInline &&
-            "relative overflow-clip rounded-3xl bg-(--panel-surface) bg-(image:--panel-sheen) shadow-(--panel-drop) squircle",
+            "relative overflow-clip rounded-3xl bg-(--panel-surface) bg-(image:--panel-sheen) shadow-(--panel-drop)",
           // The edge sits above the panel's content, which may paint opaque.
           isInline && "panel-edge",
         )}

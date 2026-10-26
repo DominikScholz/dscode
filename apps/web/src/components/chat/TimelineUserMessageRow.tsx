@@ -442,7 +442,7 @@ function UserTimelineRow({ row }: { row: Extract<TimelineRow, { kind: "message" 
       ) : null}
       <div
         className={cn(
-          "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground squircle",
+          "relative min-w-0 max-w-[80%] rounded-2xl text-message-foreground",
           userMessage.attribution === "guest"
             ? guestBubbleClassName(false)
             : "bg-(--panel-surface) panel-edge",

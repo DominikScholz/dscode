@@ -48,7 +48,7 @@ import {
   resetCreditsSummary,
   useResetCredit,
 } from "./UsageLimits";
-import { LimitRow, StatLabel } from "./UsageLimitPace";
+import { LeftFigure, LIMIT_ROW_CLASS, LimitRow, StatLabel } from "./UsageLimitPace";
 import { UsagePanel } from "./UsagePanel";
 
 function accountInitials(email: string): string {
@@ -557,25 +557,20 @@ function PoolWindowCard({
     );
   }
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-8 gap-y-2 py-4 md:grid-cols-[9rem_minmax(0,1fr)_9rem]">
+    <div className={LIMIT_ROW_CLASS}>
       <StatLabel label={label ?? pool.label} description={description} />
       <div className="order-3 col-span-2 md:order-none md:col-span-1">
         <PoolBar pool={pool} color={color} now={now} />
       </div>
-      <span className="order-2 flex flex-col items-end text-end md:order-none">
-        <span className="inline-flex items-center gap-2 text-2xl font-semibold text-foreground tabular-nums">
-          {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
-          <span>
-            {pool.remainingPercent}%
-            <span className="ms-1 text-sm font-normal text-muted-foreground">left</span>
+      <LeftFigure
+        percent={pool.remainingPercent}
+        note={
+          <span className="inline-flex items-center gap-1.5">
+            {pool.pace ? <PaceIcon pace={pool.pace} /> : null}
+            {nextRefill && pool.columns.length > 1 ? `↻ +${nextRefill.restoresPercent}%` : null}
           </span>
-        </span>
-        {nextRefill && pool.columns.length > 1 ? (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            ↻ +{nextRefill.restoresPercent}%
-          </span>
-        ) : null}
-      </span>
+        }
+      />
     </div>
   );
 }
@@ -598,50 +593,56 @@ function ProviderSummary({
     ),
   );
   return (
-    <div className="relative isolate flex flex-wrap items-center gap-x-8 gap-y-2 overflow-hidden rounded-xl border border-foreground/10 bg-foreground/3 px-4 py-3 squircle">
-      <span className="flex items-center gap-3">
+    <div className="relative isolate flex flex-wrap items-center gap-y-2 overflow-hidden rounded-xl px-7 py-4.5 usage-card-lit ">
+      {/* The provider's colour spills from its tile onto the card, as light would. Theme greys
+          glow as fog at brand strength, so they glow less. */}
+      <span
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          backgroundImage: `radial-gradient(3.5rem 2.25rem at 2.6rem 50%, color-mix(in oklab, ${color} ${color.startsWith("#") ? 20 : 9}%, transparent), transparent)`,
+        }}
+      />
+      {/* As wide as the limit rows' label column, so Plan starts where the bars do. */}
+      <span className="flex w-40 shrink-0 items-center gap-4">
         <span
-          className="relative flex size-8 items-center justify-center rounded-lg"
+          className="relative flex size-6.5 items-center justify-center rounded-sm shadow-sm ring-1 ring-foreground/10"
           style={{ backgroundColor: color }}
         >
-          {/* The provider's colour spills from its tile onto the card, as light would. */}
-          <span
-            aria-hidden
-            className="absolute top-1/2 left-1/2 -z-10 h-24 w-40 -translate-1/2 opacity-25"
-            style={{ backgroundImage: `radial-gradient(closest-side, ${color}, transparent)` }}
-          />
           <ProviderInstanceIcon
             driverKind={pool.driver}
             displayName={label}
             indicatorBackground="var(--background)"
-            className="size-4.5"
-            iconClassName="size-4.5 fill-background text-background"
+            className="size-3.5"
+            iconClassName="size-3.5 fill-background text-background"
           />
         </span>
-        <h2 className="text-sm font-semibold text-foreground">{label}</h2>
+        <h2 className="min-w-0 truncate text-xs font-semibold text-foreground">{label}</h2>
       </span>
-      {plans.length > 0 ? (
-        <span className="text-sm text-muted-foreground">
-          Plan
-          <span className="ms-2 font-semibold text-foreground capitalize">{plans.join(", ")}</span>
-        </span>
-      ) : null}
-      {pool.accounts.length > 1 ? (
-        <span className="text-sm text-muted-foreground">
-          Accounts
-          <span className="ms-2 font-semibold text-foreground tabular-nums">
-            {pool.accounts.length}
+      <span className="flex flex-1 flex-wrap items-center gap-x-12 gap-y-2">
+        {plans.length > 0 ? (
+          <span className="text-xs text-foreground/60">
+            Plan
+            <span className="ms-1.5 font-semibold text-foreground capitalize">
+              {plans.join(", ")}
+            </span>
           </span>
-        </span>
-      ) : null}
-      {Number.isFinite(nextReset) ? (
-        <span className="text-sm text-muted-foreground">
-          Next reset
-          <span className="ms-2 font-semibold text-foreground tabular-nums">
-            in {formatDuration(nextReset - now)}
+        ) : null}
+        {pool.accounts.length > 1 ? (
+          <span className="text-xs text-foreground/60">
+            Accounts
+            <span className="ms-1.5 font-semibold text-foreground">{pool.accounts.length}</span>
           </span>
-        </span>
-      ) : null}
+        ) : null}
+        {Number.isFinite(nextReset) ? (
+          <span className="text-xs text-foreground/60 md:ms-auto">
+            Next reset
+            <span className="ms-1.5 font-semibold text-foreground">
+              in {formatDuration(nextReset - now)}
+            </span>
+          </span>
+        ) : null}
+      </span>
     </div>
   );
 }
@@ -651,9 +652,9 @@ function PoolSection({ pool, now }: { readonly pool: LimitPool; readonly now: nu
   const label = providerClients.get(pool.driver)?.label ?? String(pool.driver);
   const windows = displayLimitWindows(pool);
   return (
-    <section className="flex flex-col gap-3">
+    <section className="flex flex-col gap-5">
       <ProviderSummary pool={pool} label={label} color={color} now={now} />
-      <UsagePanel className="flex flex-col divide-y divide-foreground/8 py-1">
+      <UsagePanel className="flex flex-col px-7 py-1.5 groove-rows">
         {windows.map((window) => {
           const details =
             pool.driver === "cursor" ? cursorUsageWindowDetails(window.id) : undefined;
@@ -693,7 +694,7 @@ export function UsageLimitsPooled({
       pools.findIndex((pool) => pool.driver === "claudeAgent"),
     ) + 1;
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-16">
       {pools.length === 0 && notices.length === 0 && !cursorPrompt && externalLinks.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           No provider on the selected environments reports subscription limits.

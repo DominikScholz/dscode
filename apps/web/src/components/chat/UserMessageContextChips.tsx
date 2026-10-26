@@ -143,7 +143,7 @@ function UserMessagePreviewAnnotationDetails(props: {
   const ctx = use(TimelineRowCtx);
   const visibleElements = props.record.elements ?? [];
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 ">
       {props.image?.previewUrl ? (
         <button
           type="button"
@@ -236,7 +236,7 @@ function UserMessageElementDetails({
     ? `${record.source.fileName}${record.source.lineNumber === null ? "" : `:${record.source.lineNumber}`}`
     : null;
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 ">
       <div className="border-b border-border/70 px-3 py-2.5">
         <div className="truncate text-message-foreground text-xs font-medium">
           {record.pageTitle?.trim() || record.pageUrl}
@@ -537,7 +537,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   );
 
   return (
-    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4 squircle">
+    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4 ">
       <div className="space-y-1">
         <div className="text-xs font-medium text-foreground">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}

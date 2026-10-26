@@ -347,7 +347,7 @@ function SidebarSectionFilterBar(props: {
                     data-testid={`sidebar-section-filter-${section}`}
                     onClick={(event) => props.onSelect(section, event.shiftKey)}
                     className={cn(
-                      "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-xs font-medium tabular-nums outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
+                      "flex h-7 min-w-0 flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md text-xs font-medium tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
                       // The selected section lifts out of the well as a chip.
                       pressed
                         ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
@@ -3215,7 +3215,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         </div>
       ) : null}
       {/* The dock: search and list actions, one raised row under the list. */}
-      <div className="relative mx-3 mb-3 flex shrink-0 flex-col rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge squircle">
+      <div className="relative mx-3 mb-3 flex shrink-0 flex-col rounded-xl bg-(--panel-surface) p-1 shadow-(--panel-drop) panel-edge ">
         <SidebarThreadHeader
           searchFieldRef={headerSearchRef}
           hasProjects={projectGroups.length > 0}

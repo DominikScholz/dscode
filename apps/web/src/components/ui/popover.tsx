@@ -24,7 +24,7 @@ const popoverPopupWidthClassName = {
 const popoverViewportPaddingClassName = {
   default: "py-4 [--viewport-inline-padding:--spacing(4)]",
   compact: "py-2 [--viewport-inline-padding:--spacing(3)]",
-  none: "rounded-[inherit] py-0 squircle [--viewport-inline-padding:0px]",
+  none: "rounded-[inherit] py-0 [--viewport-inline-padding:0px]",
 } as const;
 
 function PopoverPopup({

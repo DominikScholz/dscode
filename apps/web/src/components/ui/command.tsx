@@ -183,7 +183,7 @@ function CommandItem({
   return (
     <AutocompleteItem
       className={cn(
-        "rounded-xl py-1.5 squircle",
+        "rounded-xl py-1.5",
         active === undefined
           ? "data-selected:not-data-highlighted:bg-(--popup-row-selected) data-highlighted:bg-(--popup-row-highlight) data-highlighted:text-foreground [&[data-highlighted][data-selected]]:bg-(--popup-row-highlight) [&[data-highlighted][data-selected]]:text-foreground"
           : "cursor-pointer hover:bg-transparent hover:text-inherit data-highlighted:bg-transparent data-highlighted:text-inherit data-selected:bg-transparent data-selected:text-inherit [&[data-highlighted][data-selected]]:bg-transparent [&[data-highlighted][data-selected]]:text-inherit",

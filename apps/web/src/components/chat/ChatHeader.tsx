@@ -301,7 +301,7 @@ export const ChatHeader = memo(function ChatHeader({
                         onClick={onNewThreadInProject}
                         // The project reads as a quiet filled chip, so it needs no
                         // separator before the title.
-                        className="relative inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-(--panel-surface) ps-1.5 pe-2.5 text-muted-foreground squircle transition-colors hover:bg-(--panel-surface-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                        className="relative inline-flex h-7 min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-full bg-(--panel-surface) ps-1.5 pe-2.5 text-muted-foreground transition-colors hover:bg-(--panel-surface-hover) hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                       />
                     }
                   >

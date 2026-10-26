@@ -33,7 +33,7 @@ const PICKER_TOOLTIP_SIDE_OFFSET = 8;
 
 const railButtonClassName = (isSelected: boolean, isDisabled = false) =>
   cn(
-    "relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     isSelected
       ? "bg-(--popup-row-highlight) text-foreground shadow-(--panel-drop) panel-edge"
       : "hover:bg-(--popup-row-selected) hover:text-foreground",

@@ -12,7 +12,14 @@ import {
   type UsageSummaryInput,
 } from "@t3tools/contracts";
 import { CircleAlertIcon, ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
-import { type ReactNode, useEffect, useEffectEvent, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react";
 import { settlePromise } from "@t3tools/client-runtime/state/runtime";
 import * as AsyncResult from "effect/reactivity/AsyncResult";
 import * as Cause from "effect/Cause";
@@ -214,6 +221,13 @@ export function UsagePage() {
     refresh,
   } = useUsage(window, selectedEnvironmentIds, hiddenProviders);
   const merged = shown?.merged ?? answeredUsage;
+  const leadingProvider = merged.providers.reduce<(typeof merged.providers)[number] | undefined>(
+    (lead, entry) => (lead === undefined || entry.costShare > lead.costShare ? entry : lead),
+    undefined,
+  );
+  const brandColor = leadingProvider
+    ? PROVIDER_PRESENTATION[leadingProvider.provider].color
+    : undefined;
   const shownWindow = shown?.window ?? window;
   const shownHourly = shownWindow.resolution === "hour";
   const refreshingUsage = isRefreshing && !showingLimits;
@@ -365,8 +379,8 @@ export function UsagePage() {
   );
   const topbarContent = (
     <div className="flex w-full min-w-0 items-center gap-3 py-2">
-      <h1 className="shrink-0 text-sm font-medium text-foreground">Usage</h1>
-      <div className="flex min-w-0 items-center gap-0.5">
+      <h1 className="shrink-0 text-label font-semibold text-foreground/92">Usage</h1>
+      <div className="flex min-w-0 items-center gap-1.5">
         <UsageEnvironmentFilter
           environments={environments}
           selectedEnvironments={selectedEnvironments}
@@ -388,7 +402,7 @@ export function UsagePage() {
         <ToggleGroup
           aria-label="Usage metric"
           variant="pill"
-          size="segmented"
+          size="sm"
           value={[metric]}
           onValueChange={(next) => {
             const value = next[0];
@@ -434,100 +448,116 @@ export function UsagePage() {
   );
 
   return (
-    <AppRouteModal label="Usage">
-      <div className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col">
+    <AppRouteModal label="Usage" className="usage-window">
+      <div
+        className="relative isolate flex min-h-0 min-w-0 flex-1 flex-col neutral-capture"
+        style={
+          brandColor
+            ? ({
+                // Theme greys read far brighter than brand hues at the same strength.
+                "--usage-brand-light": `color-mix(in srgb, ${brandColor} ${brandColor.startsWith("#") ? 5.5 : 2}%, transparent)`,
+              } as CSSProperties)
+            : undefined
+        }
+      >
         <div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0 -z-10 window-glow"
         />
-        <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 grain" />
-        <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 ps-5 pe-2">
-          {topbarContent}
-          <AppRouteModalClose />
-        </header>
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 grain" />
+        <div data-neutral-palette className="contents neutral-palette">
+          <header className="@container/usage-header relative flex min-h-14 shrink-0 items-center">
+            <div className="mx-auto flex w-full max-w-5xl items-center ps-5 pe-14 sm:ps-6 @6xl/usage-header:pe-6">
+              {topbarContent}
+            </div>
+            <div className="absolute top-3 right-3">
+              <AppRouteModalClose />
+            </div>
+          </header>
 
-        <ScrollArea className="min-h-0 flex-1">
-          <WorkspacePageContainer width="wide">
-            {selectedEnvironments.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {environments.length === 0
-                  ? `Connect an environment to see ${showingLimits ? "limits" : "usage"}.`
-                  : `Select an environment to see ${showingLimits ? "limits" : "usage"}.`}
-              </p>
-            ) : showingLimits ? (
-              <UsageLimitsSection
-                selectedEnvironmentIds={selectedEnvironmentIds}
-                hiddenProviders={hiddenProviders}
-                now={limitsNow}
-                cursorPrompt={
-                  cursorAccessEnvironments.length > 0 ? (
-                    <CursorEnableLimits
-                      environments={cursorAccessEnvironments}
-                      onEnabled={() => {
-                        void refresh();
-                        void refreshLimits(false, true);
+          <ScrollArea scrollFade className="min-h-0 flex-1">
+            <WorkspacePageContainer width="wide" className="pt-15">
+              {selectedEnvironments.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {environments.length === 0
+                    ? `Connect an environment to see ${showingLimits ? "limits" : "usage"}.`
+                    : `Select an environment to see ${showingLimits ? "limits" : "usage"}.`}
+                </p>
+              ) : showingLimits ? (
+                <UsageLimitsSection
+                  selectedEnvironmentIds={selectedEnvironmentIds}
+                  hiddenProviders={hiddenProviders}
+                  now={limitsNow}
+                  cursorPrompt={
+                    cursorAccessEnvironments.length > 0 ? (
+                      <CursorEnableLimits
+                        environments={cursorAccessEnvironments}
+                        onEnabled={() => {
+                          void refresh();
+                          void refreshLimits(false, true);
+                        }}
+                      />
+                    ) : null
+                  }
+                />
+              ) : shown === null ? (
+                <UsageSkeleton />
+              ) : !canReadDiagnostics ? (
+                <div className="space-y-2 py-12 text-center text-sm text-muted-foreground">
+                  {selectedEnvironments.map((environment) => (
+                    <p key={environment.environmentId}>
+                      {selectedEnvironments.length > 1 ? `${environment.label}: ` : null}
+                      {environment.error}
+                    </p>
+                  ))}
+                </div>
+              ) : (
+                <UsageOverview
+                  merged={merged}
+                  shownWindow={shownWindow}
+                  hour12={hour12}
+                  days={days}
+                  hours={hours}
+                  showingKept={showingKept}
+                  metric={metric === "tokens" ? "tokens" : "cost"}
+                  selectedEnvironments={selectedEnvironments}
+                  hiddenProviders={hiddenProviders}
+                  refreshingUsage={refreshingUsage}
+                  cursorAccessEnvironments={cursorAccessEnvironments}
+                  showChatGptSharing={showChatGptSharing}
+                  onCursorEnabled={() => {
+                    void refresh();
+                    void refreshLimits(false, true);
+                  }}
+                  onSelectModel={selectUsageModel}
+                  rangeControl={
+                    <ToggleGroup
+                      aria-label="Usage period"
+                      variant="pill"
+                      size="sm"
+                      value={[String(windowDays)]}
+                      onValueChange={(next) => {
+                        const value = next[0];
+                        if (value) selectWindow(Number(value));
                       }}
-                    />
-                  ) : null
-                }
-              />
-            ) : shown === null ? (
-              <UsageSkeleton />
-            ) : !canReadDiagnostics ? (
-              <div className="space-y-2 py-12 text-center text-sm text-muted-foreground">
-                {selectedEnvironments.map((environment) => (
-                  <p key={environment.environmentId}>
-                    {selectedEnvironments.length > 1 ? `${environment.label}: ` : null}
-                    {environment.error}
-                  </p>
-                ))}
-              </div>
-            ) : (
-              <UsageOverview
-                merged={merged}
-                shownWindow={shownWindow}
-                hour12={hour12}
-                days={days}
-                hours={hours}
-                showingKept={showingKept}
-                metric={metric === "tokens" ? "tokens" : "cost"}
-                selectedEnvironments={selectedEnvironments}
-                hiddenProviders={hiddenProviders}
-                refreshingUsage={refreshingUsage}
-                cursorAccessEnvironments={cursorAccessEnvironments}
-                showChatGptSharing={showChatGptSharing}
-                onCursorEnabled={() => {
-                  void refresh();
-                  void refreshLimits(false, true);
-                }}
-                onSelectModel={selectUsageModel}
-                rangeControl={
-                  <ToggleGroup
-                    aria-label="Usage period"
-                    variant="pill"
-                    size="sm"
-                    value={[String(windowDays)]}
-                    onValueChange={(next) => {
-                      const value = next[0];
-                      if (value) selectWindow(Number(value));
-                    }}
-                  >
-                    {WINDOW_OPTIONS.map((option) => (
-                      <Toggle
-                        key={option.days}
-                        value={String(option.days)}
-                        title={shortcutTitle(option)}
-                        aria-label={option.label}
-                      >
-                        {option.days === 1 ? "24H" : `${option.days}D`}
-                      </Toggle>
-                    ))}
-                  </ToggleGroup>
-                }
-              />
-            )}
-          </WorkspacePageContainer>
-        </ScrollArea>
+                    >
+                      {WINDOW_OPTIONS.map((option) => (
+                        <Toggle
+                          key={option.days}
+                          value={String(option.days)}
+                          title={shortcutTitle(option)}
+                          aria-label={option.label}
+                        >
+                          {option.days === 1 ? "24H" : `${option.days}D`}
+                        </Toggle>
+                      ))}
+                    </ToggleGroup>
+                  }
+                />
+              )}
+            </WorkspacePageContainer>
+          </ScrollArea>
+        </div>
       </div>
       {showingLimits ? null : (
         <UsageModelDialogHost
@@ -642,58 +672,53 @@ function UsageOverview({
   const todayValue = metric === "cost" ? (today?.costUsd ?? 0) : (today?.totalTokens ?? 0);
 
   return (
-    <div aria-busy={loadingPartial} className="flex flex-col gap-6">
+    <div aria-busy={loadingPartial} className="flex flex-col gap-5">
       {sourceMessages.map((message) => (
         <p key={message} className="mb-4 text-sm text-muted-foreground">
           {message}
         </p>
       ))}
       <section className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-4xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
+        <div className="flex flex-wrap items-end gap-x-11 gap-y-4">
+          <div className="flex flex-col gap-0.5">
+            {/* Today's spend rides on the total's baseline, as Fey sets a price's change. */}
+            <span className="flex items-baseline gap-2.5">
+              <span
+                className={cn(
+                  "text-hero font-semibold tracking-tighter text-foreground",
+                  figureClass(loadingPartial),
+                )}
+              >
+                {metric === "cost" ? (
+                  <MutedCents text={formatUsd(merged.costUsd)} />
+                ) : (
+                  formatTokens(merged.totalTokens)
+                )}
+              </span>
+              <span
+                className={cn(
+                  "text-label font-medium text-foreground/70 tabular-nums",
+                  figureClass(loadingPartial),
+                )}
+              >
+                +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)} today
+              </span>
+            </span>
+            <span className="inline-flex items-center text-xs text-foreground/55">
               {metric === "cost" ? (
-                <MutedCents text={formatUsd(merged.costUsd)} />
+                <>
+                  Cost
+                  <Middot />
+                  API estimate
+                </>
               ) : (
-                formatTokens(merged.totalTokens)
+                "Processed tokens"
               )}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              {metric === "cost" ? "Cost · API estimate" : "Processed tokens"}
-            </span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-2xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              +{metric === "cost" ? formatUsd(todayValue) : formatTokens(todayValue)}
-            </span>
-            <span className="text-xs text-muted-foreground">Today</span>
-          </div>
-          <div className="flex flex-col gap-1">
-            <span
-              className={cn(
-                "text-2xl font-semibold text-foreground tabular-nums",
-                figureClass(loadingPartial),
-              )}
-            >
-              {formatCount(merged.sessions)}
-            </span>
-            <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-              <span>Sessions</span>
               {metric === "cost" && merged.costQuality.unpricedShare > 0 && (
                 <Popover>
                   <PopoverTrigger
                     openOnHover
-                    render={<InlineButton tone="muted" />}
+                    render={<InlineButton tone="muted" className="ms-1" />}
                     aria-label="Unpriced usage details"
                   >
                     <InfoIcon className="size-3" aria-hidden />
@@ -706,7 +731,7 @@ function UsageOverview({
               )}
             </span>
           </div>
-          <div className="flex flex-wrap items-end gap-x-8 gap-y-3 lg:ms-auto">
+          <div className="flex flex-wrap items-end gap-x-11 gap-y-3 lg:ms-auto">
             {activeProviders.map((provider) => {
               const totals = merged.providers.find((entry) => entry.provider === provider);
               const share =
@@ -718,7 +743,7 @@ function UsageOverview({
                 <div key={provider} className="flex min-w-0 flex-col gap-1">
                   <span
                     className={cn(
-                      "text-2xl font-semibold text-foreground tabular-nums",
+                      "text-stat leading-none font-semibold text-foreground tabular-nums",
                       figureClass(providerLoading),
                     )}
                   >
@@ -728,21 +753,26 @@ function UsageOverview({
                         ? formatUsd(totals?.costUsd ?? 0)
                         : formatTokens(totals?.totalTokens ?? 0)}
                   </span>
-                  <span className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="flex min-w-0 items-center text-xs text-foreground/55">
                     <span
                       aria-hidden
-                      className="size-2 shrink-0 rounded-full"
+                      className="-ms-2.5 me-1.75 h-3 w-0.75 shrink-0 rounded-full"
                       style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
                     />
                     <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
                     <span
                       className={cn(
-                        "shrink-0 tabular-nums",
+                        "shrink-0",
                         figureClass(providerLoading),
                         awaitingData && "invisible",
                       )}
                     >
-                      · {formatPercent(share)} · {formatCount(providerSessions)}{" "}
+                      <Middot />
+                      <span className="text-foreground/85">{formatPercent(share)}</span>
+                      <Middot />
+                      <span className="text-foreground/85">
+                        {formatCount(providerSessions)}
+                      </span>{" "}
                       {providerSessions === 1 ? "session" : "sessions"}
                     </span>
                   </span>
@@ -785,9 +815,9 @@ function UsageOverview({
           timeZone={shownWindow.timeZone}
           hour12={hour12}
         />
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="-mt-1.5 flex flex-wrap items-center justify-between gap-3">
           {rangeControl}
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-foreground/40">
             Bars show the total per {usageChartSlot(shownHourly ? "hour" : "day", merged.series)}
           </span>
         </div>
@@ -795,7 +825,7 @@ function UsageOverview({
 
       <UsagePanel
         aria-label="Totals"
-        className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8"
+        className="mt-11 grid grid-cols-3 gap-y-6 px-0 py-5.5 md:grid-cols-6"
       >
         <Metric
           loading={loadingPartial}
@@ -818,13 +848,23 @@ function UsageOverview({
           label="Cache savings"
           value={formatUsd(merged.costQuality.cacheSavingsUsd)}
         />
+        <Metric loading={loadingPartial} label="Sessions" value={formatCount(merged.sessions)} />
       </UsagePanel>
 
       {merged.totalTokens > 0 ? (
-        <section className={cn("grid gap-6 lg:grid-cols-2", figureClass(loadingPartial))}>
+        <section
+          className={cn(
+            "grid gap-6",
+            metric !== "tokens" &&
+              merged.speedCost.fast + merged.speedCost.ultrafast > 0 &&
+              "lg:grid-cols-2",
+            figureClass(loadingPartial),
+          )}
+        >
           {metric === "tokens" ? (
-            <UsagePanel>
+            <UsagePanel className="px-7 pt-0 pb-7">
               <UsageShareBar
+                framed
                 label="Tokens by type"
                 segments={tokenTypeSegments(merged)}
                 format={formatTokens}
@@ -832,16 +872,18 @@ function UsageOverview({
             </UsagePanel>
           ) : (
             <>
-              <UsagePanel>
+              <UsagePanel className="px-7 pt-0 pb-7">
                 <UsageShareBar
+                  framed
                   label="Cost by type"
                   segments={costTypeSegments(merged.categoryCost)}
                   format={formatUsd}
                 />
               </UsagePanel>
               {merged.speedCost.fast + merged.speedCost.ultrafast > 0 ? (
-                <UsagePanel>
+                <UsagePanel className="px-7 pt-0 pb-7">
                   <UsageShareBar
+                    framed
                     label="Cost by speed"
                     segments={speedCostSegments(merged.speedCost)}
                     format={formatUsd}
@@ -856,7 +898,7 @@ function UsageOverview({
 
       <UsagePanel className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+          <h2 className="text-label font-semibold text-foreground/58">Breakdown</h2>
           <ToggleGroup
             aria-label="Usage breakdown"
             variant="pill"
@@ -1196,10 +1238,13 @@ function Metric({
   readonly loading: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col items-center gap-1.5 px-5 text-center">
-      <span className="text-sm text-muted-foreground">{label}</span>
+    <div className="flex min-w-0 flex-col items-center gap-1.5 px-5 text-center groove-divider">
+      <span className="text-2xs text-foreground/58">{label}</span>
       <span
-        className={cn("text-xl font-semibold text-foreground tabular-nums", figureClass(loading))}
+        className={cn(
+          "text-sm leading-5 font-semibold text-foreground tabular-nums",
+          figureClass(loading),
+        )}
       >
         {value}
       </span>
@@ -1285,7 +1330,10 @@ function UsageEnvironmentFilter({
 
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
+      <MenuTrigger
+        render={<Button variant="quiet-outline" size="sm" />}
+        className="min-w-0 max-w-48"
+      >
         <span className="min-w-0 truncate">{label}</span>
         {showUsageStatus && hasIssue ? (
           <CircleAlertIcon
@@ -1400,7 +1448,10 @@ function UsageProviderFilter({
 
   return (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost-muted" size="xs" />} className="min-w-0 max-w-48">
+      <MenuTrigger
+        render={<Button variant="quiet-outline" size="sm" />}
+        className="min-w-0 max-w-48"
+      >
         <span className="min-w-0 truncate">{label}</span>
         <ChevronDownIcon aria-hidden />
       </MenuTrigger>
@@ -1446,19 +1497,20 @@ function UsageSkeleton() {
             <Skeleton className="h-10 w-48" />
             <Skeleton className="h-4 w-28" />
           </div>
-          {["Today", "Sessions"].map((label) => (
-            <div key={label} className="flex flex-col gap-1">
-              <Skeleton className="h-8 w-24" />
-              <span className="text-xs text-muted-foreground">{label}</span>
-            </div>
-          ))}
         </div>
         <Skeleton className="h-64" />
         <Skeleton shape="card" className="h-7 w-44" />
       </section>
 
       <MetricSkeletons
-        labels={["Processed tokens", "Cached input", "Uncached input", "Output", "Cache savings"]}
+        labels={[
+          "Processed tokens",
+          "Cached input",
+          "Uncached input",
+          "Output",
+          "Cache savings",
+          "Sessions",
+        ]}
       />
 
       <UsagePanel className="flex flex-col gap-2.5">
@@ -1469,7 +1521,7 @@ function UsageSkeleton() {
 
       <UsagePanel className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-sm font-medium text-foreground">Breakdown</h2>
+          <h2 className="text-label font-semibold text-foreground/58">Breakdown</h2>
           <Skeleton shape="card" className="h-7 w-28" />
         </div>
         <Skeleton className="h-44" />
@@ -1478,24 +1530,33 @@ function UsageSkeleton() {
   );
 }
 
-/** Dollars stay bright and cents recede, so the headline reads at a glance. */
+/** The dollars stay bright and the cents recede, so the headline reads at a glance. */
 function MutedCents({ text }: { readonly text: string }) {
   const point = text.lastIndexOf(".");
-  if (point < 0) return text;
+  const sign = text.startsWith("$") ? 1 : 0;
   return (
     <>
-      {text.slice(0, point)}
-      <span className="text-muted-foreground">{text.slice(point)}</span>
+      {sign ? "$" : null}
+      {text.slice(sign, point < 0 ? undefined : point)}
+      {point < 0 ? null : <span className="text-foreground/38">{text.slice(point)}</span>}
     </>
+  );
+}
+
+function Middot() {
+  return (
+    <span aria-hidden className="mx-0.5 text-foreground/40">
+      ·
+    </span>
   );
 }
 
 function MetricSkeletons({ labels }: { readonly labels: readonly string[] }) {
   return (
-    <UsagePanel className="grid grid-cols-2 gap-y-6 px-0 py-6 md:grid-cols-5 md:divide-x md:divide-foreground/8">
+    <UsagePanel className="grid grid-cols-3 gap-y-6 px-0 py-5.5 md:grid-cols-6">
       {labels.map((label) => (
-        <div key={label} className="flex flex-col items-center gap-1.5 px-5">
-          <span className="text-sm text-muted-foreground">{label}</span>
+        <div key={label} className="flex flex-col items-center gap-2 px-5 groove-divider">
+          <span className="text-xs text-muted-foreground">{label}</span>
           <Skeleton className="h-7 w-16" />
         </div>
       ))}

@@ -894,7 +894,7 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
   };
 
   const rowSurfaceClassName = cn(
-    "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "group/sidebar-row relative w-full cursor-pointer overflow-hidden text-left outline-none select-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     // Rows sit quietly on a tint; only the open thread is raised.
     "rounded-xl",
     variantAction === "unsettle" && "[&:not(:hover):not(:focus-within)_*]:text-secondary-label/70",
@@ -1436,13 +1436,13 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
               className={cn(
                 "mt-1 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs transition-opacity motion-reduce:transition-none",
                 !props.isActive &&
-                  "opacity-50 group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100",
+                  "opacity-65 group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100",
               )}
             >
               {thread.branch ? (
                 <>
                   <ThreadWorktreeIndicator thread={thread} />
-                  <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+                  <span className="flex min-w-0 flex-1 text-muted-foreground/70">
                     <MiddleTruncate value={thread.branch} showTitle={false} />
                   </span>
                 </>
