@@ -674,9 +674,9 @@ function UsageOverview({
           {message}
         </p>
       ))}
-      {/* Two columns, as Fey lays out a ticker: the chart in the main column, the breakdown
-          by provider in a narrow one beside it. */}
-      <section className="grid gap-x-10 gap-y-8 lg:grid-cols-[minmax(0,1fr)_17rem]">
+      {/* Two columns, as Fey lays out a ticker: totals and the chart in the main column, side
+          cards beside it. */}
+      <section className="grid gap-x-14 gap-y-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="flex min-w-0 flex-col gap-5">
           <div className="flex flex-wrap items-end gap-x-10 gap-y-4">
             <div className="flex flex-col gap-1">
@@ -777,68 +777,96 @@ function UsageOverview({
             </span>
           </div>
         </div>
-        <aside aria-label="By provider" className="flex min-w-0 flex-col lg:pt-2">
-          <h2 className="pb-3 text-xs text-muted-foreground">By provider</h2>
-          <div className="flex flex-col groove-rows [&>*]:py-3.5">
-            {activeProviders.map((provider) => {
-              const totals = merged.providers.find((entry) => entry.provider === provider);
-              const share =
-                metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
-              const providerSessions = totals?.sessions ?? 0;
-              const providerLoading = loadingProviders.has(provider);
-              const awaitingData = providerLoading && !providersWithData.has(provider);
-              return (
-                <div key={provider} className="flex flex-col gap-1">
-                  <div className="flex items-baseline justify-between gap-4">
-                    <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
-                      <span
-                        aria-hidden
-                        className="size-2 shrink-0 rounded-full"
-                        style={{ backgroundColor: PROVIDER_PRESENTATION[provider].color }}
-                      />
-                      <ProviderMark provider={provider} className="size-4" />
-                      <span className="flex min-w-0 items-baseline gap-1.5">
-                        <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
-                        <span
-                          className={cn(
-                            "shrink-0 text-2xs whitespace-nowrap text-muted-foreground tabular-nums",
-                            figureClass(providerLoading),
-                            awaitingData && "invisible",
-                          )}
-                        >
-                          {formatCount(providerSessions)}{" "}
-                          {providerSessions === 1 ? "session" : "sessions"}
+        {/* Side panels, as Fey stacks them beside a ticker's chart: who spent it, and on what. */}
+        <aside className="flex min-w-0 flex-col gap-8 lg:pt-1">
+          <section aria-label="By provider" className="flex flex-col">
+            <h2 className="text-label font-semibold text-foreground/58">By provider</h2>
+            <div className="flex flex-col groove-rows [&>*]:py-3">
+              {activeProviders.map((provider) => {
+                const totals = merged.providers.find((entry) => entry.provider === provider);
+                const share =
+                  metric === "cost" ? (totals?.costShare ?? 0) : (totals?.tokenShare ?? 0);
+                const providerSessions = totals?.sessions ?? 0;
+                const providerLoading = loadingProviders.has(provider);
+                const awaitingData = providerLoading && !providersWithData.has(provider);
+                return (
+                  <div key={provider} className="flex flex-col gap-1">
+                    <div className="flex items-baseline justify-between gap-4">
+                      <span className="flex min-w-0 items-center gap-2 text-sm text-foreground">
+                        <ProviderMark provider={provider} className="size-4" />
+                        <span className="flex min-w-0 items-baseline gap-1.5">
+                          <span className="truncate">{PROVIDER_PRESENTATION[provider].label}</span>
+                          <span
+                            className={cn(
+                              "shrink-0 text-2xs whitespace-nowrap text-muted-foreground tabular-nums",
+                              figureClass(providerLoading),
+                              awaitingData && "invisible",
+                            )}
+                          >
+                            {formatCount(providerSessions)}{" "}
+                            {providerSessions === 1 ? "session" : "sessions"}
+                          </span>
                         </span>
                       </span>
-                    </span>
+                      <span
+                        className={cn(
+                          "shrink-0 text-sm font-medium text-foreground tabular-nums",
+                          figureClass(providerLoading),
+                        )}
+                      >
+                        {awaitingData
+                          ? "-"
+                          : metric === "cost"
+                            ? formatUsd(totals?.costUsd ?? 0)
+                            : formatTokens(totals?.totalTokens ?? 0)}
+                      </span>
+                    </div>
                     <span
                       className={cn(
-                        "shrink-0 text-sm font-medium text-foreground tabular-nums",
+                        "text-xs text-muted-foreground",
                         figureClass(providerLoading),
+                        awaitingData && "invisible",
                       )}
                     >
-                      {awaitingData
-                        ? "-"
-                        : metric === "cost"
-                          ? formatUsd(totals?.costUsd ?? 0)
-                          : formatTokens(totals?.totalTokens ?? 0)}
+                      {metric === "cost"
+                        ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
+                        : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
                     </span>
                   </div>
-                  <span
-                    className={cn(
-                      "text-xs text-muted-foreground",
-                      figureClass(providerLoading),
-                      awaitingData && "invisible",
-                    )}
-                  >
-                    {metric === "cost"
-                      ? `${formatPercent(share)} of cost · ${formatTokens(totals?.totalTokens ?? 0)} tokens`
-                      : `${formatPercent(share)} of tokens · ${formatUsd(totals?.costUsd ?? 0)}`}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          </section>
+          {merged.totalTokens > 0 ? (
+            <section className={figureClass(loadingPartial)}>
+              {metric === "tokens" ? (
+                <UsageShareBar
+                  layout="list"
+                  label="By type"
+                  segments={tokenTypeSegments(merged)}
+                  format={formatTokens}
+                />
+              ) : (
+                <UsageShareBar
+                  layout="list"
+                  label="By type"
+                  segments={costTypeSegments(merged.categoryCost)}
+                  format={formatUsd}
+                />
+              )}
+            </section>
+          ) : null}
+          {metric !== "tokens" && merged.speedCost.fast + merged.speedCost.ultrafast > 0 ? (
+            <section className={figureClass(loadingPartial)}>
+              <UsageShareBar
+                layout="list"
+                label="By speed"
+                segments={speedCostSegments(merged.speedCost)}
+                format={formatUsd}
+                aside={<SpeedPremium premiumUsd={merged.speedCost.premium} />}
+              />
+            </section>
+          ) : null}
         </aside>
       </section>
 
@@ -868,51 +896,6 @@ function UsageOverview({
           value={formatUsd(merged.costQuality.cacheSavingsUsd)}
         />
       </UsagePanel>
-
-      {merged.totalTokens > 0 ? (
-        <section
-          className={cn(
-            "grid gap-6",
-            metric !== "tokens" &&
-              merged.speedCost.fast + merged.speedCost.ultrafast > 0 &&
-              "lg:grid-cols-2",
-            figureClass(loadingPartial),
-          )}
-        >
-          {metric === "tokens" ? (
-            <UsagePanel className="px-7 pt-0 pb-7">
-              <UsageShareBar
-                framed
-                label="Tokens by type"
-                segments={tokenTypeSegments(merged)}
-                format={formatTokens}
-              />
-            </UsagePanel>
-          ) : (
-            <>
-              <UsagePanel className="px-7 pt-0 pb-7">
-                <UsageShareBar
-                  framed
-                  label="Cost by type"
-                  segments={costTypeSegments(merged.categoryCost)}
-                  format={formatUsd}
-                />
-              </UsagePanel>
-              {merged.speedCost.fast + merged.speedCost.ultrafast > 0 ? (
-                <UsagePanel className="px-7 pt-0 pb-7">
-                  <UsageShareBar
-                    framed
-                    label="Cost by speed"
-                    segments={speedCostSegments(merged.speedCost)}
-                    format={formatUsd}
-                    aside={<SpeedPremium premiumUsd={merged.speedCost.premium} />}
-                  />
-                </UsagePanel>
-              ) : null}
-            </>
-          )}
-        </section>
-      ) : null}
 
       <UsagePanel className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
