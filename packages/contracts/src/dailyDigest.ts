@@ -35,17 +35,20 @@ export const DAILY_DIGEST_STATUSES = [
 
 export const DailyDigestPageContent = Schema.Struct({
   mood: Text(48).annotate({
-    description: "A few words on the day overall, such as 'Strong day, two branches at risk'.",
+    description:
+      "Three to six words on the day overall, such as 'Strong day, two branches at risk'.",
   }),
   headline: Text(140).annotate({
     description: "One plain sentence, at most 16 words: what matters most today.",
   }),
-  summary: Text(360).annotate({ description: "One short sentence on what moved." }),
+  summary: Text(360).annotate({
+    description: "One short sentence that adds to the headline rather than restating it.",
+  }),
   visuals: Schema.Array(
     Schema.Union([
       Schema.Struct({
         kind: Schema.Literal("image"),
-        title: Text(60),
+        title: Text(60).annotate({ description: "Alt text; the page shows only the image." }),
         caption: Schema.optional(Text(160)),
         path: Text(1024).annotate({
           description:
@@ -55,12 +58,12 @@ export const DailyDigestPageContent = Schema.Struct({
       }),
       Schema.Struct({
         kind: Schema.Literal("bars"),
-        title: Text(60),
-        caption: Schema.optional(Text(160)),
+        title: Text(60).annotate({ description: "Under 40 characters." }),
+        caption: Schema.optional(Text(160)).annotate({ description: "One line naming the setup." }),
         unit: Schema.optional(Text(12)),
         items: Schema.Array(
           Schema.Struct({
-            label: Text(40),
+            label: Text(40).annotate({ description: "Under 20 characters." }),
             value: Schema.Number,
             highlight: Schema.optional(Schema.Boolean),
           }),
@@ -72,19 +75,22 @@ export const DailyDigestPageContent = Schema.Struct({
     .check(Schema.isMaxLength(4))
     .annotate({
       description:
-        "Up to three of the most telling visuals, most telling first: images from the threads, or a bars comparison of numbers from them.",
+        "At most three: lead with the screenshot that best shows the day's result, then small bars charts only when numbers are the story.",
     }),
   facts: Schema.Array(Schema.Struct({ label: Text(28), value: Text(16) }))
     .check(Schema.isMaxLength(4))
-    .annotate({ description: "At most two numbers the page does not already show; usually none." }),
+    .annotate({
+      description:
+        "At most two numbers beside the page's repository counts, labels under 16 characters; usually none.",
+    }),
   sections: Schema.Array(
     Schema.Struct({
-      title: Text(60),
+      title: Text(60).annotate({ description: "Under 40 characters." }),
       status: Schema.Literals(DAILY_DIGEST_STATUSES),
       summary: Text(200).annotate({ description: "Under 12 words on what changed." }),
       issue: Schema.optional(Text(110)).annotate({
         description:
-          "A few words on a problem to act on, such as unpushed work or a failing check.",
+          "At most six words on a problem to act on, such as unpushed work or a failing check.",
       }),
       threadId: Schema.optional(Text(200)),
     }),
@@ -93,8 +99,8 @@ export const DailyDigestPageContent = Schema.Struct({
     .annotate({ description: "What happened: at most four workstreams, most important first." }),
   decisions: Schema.Array(
     Schema.Struct({
-      question: Text(110),
-      context: Text(200),
+      question: Text(110).annotate({ description: "Under 45 characters." }),
+      context: Text(200).annotate({ description: "Under 12 words." }),
       threadId: Schema.optional(Text(200)),
       prompt: Schema.optional(Text(2000)).annotate({
         description: "Put in that thread's composer when the reader opens it.",
@@ -105,8 +111,8 @@ export const DailyDigestPageContent = Schema.Struct({
     .annotate({ description: "At most two decisions only the reader can make. Usually empty." }),
   nextSteps: Schema.Array(
     Schema.Struct({
-      title: Text(80),
-      reason: Text(140),
+      title: Text(80).annotate({ description: "Verb first, under 40 characters." }),
+      reason: Text(140).annotate({ description: "Under 12 words." }),
       prompt: Text(4000).annotate({
         description: "A complete task for a new thread in this project.",
       }),
