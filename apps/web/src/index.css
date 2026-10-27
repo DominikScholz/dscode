@@ -1865,24 +1865,6 @@ html[data-theme-id] [data-app-sidebar] {
   }
 }
 
-/* The faint dot field behind charts, fading out toward the plot's edges. */
-@utility digest-dot-grid {
-  background-image: radial-gradient(
-    circle,
-    color-mix(in srgb, var(--foreground) 16%, transparent) 0.7px,
-    transparent 1px
-  );
-  background-size: 10px 10px;
-  -webkit-mask-image:
-    linear-gradient(to right, transparent, #000 15%, #000 85%, transparent),
-    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
-  -webkit-mask-composite: source-in;
-  mask-image:
-    linear-gradient(to right, transparent, #000 15%, #000 85%, transparent),
-    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
-  mask-composite: intersect;
-}
-
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */
 :root,
 [data-app-sidebar] {

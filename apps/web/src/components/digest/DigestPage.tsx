@@ -17,7 +17,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { htmlRenderFileName, type HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { sanitizeLinkedPrompt } from "@t3tools/shared/promptLinks";
 import { useAtomValue } from "@effect/atom-react";
-import { ArrowRightIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon, CaretDownIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
@@ -450,10 +450,16 @@ function DigestView(props: {
             const list = stat.list;
             const body = (
               <>
-                <span className="truncate text-muted-foreground text-xs">
+                <span className="flex items-center gap-1 truncate text-muted-foreground text-xs">
                   <Rich text={stat.label} />
+                  {list ? (
+                    <CaretDownIcon
+                      aria-hidden
+                      className={cn("size-3 shrink-0", openList === list && "rotate-180")}
+                    />
+                  ) : null}
                 </span>
-                <span className="font-semibold text-base tabular-nums leading-none">
+                <span className="font-semibold text-lg tabular-nums leading-none">
                   <Rich text={stat.value} />
                 </span>
               </>
@@ -480,16 +486,6 @@ function DigestView(props: {
             );
           })}
         </div>
-        {context.remote ? null : (
-          <div className="relative px-6 pb-4">
-            <div aria-hidden className="absolute inset-0 digest-dot-grid" />
-            <Spark activity={context.activity} className="relative h-8" />
-            <div className="relative mt-1.5 flex justify-between text-muted-foreground/70 text-xs tabular-nums">
-              <span>{formatClock(context.sinceMs, context.timeZone)}</span>
-              <span>{formatClock(context.untilMs, context.timeZone)}</span>
-            </div>
-          </div>
-        )}
         {openList ? (
           <div className="flex flex-col px-5 pb-3 digest-grooves">
             {openList === "commits" && context.commits ? (
@@ -894,28 +890,6 @@ function Bars(props: { readonly visual: Extract<Visual, { kind: "bars" }> }) {
             <span className="font-normal text-muted-foreground">{spaced}</span>
           </span>
         </div>
-      ))}
-    </div>
-  );
-}
-
-function Spark(props: { readonly activity: ReadonlyArray<number>; readonly className?: string }) {
-  const max = Math.max(1, ...props.activity);
-  return (
-    <div
-      className={cn("grid items-end", props.className)}
-      style={{ gridTemplateColumns: `repeat(${props.activity.length}, minmax(0, 1fr))` }}
-    >
-      {props.activity.map((count, index) => (
-        <span
-          // oxlint-disable-next-line react/no-array-index-key -- Slots are positional.
-          key={index}
-          className={cn(
-            "w-0.5 justify-self-center rounded-full",
-            count === 0 ? "bg-muted-foreground/25" : "bg-foreground/70",
-          )}
-          style={{ height: count === 0 ? 1 : `${Math.max(10, (count / max) * 100)}%` }}
-        />
       ))}
     </div>
   );
