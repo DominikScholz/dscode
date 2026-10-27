@@ -5,34 +5,48 @@ import {
 } from "@t3tools/client-runtime/environment";
 import {
   DailyDigestPageSnapshot,
-  type EnvironmentId,
+  EnvironmentId,
+  type EnvironmentMachineKind,
+  ProjectId,
+  ProviderDriverKind,
+  type AssetResource,
   type ScopedThreadRef,
   ThreadId,
 } from "@t3tools/contracts";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { htmlRenderFileName, type HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { sanitizeLinkedPrompt } from "@t3tools/shared/promptLinks";
 import { useAtomValue } from "@effect/atom-react";
+import { ArrowRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
-import { type ReactNode, useEffect, useState } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
 
-import { useAssetUrlState } from "~/assets/assetUrls";
+import { useAssetUrls, useAssetUrlState } from "~/assets/assetUrls";
 import { useNewThreadHandler } from "~/hooks/useHandleNewThread";
+import { useClientSettings } from "~/hooks/useSettings";
 import { useTheme } from "~/hooks/useTheme";
 import { cn } from "~/lib/utils";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { useProject, useThreadShell } from "~/state/entities";
+import {
+  useEnvironmentIdentities,
+  useEnvironmentMachines,
+  usePrimaryEnvironmentId,
+} from "~/state/environments";
 import { providerEntriesByEnvironmentAtom } from "~/state/providerEntries";
 import { buildThreadRouteParams } from "~/threadRoutes";
-import { formatRelativeTimeLabel } from "~/timestampFormat";
 import { openExpandedImagePreview } from "../chat/ExpandedImageDialog";
 import { FileTagChipContent } from "../chat/FileTagChip";
 import { ProviderInstanceIcon } from "../chat/ProviderInstanceIcon";
 import { ProjectFavicon } from "../ProjectFavicon";
 import { useOpenProjectGraph } from "../project-graph/projectGraphNavigation";
 import { placeLinkedPrompt, sendLinkedPrompt } from "../promptLinks/linkedPrompt";
-import { resolveThreadStatusPill } from "../Sidebar.logic";
-import { ThreadStatusLabel } from "../ThreadStatusIndicators";
+import {
+  SidebarThreadCardPreview,
+  SidebarThreadRow,
+  type SidebarProviderEntry,
+} from "../sidebar/SidebarThreadRow";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Skeleton } from "../ui/skeleton";
@@ -43,12 +57,12 @@ type Visual = Snapshot["content"]["visuals"][number];
 const decodeSnapshot = Schema.decodeUnknownSync(Schema.fromJsonString(DailyDigestPageSnapshot));
 const SHOWN_ITEMS = 6;
 const CARD = "relative rounded-2xl bg-(--panel-surface) panel-edge squircle";
-const STATUS_BADGES = {
-  shipped: ["Shipped", "success"],
-  in_progress: ["In progress", "info"],
-  blocked: ["Needs you", "warning"],
-  research: ["Research", "secondary"],
-  idle: ["Idle", "secondary"],
+const STATUS_LABELS = {
+  shipped: "Shipped",
+  in_progress: "In progress",
+  blocked: "Needs you",
+  research: "Research",
+  idle: "Idle",
 } as const;
 
 type SnapshotState =
@@ -132,6 +146,43 @@ function formatClock(ms: number, timeZone: string | undefined) {
   }).format(ms);
 }
 
+// The icon's average colour, saturated, lights the page the way Fey lights one by its ticker.
+function useIconGlow(src: string | undefined) {
+  const [glow, setGlow] = useState<{ readonly src: string; readonly color: string } | null>(null);
+  useEffect(() => {
+    if (!src) return;
+    const image = new Image();
+    const controller = new AbortController();
+    image.addEventListener(
+      "load",
+      () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 8;
+        canvas.height = 8;
+        const context = canvas.getContext("2d");
+        if (!context) return;
+        context.drawImage(image, 0, 0, 8, 8);
+        const data = context.getImageData(0, 0, 8, 8).data;
+        let [r, g, b, n] = [0, 0, 0, 0];
+        for (let index = 0; index < data.length; index += 4) {
+          if (data[index + 3]! < 128) continue;
+          r += data[index]!;
+          g += data[index + 1]!;
+          b += data[index + 2]!;
+          n += 1;
+        }
+        if (n === 0) return;
+        const average = `rgb(${Math.round(r / n)} ${Math.round(g / n)} ${Math.round(b / n)})`;
+        setGlow({ src, color: `oklch(from ${average} 0.72 min(0.16, calc(c * 2)) h)` });
+      },
+      { signal: controller.signal },
+    );
+    image.src = src;
+    return () => controller.abort();
+  }, [src]);
+  return glow !== null && glow.src === src ? glow.color : null;
+}
+
 function DigestView(props: {
   readonly snapshot: Snapshot;
   readonly environmentId: EnvironmentId;
@@ -142,13 +193,18 @@ function DigestView(props: {
   const handleNewThread = useNewThreadHandler();
   const openProjectGraph = useOpenProjectGraph();
   const digestShell = useThreadShell(props.threadRef);
-  const projectRef = digestShell
-    ? scopeProjectRef(props.environmentId, digestShell.projectId)
-    : null;
+  const threadEnvironmentId = EnvironmentId.make(context.environmentId);
+  const projectRef = context.remote
+    ? scopeProjectRef(threadEnvironmentId, ProjectId.make(context.remote.projectId))
+    : digestShell
+      ? scopeProjectRef(props.environmentId, digestShell.projectId)
+      : null;
   const project = useProject(projectRef);
+  const iconImage = context.icon?.startsWith("data:image/") ? context.icon : undefined;
+  const glow = useIconGlow(iconImage);
   const commits = context.activity.reduce((sum, count) => sum + count, 0);
   const threadRefFor = (threadId: string) =>
-    scopeThreadRef(props.environmentId, ThreadId.make(threadId));
+    scopeThreadRef(threadEnvironmentId, ThreadId.make(threadId));
   const openThread = (threadId: string) =>
     void navigate({
       to: "/$environmentId/$threadId",
@@ -168,343 +224,421 @@ function DigestView(props: {
       images: [{ src, name }],
       index: 0,
     });
+  const remoteImages = context.remote
+    ? content.visuals.filter((visual) => visual.kind === "image" && visual.threadId !== undefined)
+    : [];
+  const resources: AssetResource[] = remoteImages.map((visual) => ({
+    _tag: "media-file",
+    threadId: ThreadId.make(visual.threadId!),
+    path: visual.kind === "image" ? visual.path : "",
+  }));
+  const imageUrls = useAssetUrls(threadEnvironmentId, resources);
   const imageSrc = (visual: Extract<Visual, { kind: "image" }>) =>
-    props.snapshot.images[visual.path] ?? null;
-  const [lead, ...moreVisuals] = content.visuals.filter(
-    (visual) => visual.kind !== "image" || imageSrc(visual) !== null,
+    props.snapshot.images[visual.path] ?? imageUrls[remoteImages.indexOf(visual)] ?? null;
+  const visuals = content.visuals.filter(
+    (visual) =>
+      visual.kind !== "image" || imageSrc(visual) !== null || (context.remote && visual.threadId),
   );
+  const images = visuals.filter((visual) => visual.kind === "image");
+  const charts = visuals.filter((visual) => visual.kind === "bars");
   const today = new Intl.DateTimeFormat(undefined, {
     weekday: "long",
     day: "numeric",
     month: "long",
     ...(context.timeZone ? { timeZone: context.timeZone } : {}),
   }).format(context.untilMs);
+  type ActivityList = "commits" | "files" | "branches";
+  const stats: ReadonlyArray<{
+    readonly label: string;
+    readonly value: string;
+    readonly list?: ActivityList;
+  }> = [
+    context.remote
+      ? { label: "Threads", value: String(context.threads.length) }
+      : {
+          label: "Commits",
+          value: String(commits),
+          ...(context.commits && commits > 0 ? { list: "commits" as const } : {}),
+        },
+    ...(context.repo
+      ? [
+          {
+            label: "Uncommitted",
+            value: String(context.repo.uncommittedFiles),
+            ...(context.repo.files?.length ? { list: "files" as const } : {}),
+          },
+          {
+            label: "Unpushed",
+            value: String(context.repo.unpushedCommits),
+            ...(context.repo.unpushedBranches?.length ? { list: "branches" as const } : {}),
+          },
+        ]
+      : []),
+    ...content.facts,
+  ];
+  const [openList, setOpenList] = useState<ActivityList | null>(null);
+  const hasBriefing = content.decisions.length > 0 || content.nextSteps.length > 0;
 
-  const visualCard = (visual: Visual, className?: string) => (
-    <figure className={cn(CARD, "m-0 flex flex-col overflow-hidden", className)}>
-      {visual.kind === "image" ? (
-        <button
-          type="button"
-          className="relative min-h-60 flex-1 cursor-zoom-in overflow-hidden border-b border-border/40 bg-background"
-          onClick={() => expandImage(imageSrc(visual) ?? "", visual.title)}
-        >
-          <img
-            src={imageSrc(visual) ?? ""}
-            alt={visual.title}
-            className="absolute inset-0 size-full object-cover object-top"
-          />
-        </button>
-      ) : null}
-      <figcaption className="flex items-center justify-between gap-3 px-5 py-4">
-        <div className="min-w-0">
-          <div className="font-medium text-sm">{visual.title}</div>
-          {visual.caption ? (
-            <div className="mt-0.5 text-muted-foreground text-sm">
-              <Rich text={visual.caption} />
-            </div>
+  const visualCard = (visual: Visual) =>
+    visual.kind === "image" ? (
+      <figure className={cn(CARD, "m-0 flex w-full overflow-hidden bg-background")}>
+        {imageSrc(visual) !== null ? (
+          <button
+            type="button"
+            aria-label={visual.title}
+            className="block w-full cursor-zoom-in"
+            onClick={() => expandImage(imageSrc(visual) ?? "", visual.title)}
+          >
+            <img
+              src={imageSrc(visual) ?? ""}
+              alt={visual.title}
+              className="block h-[25rem] w-auto min-w-80 max-w-none object-cover object-top"
+            />
+          </button>
+        ) : (
+          <div className="flex h-[25rem] w-80 items-center justify-center p-6 text-center text-muted-foreground text-sm">
+            Connect to {context.remote?.machine} to load this screenshot.
+          </div>
+        )}
+      </figure>
+    ) : (
+      <figure className={cn(CARD, "m-0 flex w-full flex-col overflow-hidden")}>
+        <figcaption className="flex items-start justify-between gap-2 px-5 pt-4 pb-0.5">
+          <div className="min-w-0">
+            <div className="font-medium text-xs leading-snug">{visual.title}</div>
+            {visual.caption ? (
+              <div className="mt-0.5 line-clamp-1 text-muted-foreground text-xs leading-relaxed">
+                <Rich text={visual.caption} />
+              </div>
+            ) : null}
+          </div>
+          {visual.threadId ? (
+            <Button variant="ghost-muted" size="xs" onClick={() => openThread(visual.threadId!)}>
+              Open
+            </Button>
           ) : null}
-        </div>
-        {visual.threadId ? (
-          <Button variant="outline" size="sm" onClick={() => openThread(visual.threadId!)}>
-            Open
-          </Button>
-        ) : null}
-      </figcaption>
-      {visual.kind === "bars" ? <Bars visual={visual} /> : null}
-    </figure>
-  );
+        </figcaption>
+        <Bars visual={visual} />
+      </figure>
+    );
 
+  const happened =
+    content.sections.length > 0 ? (
+      <BriefingCard title="What happened">
+        {content.sections.map((section) => (
+          <BriefingRow
+            key={section.title}
+            marker={<StatusDot status={section.status} />}
+            title={section.title}
+            aside={<StatusLabel status={section.status} />}
+            detail={section.summary}
+            issue={section.issue}
+            onClick={section.threadId ? () => openThread(section.threadId!) : undefined}
+          />
+        ))}
+      </BriefingCard>
+    ) : null;
+  const whatsNext = hasBriefing ? (
+    <BriefingCard title="What's next">
+      {content.decisions.map((decision) => (
+        <BriefingRow
+          key={decision.question}
+          marker={<span className="size-1.5 rounded-full bg-warning text-warning digest-halo" />}
+          title={decision.question}
+          detail={decision.context}
+          action={decision.threadId || decision.prompt ? "Answer" : undefined}
+          onClick={
+            decision.threadId
+              ? () => answerInThread(decision.threadId!, decision.prompt ?? "")
+              : decision.prompt
+                ? () => void startThread(decision.prompt!)
+                : undefined
+          }
+        />
+      ))}
+      {content.nextSteps.map((step, index) => (
+        <BriefingRow
+          key={step.title}
+          marker={
+            <span className="font-medium text-muted-foreground text-xs tabular-nums">
+              {index + 1}
+            </span>
+          }
+          title={step.title}
+          detail={step.reason}
+          action="Start"
+          onClick={() => void startThread(step.prompt)}
+        />
+      ))}
+    </BriefingCard>
+  ) : null;
+  const chartCards =
+    charts.length > 0 ? (
+      <div className="grid gap-6 @3xl:grid-cols-2">
+        {charts.map((visual) => (
+          <div key={visual.title} className="flex">
+            {visualCard(visual)}
+          </div>
+        ))}
+      </div>
+    ) : null;
+
+  const hero = (
+    <section className="relative flex flex-1 flex-col justify-between gap-6 overflow-hidden rounded-2xl px-8 pt-6 pb-7 squircle digest-lit">
+      <span className="font-medium text-muted-foreground text-sm">{content.mood}</span>
+      <div className="flex flex-col gap-3">
+        <p className="m-0 max-w-[36ch] text-pretty font-semibold text-3xl leading-tight tracking-tight">
+          <Rich text={content.headline} />
+        </p>
+        <p className="m-0 max-w-[72ch] text-muted-foreground text-sm leading-relaxed">
+          <Rich text={content.summary} />
+        </p>
+      </div>
+    </section>
+  );
   return (
-    <div className="@container mx-auto flex w-full max-w-[1240px] flex-col gap-5 pb-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          {project ? <ProjectFavicon project={project} className="size-8" /> : null}
-          <h1 className="m-0 truncate font-semibold text-xl">{context.projectTitle} digest</h1>
-          <Badge variant="outline">{commits === 1 ? "1 commit" : `${commits} commits`}</Badge>
-        </div>
-        <Badge variant="secondary" size="lg">
-          {today}
-        </Badge>
+    <div
+      className="@container mx-auto flex w-full max-w-[1240px] flex-col gap-8 pb-12"
+      style={glow ? ({ "--lit": glow } as CSSProperties) : undefined}
+    >
+      <header className="flex flex-wrap items-center justify-between gap-4 pt-2">
+        <h1 className="m-0 flex min-w-0 flex-wrap items-center gap-x-6 gap-y-2 font-semibold text-xl">
+          <span className="shrink-0">Daily Digest</span>
+          <span className="inline-flex min-w-0 items-center gap-3">
+            {iconImage ? (
+              <img src={iconImage} alt="" className="size-8 shrink-0 rounded-lg object-contain" />
+            ) : project ? (
+              <ProjectFavicon project={project} className="size-8" />
+            ) : null}
+            <span className="truncate">{context.projectTitle}</span>
+          </span>
+          {context.remote ? <Badge variant="outline">{context.remote.machine}</Badge> : null}
+        </h1>
+        <span className="text-muted-foreground text-sm">
+          <span className="font-medium text-foreground">{today}</span>
+          {" · "}
+          {formatClock(context.untilMs, context.timeZone)}
+        </span>
       </header>
 
-      <div className="grid gap-5 @3xl:grid-cols-[5fr_7fr]">
-        <section
-          className={cn(CARD, "flex min-h-72 flex-col justify-between gap-10 overflow-hidden p-7")}
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Badge variant="outline" size="lg">
-              {content.mood}
-            </Badge>
-            <span className="text-muted-foreground text-xs">
-              Summarized at {formatClock(context.untilMs, context.timeZone)}
-            </span>
+      {images.length > 0 ? (
+        <div className="grid gap-6 @4xl:grid-cols-[minmax(0,1fr)_auto]">
+          <div className="flex min-w-0 flex-col gap-6">
+            {hero}
+            {chartCards}
           </div>
-          <div>
-            <p className="m-0 max-w-[30ch] text-pretty font-semibold text-2xl leading-snug">
-              <Rich text={content.headline} />
-            </p>
-            <p className="mt-3 mb-0 max-w-[58ch] text-muted-foreground text-sm leading-relaxed">
-              <Rich text={content.summary} />
-            </p>
+          <div className="flex flex-wrap gap-6">
+            {images.map((visual) => (
+              <div key={visual.title} className="flex w-min max-w-full">
+                {visualCard(visual)}
+              </div>
+            ))}
           </div>
-        </section>
-        {lead ? (
-          visualCard(lead)
-        ) : (
-          <section className={cn(CARD, "flex flex-col justify-between gap-6 p-6")}>
-            <header className="flex items-baseline justify-between gap-3">
-              <h3 className="m-0 font-medium text-muted-foreground text-sm">Commit activity</h3>
-              <span className="text-muted-foreground text-xs">
-                Since {formatClock(context.sinceMs, context.timeZone)}
-              </span>
-            </header>
-            <Spark activity={context.activity} className="h-24" />
-            <div className="flex justify-between text-muted-foreground text-xs tabular-nums">
+        </div>
+      ) : (
+        <>
+          {hero}
+          {chartCards}
+        </>
+      )}
+
+      {happened || whatsNext ? (
+        <div className={cn("grid gap-6", happened && whatsNext && "@4xl:grid-cols-2")}>
+          {happened}
+          {whatsNext}
+        </div>
+      ) : null}
+
+      <section className={cn(CARD, "overflow-hidden")}>
+        <div className="grid grid-cols-[repeat(auto-fit,minmax(7rem,1fr))]">
+          {stats.map((stat) => {
+            const list = stat.list;
+            const body = (
+              <>
+                <span className="truncate text-muted-foreground text-xs">
+                  <Rich text={stat.label} />
+                </span>
+                <span className="font-semibold text-base tabular-nums leading-none">
+                  <Rich text={stat.value} />
+                </span>
+              </>
+            );
+            const cell = "flex flex-col items-center justify-center gap-2 px-4 py-5 text-center";
+            return list ? (
+              <button
+                key={stat.label}
+                type="button"
+                aria-expanded={openList === list}
+                onClick={() => setOpenList(openList === list ? null : list)}
+                className={cn(
+                  cell,
+                  "cursor-pointer digest-groove-divider hover:bg-(--panel-surface-hover)",
+                  openList === list && "bg-(--panel-surface-hover)",
+                )}
+              >
+                {body}
+              </button>
+            ) : (
+              <div key={stat.label} className={cn(cell, "digest-groove-divider")}>
+                {body}
+              </div>
+            );
+          })}
+        </div>
+        {context.remote ? null : (
+          <div className="relative px-6 pb-4">
+            <div aria-hidden className="absolute inset-0 digest-dot-grid" />
+            <Spark activity={context.activity} className="relative h-8" />
+            <div className="relative mt-1.5 flex justify-between text-muted-foreground/70 text-xs tabular-nums">
               <span>{formatClock(context.sinceMs, context.timeZone)}</span>
               <span>{formatClock(context.untilMs, context.timeZone)}</span>
             </div>
-          </section>
-        )}
-      </div>
-
-      <div className="grid gap-4 @xl:grid-cols-2 @5xl:grid-cols-4">
-        <StatCard title="Commits" count={commits}>
-          {context.commits ? (
-            <ExpandableList
-              total={commits}
-              empty="No commits in this window."
-              items={context.commits.map((commit) => (
-                <ListRowButton key={commit.hash} onClick={openProjectGraph}>
-                  <span className="truncate">{commit.subject}</span>
-                  <span className="flex min-w-0 items-center gap-2 text-muted-foreground text-xs">
-                    <code className="font-mono">{commit.hash}</code>
-                    {commit.branch ? <span className="truncate">{commit.branch}</span> : null}
-                    <span className="ml-auto shrink-0 whitespace-nowrap tabular-nums">
-                      {formatClock(commit.timeMs, context.timeZone)}
-                    </span>
-                  </span>
-                </ListRowButton>
-              ))}
-            />
-          ) : (
-            <Spark activity={context.activity} className="h-8" />
-          )}
-        </StatCard>
-        {context.repo ? (
-          <>
-            <StatCard title="Uncommitted files" count={context.repo.uncommittedFiles}>
-              {context.repo.files ? (
-                <FileRows
-                  files={context.repo.files}
-                  total={context.repo.uncommittedFiles}
-                  environmentId={props.environmentId}
-                  threadRef={props.threadRef}
-                  cwd={project?.workspaceRoot}
-                />
-              ) : null}
-            </StatCard>
-            <StatCard title="Unpushed commits" count={context.repo.unpushedCommits}>
-              {context.repo.unpushedBranches ? (
-                <ExpandableList
-                  total={context.repo.unpushedBranches.length}
-                  empty="Everything is pushed."
-                  items={context.repo.unpushedBranches.map((entry) => (
-                    <ListRowButton key={entry.branch} onClick={openProjectGraph}>
-                      <span className="flex items-center justify-between gap-3">
-                        <span className="truncate">{entry.branch}</span>
-                        <span className="font-medium tabular-nums">{entry.count}</span>
-                      </span>
-                    </ListRowButton>
-                  ))}
-                />
-              ) : null}
-            </StatCard>
-          </>
-        ) : null}
-        {content.facts.length > 0 ? (
-          <StatCard title="Also">
-            <ul className="m-0 list-none p-0">
-              {content.facts.map((fact) => (
-                <li
-                  key={fact.label}
-                  className="flex items-center justify-between gap-3 border-border/50 border-t py-2 text-sm"
-                >
-                  <span className="truncate">
-                    <Rich text={fact.label} />
-                  </span>
-                  <span className="font-medium tabular-nums">
-                    <Rich text={fact.value} />
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </StatCard>
-        ) : null}
-      </div>
-
-      {moreVisuals.length > 0 ? (
-        <DigestSection title="Highlights">
-          <div className="grid items-start gap-5 @2xl:grid-cols-2">
-            {moreVisuals.map((visual) => (
-              <div key={visual.title}>{visualCard(visual)}</div>
-            ))}
           </div>
-        </DigestSection>
-      ) : null}
+        )}
+        {openList ? (
+          <div className="flex flex-col px-5 pb-3 digest-grooves">
+            {openList === "commits" && context.commits ? (
+              <ExpandableList
+                total={commits}
+                empty="No commits in this window."
+                items={context.commits.map((commit) => (
+                  <ListRowButton key={commit.hash} onClick={openProjectGraph}>
+                    <span className="flex min-w-0 items-center gap-3">
+                      <span className="truncate">{commit.subject}</span>
+                      <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground text-xs">
+                        {commit.branch ? (
+                          <span className="max-w-48 truncate">{commit.branch}</span>
+                        ) : null}
+                        <span className="tabular-nums">
+                          {formatClock(commit.timeMs, context.timeZone)}
+                        </span>
+                      </span>
+                    </span>
+                  </ListRowButton>
+                ))}
+              />
+            ) : openList === "files" && context.repo?.files ? (
+              <FileRows
+                files={context.repo.files}
+                total={context.repo.uncommittedFiles}
+                environmentId={props.environmentId}
+                threadRef={props.threadRef}
+                cwd={project?.workspaceRoot}
+              />
+            ) : openList === "branches" && context.repo?.unpushedBranches ? (
+              <ExpandableList
+                total={context.repo.unpushedBranches.length}
+                empty="Everything is pushed."
+                items={context.repo.unpushedBranches.map((entry) => (
+                  <ListRowButton key={entry.branch} onClick={openProjectGraph}>
+                    <span className="flex items-center justify-between gap-3">
+                      <span className="truncate">{entry.branch}</span>
+                      <span className="text-muted-foreground tabular-nums">{entry.count}</span>
+                    </span>
+                  </ListRowButton>
+                ))}
+              />
+            ) : null}
+          </div>
+        ) : null}
+      </section>
 
       {context.threads.length > 0 ? (
-        <DigestSection title="Threads" aside={`${context.threads.length} active`}>
-          <div className="grid gap-2.5 @xl:grid-cols-2 @5xl:grid-cols-4">
-            {context.threads.map((thread) => (
-              <DigestThreadRow
-                key={thread.id}
-                threadRef={threadRefFor(thread.id)}
-                fallback={thread}
-                onOpen={() => openThread(thread.id)}
-              />
-            ))}
-          </div>
-        </DigestSection>
-      ) : null}
-
-      {content.sections.length > 0 ? (
-        <DigestSection title="What happened" aside={`${content.sections.length} workstreams`}>
-          <div className={cn(CARD, "overflow-hidden")}>
-            {content.sections.map((section) => {
-              const [label, variant] = STATUS_BADGES[section.status];
-              return (
-                <div
-                  key={section.title}
-                  className="grid items-center gap-x-6 gap-y-1.5 border-border/50 border-t px-6 py-4 first:border-t-0 @3xl:grid-cols-[minmax(0,1.7fr)_auto_minmax(0,1fr)_auto]"
-                >
-                  <div className="min-w-0">
-                    <div className="font-medium text-sm">{section.title}</div>
-                    <div className="mt-0.5 text-muted-foreground text-sm">
-                      <Rich text={section.summary} />
-                    </div>
-                  </div>
-                  <Badge variant={variant}>{label}</Badge>
-                  <div className="text-sm text-warning-foreground">
-                    {section.issue ? <Rich text={section.issue} /> : null}
-                  </div>
-                  {section.threadId ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="justify-self-end"
-                      onClick={() => openThread(section.threadId!)}
-                    >
-                      Open
-                    </Button>
-                  ) : (
-                    <span />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </DigestSection>
-      ) : null}
-
-      {content.decisions.length > 0 || content.nextSteps.length > 0 ? (
-        <DigestSection title="How to proceed">
-          <div className="grid items-start gap-5 @3xl:grid-cols-2">
-            {content.decisions.length > 0 ? (
-              <ActionList title="Your call">
-                {content.decisions.map((decision) => (
-                  <ActionRow
-                    key={decision.question}
-                    marker={<span className="size-2 rounded-full bg-warning" />}
-                    title={decision.question}
-                    detail={decision.context}
-                    action={
-                      decision.threadId ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => answerInThread(decision.threadId!, decision.prompt ?? "")}
-                        >
-                          Answer
-                        </Button>
-                      ) : decision.prompt ? (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void startThread(decision.prompt!)}
-                        >
-                          Start thread
-                        </Button>
-                      ) : null
-                    }
-                  />
-                ))}
-              </ActionList>
-            ) : null}
-            {content.nextSteps.length > 0 ? (
-              <ActionList title="Next steps">
-                {content.nextSteps.map((step, index) => (
-                  <ActionRow
-                    key={step.title}
-                    marker={
-                      <span className="flex size-6 items-center justify-center rounded-full bg-muted font-medium text-xs tabular-nums">
-                        {index + 1}
-                      </span>
-                    }
-                    title={step.title}
-                    detail={step.reason}
-                    action={
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void startThread(step.prompt)}
-                      >
-                        Start thread
-                      </Button>
-                    }
-                  />
-                ))}
-              </ActionList>
-            ) : null}
-          </div>
-        </DigestSection>
+        <section className="flex flex-col gap-2">
+          <h2 className="m-0 px-1 font-medium text-muted-foreground text-sm">
+            Threads{" "}
+            <span className="text-muted-foreground/60 tabular-nums">{context.threads.length}</span>
+          </h2>
+          <DigestThreads
+            environmentId={threadEnvironmentId}
+            threads={context.threads}
+            onOpen={openThread}
+          />
+        </section>
       ) : null}
     </div>
   );
 }
 
-function DigestSection(props: {
-  readonly title: string;
-  readonly aside?: string;
-  readonly children: ReactNode;
+const STATUS_DOTS = {
+  shipped: "bg-success",
+  in_progress: "bg-info",
+  blocked: "bg-warning",
+  research: "bg-violet-400",
+  idle: "bg-muted-foreground/50",
+} as const;
+
+function StatusDot(props: { readonly status: Snapshot["content"]["sections"][number]["status"] }) {
+  return <span className={cn("size-1.5 rounded-full", STATUS_DOTS[props.status])} />;
+}
+
+function StatusLabel(props: {
+  readonly status: Snapshot["content"]["sections"][number]["status"];
 }) {
+  return <span className="text-muted-foreground text-xs">{STATUS_LABELS[props.status]}</span>;
+}
+
+function BriefingCard(props: { readonly title: string; readonly children: ReactNode }) {
   return (
-    <section className="mt-4 flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3 px-1">
-        <h2 className="m-0 font-semibold text-base text-muted-foreground">{props.title}</h2>
-        {props.aside ? <span className="text-muted-foreground text-xs">{props.aside}</span> : null}
-      </div>
-      {props.children}
+    <section className={cn(CARD, "flex flex-col overflow-hidden pb-3")}>
+      <h2 className="m-0 px-6 pt-5 pb-2 font-medium text-muted-foreground text-sm">
+        {props.title}
+      </h2>
+      <div className="flex flex-col gap-0.5 px-3">{props.children}</div>
     </section>
   );
 }
 
-function StatCard(props: {
+function BriefingRow(props: {
+  readonly marker: ReactNode;
   readonly title: string;
-  readonly count?: number;
-  readonly children?: ReactNode;
+  readonly detail: string;
+  readonly aside?: ReactNode;
+  readonly issue?: string | undefined;
+  readonly action?: string | undefined;
+  readonly onClick?: (() => void) | undefined;
 }) {
-  return (
-    <section className={cn(CARD, "flex flex-col px-5 pt-4 pb-3")}>
-      <header className="mb-2 flex items-baseline justify-between gap-3">
-        <h3 className="m-0 font-medium text-muted-foreground text-sm">{props.title}</h3>
-        {props.count === undefined ? null : (
-          <strong className="font-semibold text-3xl tabular-nums leading-none tracking-tight">
-            {props.count}
-          </strong>
-        )}
-      </header>
-      {props.children}
-    </section>
+  const content = (
+    <>
+      <span className="flex h-5 w-3 shrink-0 items-center justify-center">{props.marker}</span>
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+        <span className="flex min-w-0 items-baseline gap-2">
+          <span className="min-w-0 flex-1 truncate font-medium text-sm">
+            <Rich text={props.title} />
+          </span>
+          {props.aside}
+        </span>
+        <span className="line-clamp-2 text-muted-foreground text-sm">
+          <Rich text={props.detail} />
+        </span>
+        {props.issue ? (
+          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
+            <WarningCircleIcon aria-hidden weight="fill" className="size-3 shrink-0 text-warning" />
+            <span className="truncate">
+              <Rich text={props.issue} />
+            </span>
+          </span>
+        ) : null}
+      </span>
+      {props.action ? (
+        <span className="flex h-5 shrink-0 items-center gap-1 text-muted-foreground text-xs group-hover/briefing:text-foreground">
+          {props.action}
+          <ArrowRightIcon aria-hidden className="size-3" />
+        </span>
+      ) : null}
+    </>
+  );
+  const row = "group/briefing flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left";
+  return props.onClick ? (
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={cn(row, "cursor-pointer hover:bg-(--panel-surface-hover)")}
+    >
+      {content}
+    </button>
+  ) : (
+    <div className={row}>{content}</div>
   );
 }
 
@@ -589,90 +723,123 @@ function FileRows(props: {
   );
 }
 
+const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, SidebarProviderEntry> = new Map();
+const noop = () => {};
+
+/** The window's threads as the sidebar draws them, live where this client has the thread. */
+function DigestThreads(props: {
+  readonly environmentId: EnvironmentId;
+  readonly threads: Snapshot["context"]["threads"];
+  readonly onOpen: (threadId: string) => void;
+}) {
+  const providerEntries =
+    useAtomValue(providerEntriesByEnvironmentAtom).get(props.environmentId) ??
+    EMPTY_PROVIDER_ENTRIES;
+  const environmentLabel =
+    useEnvironmentIdentities().find(
+      (environment) => environment.environmentId === props.environmentId,
+    )?.label ?? null;
+  const environmentMachine = useEnvironmentMachines().get(props.environmentId) ?? "server";
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  return (
+    <ul className="m-0 grid list-none grid-cols-[repeat(auto-fill,14.5rem)] gap-x-2 p-0">
+      {props.threads.map((thread) => (
+        <DigestThreadRow
+          key={thread.id}
+          threadRef={scopeThreadRef(props.environmentId, ThreadId.make(thread.id))}
+          fallback={thread}
+          providerEntries={providerEntries}
+          environmentLabel={environmentLabel}
+          environmentMachine={environmentMachine}
+          currentEnvironmentId={primaryEnvironmentId}
+          timestampFormat={timestampFormat}
+          onOpen={() => props.onOpen(thread.id)}
+        />
+      ))}
+    </ul>
+  );
+}
+
 function DigestThreadRow(props: {
   readonly threadRef: ScopedThreadRef;
   readonly fallback: Snapshot["context"]["threads"][number];
+  readonly providerEntries: ReadonlyMap<string, SidebarProviderEntry>;
+  readonly environmentLabel: string | null;
+  readonly environmentMachine: EnvironmentMachineKind;
+  readonly currentEnvironmentId: EnvironmentId | null;
+  readonly timestampFormat: TimestampFormat;
   readonly onOpen: () => void;
 }) {
   const shell = useThreadShell(props.threadRef);
-  const providerEntries = useAtomValue(providerEntriesByEnvironmentAtom);
-  const pill = shell ? resolveThreadStatusPill({ thread: shell }) : null;
-  const provider = shell
-    ? (providerEntries.get(shell.environmentId)?.get(shell.providerInstanceId) ?? null)
-    : null;
-  const title = shell?.title ?? props.fallback.title;
-  const branch = shell ? shell.branch : (props.fallback.branch ?? null);
+  const project = useProject(shell ? scopeProjectRef(shell.environmentId, shell.projectId) : null);
+  if (shell === null) {
+    const provider = props.fallback.provider;
+    return (
+      <SidebarThreadCardPreview
+        title={props.fallback.title}
+        branch={props.fallback.branch ?? null}
+        timestamp={new Date(props.fallback.activityMs).toISOString()}
+        done={props.fallback.done === true}
+        onOpen={props.onOpen}
+        provider={
+          provider ? (
+            <ProviderInstanceIcon
+              driverKind={ProviderDriverKind.make(provider === "claude" ? "claudeAgent" : "codex")}
+              displayName={provider === "claude" ? "Claude" : "Codex"}
+              size="compact"
+              iconClassName="opacity-60"
+            />
+          ) : null
+        }
+      />
+    );
+  }
   return (
-    <button
-      type="button"
-      onClick={props.onOpen}
-      className={cn(
-        CARD,
-        "flex min-w-0 cursor-pointer flex-col gap-1.5 rounded-xl px-3 py-2.5 text-left hover:bg-(--panel-surface-hover)",
-      )}
-    >
-      <span className="flex min-w-0 items-center justify-between gap-2">
-        <span
-          className={cn("truncate text-sm", pill ? "text-foreground" : "text-muted-foreground")}
-        >
-          {title}
-        </span>
-        {pill ? (
-          <ThreadStatusLabel status={pill} />
-        ) : (
-          <span className="shrink-0 text-muted-foreground text-xs tabular-nums">
-            {shell
-              ? formatRelativeTimeLabel(shell.latestUserMessageAt ?? shell.updatedAt)
-              : formatRelativeTimeLabel(new Date(props.fallback.activityMs).toISOString())}
-          </span>
-        )}
-      </span>
-      <span className="flex min-h-3.5 items-center justify-between gap-2 text-muted-foreground/70 text-xs">
-        <span className="truncate">{branch ?? ""}</span>
-        {provider ? (
-          <ProviderInstanceIcon
-            driverKind={provider.driverKind}
-            displayName={provider.displayName}
-            accentColor={provider.accentColor}
-            acpRegistryAgentId={provider.acpRegistryAgentId}
-            acpRegistryIconUrl={provider.acpRegistryIconUrl}
-            size="compact"
-            iconClassName="opacity-60"
-          />
-        ) : null}
-      </span>
-    </button>
-  );
-}
-
-function ActionList(props: { readonly title: string; readonly children: ReactNode }) {
-  return (
-    <section className={cn(CARD, "px-6 pt-5 pb-2")}>
-      <h3 className="m-0 mb-1 font-semibold text-sm">{props.title}</h3>
-      <div className="flex flex-col">{props.children}</div>
-    </section>
-  );
-}
-
-function ActionRow(props: {
-  readonly marker: ReactNode;
-  readonly title: string;
-  readonly detail: string;
-  readonly action: ReactNode;
-}) {
-  return (
-    <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-3.5 gap-y-1 border-border/50 border-t py-3.5 first:border-t-0">
-      <span className="row-span-2 flex size-6 items-center justify-center self-start">
-        {props.marker}
-      </span>
-      <span className="font-medium text-sm">
-        <Rich text={props.title} />
-      </span>
-      <span className="row-span-2 self-center">{props.action}</span>
-      <span className="col-start-2 text-muted-foreground text-sm">
-        <Rich text={props.detail} />
-      </span>
-    </div>
+    <SidebarThreadRow
+      thread={shell}
+      variant="card"
+      variantAction="settle"
+      settlementSupported={false}
+      snoozeSupported={false}
+      pinningSupported={false}
+      isPinned={false}
+      groupLabel={null}
+      groupProject={null}
+      dropVerb={null}
+      dragOverPinned={false}
+      sweepAction={null}
+      snoozeWakeLabelText={null}
+      wokeAt={null}
+      isActive={false}
+      isRouteThread={false}
+      openPullRequestsInRightPanel={false}
+      jumpLabel={null}
+      currentEnvironmentId={props.currentEnvironmentId}
+      environmentLabel={props.environmentLabel}
+      environmentMachine={props.environmentMachine}
+      scratchMachineLabel={null}
+      project={project}
+      projectDisplayName={project?.title ?? null}
+      providerEntryByInstanceId={props.providerEntries}
+      timestampFormat={props.timestampFormat}
+      onThreadClick={props.onOpen}
+      onThreadActivate={props.onOpen}
+      onStartRename={noop}
+      onRenameTitleChange={noop}
+      onCommitRename={noop}
+      onCancelRename={noop}
+      isRenaming={false}
+      renamingTitle=""
+      onContextMenu={noop}
+      onSettle={noop}
+      onActionSweepStart={noop}
+      onUnsettle={noop}
+      onSnooze={noop}
+      onUnsnooze={noop}
+      onUnpin={noop}
+      onAcknowledgeWoke={noop}
+    />
   );
 }
 
@@ -681,25 +848,29 @@ function Bars(props: { readonly visual: Extract<Visual, { kind: "bars" }> }) {
   const unit = props.visual.unit ?? "";
   const spaced = /^\p{L}{2,}/u.test(unit) ? ` ${unit}` : unit;
   return (
-    <div className="grid gap-3.5 px-5 pb-6">
+    <div className="grid gap-2 px-5 pt-2.5 pb-4">
       {props.visual.items.map((item) => (
         <div
           key={item.label}
-          className="grid grid-cols-[minmax(90px,32%)_minmax(0,1fr)_auto] items-center gap-3.5 text-sm"
+          className="grid grid-cols-[minmax(90px,38%)_minmax(0,1fr)_auto] items-center gap-3 text-xs"
         >
           <span
             className={cn("truncate", item.highlight ? "text-foreground" : "text-muted-foreground")}
           >
             {item.label}
           </span>
-          <span className="h-2 overflow-hidden rounded-full bg-muted">
+          <span className="relative flex h-1 items-center rounded-full panel-well">
             <span
               className={cn(
-                "block h-full rounded-full",
+                "relative block h-full rounded-full",
                 item.highlight ? "bg-foreground" : "bg-muted-foreground/40",
               )}
               style={{ width: `${Math.max(2, (Math.abs(item.value) / max) * 100)}%` }}
-            />
+            >
+              {item.highlight ? (
+                <span className="absolute top-1/2 right-0 size-1.5 translate-x-1/2 -translate-y-1/2 rounded-full bg-foreground text-foreground digest-halo" />
+              ) : null}
+            </span>
           </span>
           <span className="whitespace-nowrap text-right font-medium tabular-nums">
             {item.value.toLocaleString()}
@@ -722,7 +893,10 @@ function Spark(props: { readonly activity: ReadonlyArray<number>; readonly class
         <span
           // oxlint-disable-next-line react/no-array-index-key -- Slots are positional.
           key={index}
-          className="w-0.5 justify-self-center rounded-full bg-muted-foreground/50"
+          className={cn(
+            "w-0.5 justify-self-center rounded-full",
+            count === 0 ? "bg-muted-foreground/25" : "bg-foreground/70",
+          )}
           style={{ height: count === 0 ? 1 : `${Math.max(10, (count / max) * 100)}%` }}
         />
       ))}

@@ -81,7 +81,7 @@ export function DailyDigestSettingsPanel() {
           serverScoped
           settingKeys={["dailyDigestEnabled"]}
           {...searchableSetting("daily-digest")}
-          description="When no device has been connected to this environment for a while, an agent writes a digest for each project that changed since its last one: a full-width page with what happened and next steps you start with a click. Turn it on for the machine that stays online."
+          description="After you step away, this environment writes digests for its changed projects. When you return, its agent also checks projects on other machines connected through its T3 tools and writes their digests here. Turn it on for the machine that stays online."
           control={
             <Switch
               checked={settings.dailyDigestEnabled}

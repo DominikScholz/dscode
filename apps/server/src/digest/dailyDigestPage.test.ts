@@ -2,7 +2,7 @@ import { describe, expect, it } from "@effect/vitest";
 
 import type { DailyDigestPageContent } from "@t3tools/contracts";
 
-import { renderDailyDigestPage } from "./dailyDigestPage.ts";
+import { renderDailyDigestPage, renderDailyDigestSnapshot } from "./dailyDigestPage.ts";
 
 const context = {
   projectTitle: "dscode",
@@ -34,6 +34,29 @@ const content: DailyDigestPageContent = {
 };
 
 describe("renderDailyDigestPage", () => {
+  it("routes remote actions and screenshots to their source without inventing git counts", () => {
+    const html = renderDailyDigestSnapshot({
+      content: {
+        ...content,
+        visuals: [
+          {
+            kind: "image",
+            title: "Mobile screen",
+            path: "/remote/screen.png",
+            threadId: "thread:1",
+          },
+        ],
+      },
+      context: { ...context, activity: [], remote: { machine: "idom", projectId: "mobile" } },
+      images: {},
+    });
+    expect(html).toContain("environmentId=env-1&amp;projectId=mobile");
+    expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A1"');
+    expect(html).toContain("Screenshot from idom");
+    expect(html).not.toContain('src="/remote/');
+    expect(html).not.toContain("0 commits");
+    expect(html).not.toContain("<h3>Commits</h3>");
+  });
   it("escapes the agent's text and turns backticks into code", () => {
     const html = renderDailyDigestPage(content, context);
     expect(html).toContain("Ship &lt;it&gt; &amp; <code>main</code>");
@@ -42,11 +65,11 @@ describe("renderDailyDigestPage", () => {
 
   it("titles every page the same way and builds the links itself", () => {
     const html = renderDailyDigestPage(content, context);
-    expect(html).toContain("<h1>dscode digest</h1>");
+    expect(html).toContain("<h1><span>Daily Digest -</span>");
+    expect(html).toContain("<span>dscode</span></span></h1>");
     expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A1"');
     expect(html).toContain('href="https://app.t3.codes/env-1/thread%3A1?prompt=Yes%20%26%20go"');
     expect(html).toContain('href="https://app.t3.codes/new?prompt=Add%20a%20CI%20workflow"');
-    expect(html).toContain("3 commits");
   });
 
   it("shows the project's icon like the app, down to its derived monogram", () => {
@@ -99,7 +122,7 @@ describe("renderDailyDigestPage", () => {
     expect(html).toContain("What happened");
   });
 
-  it("leads with the first visual and falls back to the commits chart without one", () => {
+  it("includes supplied visuals and falls back to the commits chart without one", () => {
     const withVisuals = renderDailyDigestPage(
       {
         ...content,

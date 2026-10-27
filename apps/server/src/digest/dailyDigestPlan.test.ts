@@ -135,6 +135,30 @@ describe("advanceAwayClock", () => {
     );
     expect(clock.due).toBe(false);
   });
+
+  it("discovers other machines once on return after a full away interval", () => {
+    const returned = advanceAwayClock(
+      { awaySinceMs: 0, digested: true },
+      { ...away, connected: true, nowMs: 9 * HOUR_MS },
+    );
+    expect(returned.remoteDue).toBe(true);
+    expect(returned.due).toBe(false);
+    expect(
+      advanceAwayClock(returned.clock, { ...away, connected: true, nowMs: 10 * HOUR_MS }).remoteDue,
+    ).toBe(false);
+    expect(
+      advanceAwayClock(
+        { awaySinceMs: 0, digested: false },
+        { ...away, connected: true, nowMs: HOUR_MS },
+      ).remoteDue,
+    ).toBe(false);
+    expect(
+      advanceAwayClock(
+        { awaySinceMs: 0, digested: true },
+        { ...away, enabled: false, connected: true, nowMs: 9 * HOUR_MS },
+      ).remoteDue,
+    ).toBe(false);
+  });
 });
 
 describe("digestWindow", () => {

@@ -23,6 +23,7 @@ export type NewThreadLink =
       readonly repository: PromptLinkRepository | null;
       readonly provider: string | null;
       readonly model: string | null;
+      readonly project?: { readonly environmentId: string; readonly projectId: string };
     }
   | {
       readonly kind: "pull-request";
@@ -137,6 +138,15 @@ export function parseNewThreadLink(search: string): PromptLinkResult<NewThreadLi
   }
   if (prompt.value === null) return { ok: false, error: "This link has no prompt." };
   const repo = params.get("repo");
+  const environmentId = optionalParam(params, "environmentId");
+  const projectId = optionalParam(params, "projectId");
+  if (
+    (environmentId === null) !== (projectId === null) ||
+    (environmentId?.length ?? 0) > 200 ||
+    (projectId?.length ?? 0) > 200
+  ) {
+    return { ok: false, error: "This link has an incomplete project destination." };
+  }
   const repository = repo === null ? null : parsePromptLinkRepository(repo);
   if (repo !== null && repository === null) {
     return { ok: false, error: "This link names a repository T3 Code cannot read." };
@@ -149,6 +159,9 @@ export function parseNewThreadLink(search: string): PromptLinkResult<NewThreadLi
       repository,
       provider: optionalParam(params, "provider")?.toLowerCase() ?? null,
       model: optionalParam(params, "model"),
+      ...(environmentId !== null && projectId !== null
+        ? { project: { environmentId, projectId } }
+        : {}),
     },
   };
 }
@@ -159,7 +172,8 @@ export function parseThreadLinkPrompt(search: string): PromptLinkResult<LinkedPr
 
 export function withoutPromptLinkParams(search: string): string {
   const params = new URLSearchParams(search);
-  for (const key of ["prompt", "repo", "pr", "provider", "model"]) params.delete(key);
+  for (const key of ["prompt", "repo", "pr", "provider", "model", "environmentId", "projectId"])
+    params.delete(key);
   const rest = params.toString();
   return rest ? `?${rest}` : "";
 }

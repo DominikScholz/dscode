@@ -78,11 +78,19 @@ export function advanceAwayClock(
     readonly enabled: boolean;
     readonly awayMs: number;
   },
-): { readonly clock: AwayClock; readonly due: boolean } {
-  if (input.connected) return { clock: { awaySinceMs: null, digested: false }, due: false };
+): { readonly clock: AwayClock; readonly due: boolean; readonly remoteDue: boolean } {
+  if (input.connected)
+    return {
+      clock: { awaySinceMs: null, digested: false },
+      due: false,
+      remoteDue:
+        input.enabled &&
+        clock.awaySinceMs !== null &&
+        input.nowMs - clock.awaySinceMs >= input.awayMs,
+    };
   const awaySinceMs = clock.awaySinceMs ?? input.nowMs;
   const due = input.enabled && !clock.digested && input.nowMs - awaySinceMs >= input.awayMs;
-  return { clock: { awaySinceMs, digested: clock.digested || due }, due };
+  return { clock: { awaySinceMs, digested: clock.digested || due }, due, remoteDue: false };
 }
 
 /** A digest covers from the project's previous digest, or a day back, to its own start. */

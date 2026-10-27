@@ -2,14 +2,16 @@ import {
   CommandId,
   DEFAULT_PROVIDER_INTERACTION_MODE,
   DailyDigestError,
-  type DailyDigestPageContent,
+  type DailyDigestPublishInput,
   DailyDigestPageSnapshot,
   type DailyDigestRunNowResult,
-  type ThreadId,
+  type DailyDigestStartRemoteInput,
+  ThreadId,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
@@ -45,7 +47,13 @@ import {
 } from "./dailyDigestPlan.ts";
 import { digestSnapshotPath } from "./dailyDigestAsset.ts";
 import { renderDailyDigestSnapshot } from "./dailyDigestPage.ts";
-import { dailyDigestPrompt, isoAt } from "./dailyDigestPrompt.ts";
+import {
+  dailyDigestPrompt,
+  isoAt,
+  remoteDailyDigestPrompt,
+  remoteDigestDiscoveryPrompt,
+} from "./dailyDigestPrompt.ts";
+import { RemoteDigestJobs, planRemoteDigest } from "./dailyDigestRemote.ts";
 
 const AWAY_POLL = "30 seconds";
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
@@ -63,22 +71,30 @@ const HOUR_MS = 60 * 60 * 1_000;
 // Enough for the page's lists; the counts stay exact.
 const MAX_LISTED = 40;
 const encodeSnapshot = Schema.encodeEffect(Schema.fromJsonString(DailyDigestPageSnapshot));
+const isDailyDigestError = Schema.is(DailyDigestError);
+const decodeJobs = Schema.decodeUnknownEffect(Schema.fromJsonString(RemoteDigestJobs));
+const encodeJobs = Schema.encodeEffect(Schema.fromJsonString(RemoteDigestJobs));
 
 export class DailyDigestService extends Context.Service<
   DailyDigestService,
   {
     /** Starts digests for every changed project now, whether or not digests are on. */
     readonly runNow: () => Effect.Effect<DailyDigestRunNowResult, DailyDigestError>;
+    readonly startRemote: (
+      callerThreadId: ThreadId,
+      input: DailyDigestStartRemoteInput,
+    ) => Effect.Effect<{ readonly threadId: ThreadId | null }, DailyDigestError>;
     /** The digest page for content a digest thread's agent wrote. */
     readonly preparePage: (
       threadId: ThreadId,
-      content: DailyDigestPageContent,
+      content: DailyDigestPublishInput,
     ) => Effect.Effect<
       { readonly html: string; readonly title: string; readonly snapshot: DailyDigestPageSnapshot },
       DailyDigestError
     >;
     /** Keeps a published page's snapshot so serving it renders with the current template. */
     readonly rememberPage: (
+      threadId: ThreadId,
       attachmentId: string,
       snapshot: DailyDigestPageSnapshot,
     ) => Effect.Effect<void, DailyDigestError>;
@@ -99,12 +115,123 @@ export const layer = Layer.effect(
     const managedFolders = yield* ManagedProjectFolders.ManagedProjectFolders;
     const git = yield* GitVcsDriver.GitVcsDriver;
     const environment = yield* ServerEnvironment.ServerEnvironment;
+    const crypto = yield* Crypto.Crypto;
     const permit = yield* Semaphore.make(1);
     const fileSystem = yield* FileSystem.FileSystem;
     const favicons = yield* ProjectFaviconResolver.ProjectFaviconResolver;
-    const { attachmentsDir } = yield* ServerConfig.ServerConfig;
+    const { attachmentsDir, stateDir } = yield* ServerConfig.ServerConfig;
+    const jobsPath = `${stateDir}/remote-digests.json`;
+    const jobsLock = yield* Semaphore.make(1);
 
     const fail = (message: string) => (cause: unknown) => new DailyDigestError({ message, cause });
+
+    const readJobs = Effect.fn("DailyDigestService.readJobs")(
+      function* () {
+        if (!(yield* fileSystem.exists(jobsPath))) return {} satisfies RemoteDigestJobs;
+        return yield* fileSystem.readFileString(jobsPath).pipe(Effect.flatMap(decodeJobs));
+      },
+      Effect.mapError(fail("Could not read remote digest history.")),
+    );
+
+    const writeJobs = Effect.fn("DailyDigestService.writeJobs")(
+      function* (jobs: RemoteDigestJobs) {
+        const json = yield* encodeJobs(jobs);
+        yield* fileSystem.makeDirectory(stateDir, { recursive: true });
+        yield* fileSystem.writeFileString(`${jobsPath}.tmp`, json);
+        yield* fileSystem.rename(`${jobsPath}.tmp`, jobsPath);
+      },
+      Effect.mapError(fail("Could not save remote digest history.")),
+    );
+
+    const startRemote: DailyDigestService["Service"]["startRemote"] = Effect.fn(
+      "DailyDigestService.startRemote",
+    )(
+      function* (callerThreadId, input) {
+        const caller = yield* threads.getThreadShell(callerThreadId);
+        if (caller?.digest !== true)
+          return yield* new DailyDigestError({
+            message: "Only digest threads can arrange remote digests.",
+          });
+        if (input.source.environmentId === (yield* environment.getEnvironmentId)) {
+          return { threadId: null };
+        }
+        const jobs = yield* readJobs();
+        const shells = yield* threads.getShellSnapshot();
+        const nowMs = yield* Clock.currentTimeMillis;
+        const window = planRemoteDigest(
+          input,
+          jobs,
+          [...shells.threads, ...shells.archivedThreads],
+          nowMs,
+        );
+        if (window === null) return { threadId: null };
+        const threadId = ThreadId.make(`digest:${yield* crypto.randomUUIDv4()}`);
+        const job = { source: input.source, ...window, published: false };
+        const settings = yield* settingsService.getSettings;
+        // Save before launch: the agent can publish as soon as its first turn starts.
+        yield* writeJobs({ ...jobs, [threadId]: job });
+        yield* threadLaunch.launch({
+          commandId: CommandId.make(`daily-digest:${threadId}`),
+          threadId,
+          projectId: caller.projectId,
+          title: `${digestTitle(nowMs)} · ${input.source.projectTitle} (${input.source.machine})`,
+          modelSelection:
+            settings.dailyDigestModelSelection ?? settings.textGenerationModelSelection,
+          runtimeMode: caller.runtimeMode,
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          workspaceStrategy: { type: "root" },
+          initialMessage: {
+            text: remoteDailyDigestPrompt(job, settings.dailyDigestInstructions),
+            attachments: [],
+          },
+          createdBy: "system",
+          creationSource: "server",
+          digest: true,
+        });
+        return { threadId };
+      },
+      jobsLock.withPermits(1),
+      Effect.mapError((cause) =>
+        isDailyDigestError(cause) ? cause : fail("Could not start the remote digest.")(cause),
+      ),
+    );
+
+    const discoverRemoteProjects = Effect.fn("DailyDigestService.discoverRemoteProjects")(
+      function* () {
+        const settings = yield* settingsService.getSettings;
+        const projectShells = yield* projects.listShells();
+        const scratchRoot = yield* managedFolders.scratchRoot;
+        const host = Option.isSome(scratchRoot)
+          ? yield* managedFolders.ensureScratchProject
+          : projectShells[0]
+            ? { projectId: projectShells[0].id }
+            : null;
+        if (host === null) return [];
+        const nowMs = yield* Clock.currentTimeMillis;
+        const project = projectShells.find((project) => project.id === host.projectId);
+        const projectSettings = resolveProjectSettings(settings, host.projectId, project).settings;
+        const launched = yield* threadLaunch.launch({
+          commandId: CommandId.make(`daily-digest:discovery:${nowMs}`),
+          threadId: ThreadId.make(`digest-discovery:${nowMs}`),
+          projectId: host.projectId,
+          title: `Daily digest · Other machines · ${isoAt(nowMs).slice(0, 10)}`,
+          modelSelection:
+            settings.dailyDigestModelSelection ?? settings.textGenerationModelSelection,
+          runtimeMode: projectSettings.defaultRuntimeMode,
+          interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
+          workspaceStrategy: { type: "root" },
+          initialMessage: {
+            text: remoteDigestDiscoveryPrompt(yield* environment.getEnvironmentId),
+            attachments: [],
+          },
+          createdBy: "system",
+          creationSource: "server",
+          digest: true,
+        });
+        return [launched.threadId];
+      },
+      Effect.mapError(fail("Could not discover projects on other machines.")),
+    );
 
     // Local branches only: --all would count the hidden checkpoint refs every turn writes.
     const hasCommitsSince = (workspaceRoot: string, sinceMs: number) =>
@@ -155,7 +282,9 @@ export const layer = Layer.effect(
       return launched.threadId;
     });
 
-    const runDigests = Effect.fn("DailyDigestService.runDigests")(function* () {
+    const runDigests = Effect.fn("DailyDigestService.runDigests")(function* (
+      includeRemote = false,
+    ) {
       const nowMs = yield* Clock.currentTimeMillis;
       const projectShells = yield* projects
         .listShells()
@@ -164,9 +293,13 @@ export const layer = Layer.effect(
         .getShellSnapshot()
         .pipe(Effect.mapError(fail("Could not list threads.")));
       const scratchRoot = Option.getOrNull(yield* managedFolders.scratchRoot);
+      const remoteJobs = yield* readJobs();
       const candidates = planDailyDigests({
         projects: projectShells.filter((project) => project.workspaceRoot !== scratchRoot),
-        threads: [...snapshot.threads, ...snapshot.archivedThreads],
+        threads: [...snapshot.threads, ...snapshot.archivedThreads].filter(
+          (thread) =>
+            remoteJobs[thread.id] === undefined && !thread.id.startsWith("digest-discovery:"),
+        ),
         nowMs,
       });
       const due = yield* Effect.filter(
@@ -191,7 +324,10 @@ export const layer = Layer.effect(
           ),
         { concurrency: 1 },
       );
-      const threadIds = launched.flatMap((threadId) => Option.toArray(threadId));
+      const threadIds = [
+        ...launched.flatMap((threadId) => Option.toArray(threadId)),
+        ...(includeRemote ? yield* discoverRemoteProjects() : []),
+      ];
       yield* Effect.logInfo("Daily digests started", {
         changedProjects: due.length,
         started: threadIds.length,
@@ -279,7 +415,8 @@ export const layer = Layer.effect(
 
     const preparePage: DailyDigestService["Service"]["preparePage"] = Effect.fn(
       "DailyDigestService.preparePage",
-    )(function* (threadId, content) {
+    )(function* (threadId, input) {
+      const { threads: remoteThreads, ...content } = input;
       const thread = yield* threads
         .getThreadShell(threadId)
         .pipe(Effect.mapError(fail("Could not read this thread.")));
@@ -287,6 +424,37 @@ export const layer = Layer.effect(
         return yield* new DailyDigestError({
           message: "Only daily digest threads can publish a digest.",
         });
+      }
+      const jobs = yield* readJobs();
+      const job = jobs[threadId];
+      if (job !== undefined) {
+        if (remoteThreads === undefined)
+          return yield* new DailyDigestError({
+            message: "Remote digests must include the source project's threads.",
+          });
+        const snapshot: DailyDigestPageSnapshot = {
+          content: {
+            ...content,
+            visuals: content.visuals.filter(
+              (visual) => visual.kind !== "image" || visual.threadId !== undefined,
+            ),
+          },
+          context: {
+            projectTitle: job.source.projectTitle,
+            environmentId: job.source.environmentId,
+            sinceMs: job.sinceMs,
+            untilMs: job.untilMs,
+            activity: [],
+            threads: remoteThreads,
+            remote: { machine: job.source.machine, projectId: job.source.projectId },
+          },
+          images: {},
+        };
+        return {
+          title: `${job.source.projectTitle} daily digest`,
+          html: renderDailyDigestSnapshot(snapshot),
+          snapshot,
+        };
       }
       const project = Option.getOrNull(
         yield* projects
@@ -299,7 +467,12 @@ export const layer = Layer.effect(
       const shells = yield* threads
         .getShellSnapshot()
         .pipe(Effect.mapError(fail("Could not list threads.")));
-      const window = digestWindow(thread, [...shells.threads, ...shells.archivedThreads]);
+      const window = digestWindow(
+        thread,
+        [...shells.threads, ...shells.archivedThreads].filter(
+          (shell) => jobs[shell.id] === undefined && !shell.id.startsWith("digest-discovery:"),
+        ),
+      );
       const commits = yield* windowCommits(project.workspaceRoot, window);
       const environmentId = yield* environment.getEnvironmentId;
       const imagePaths = content.visuals.flatMap((visual) =>
@@ -348,7 +521,7 @@ export const layer = Layer.effect(
 
     const rememberPage: DailyDigestService["Service"]["rememberPage"] = Effect.fn(
       "DailyDigestService.rememberPage",
-    )(function* (attachmentId, snapshot) {
+    )(function* (threadId, attachmentId, snapshot) {
       const htmlPath = resolveAttachmentRelativePath({
         attachmentsDir,
         relativePath: `${attachmentId}.html`,
@@ -362,10 +535,13 @@ export const layer = Layer.effect(
       yield* fileSystem
         .writeFileString(digestSnapshotPath(htmlPath), json)
         .pipe(Effect.mapError(fail("Could not keep the digest page.")));
-    });
+      const jobs = yield* readJobs();
+      const job = jobs[threadId];
+      if (job !== undefined) yield* writeJobs({ ...jobs, [threadId]: { ...job, published: true } });
+    }, jobsLock.withPermits(1));
 
     const runNow: DailyDigestService["Service"]["runNow"] = () =>
-      runDigests().pipe(
+      runDigests(true).pipe(
         permit.withPermitsIfAvailable(1),
         Effect.flatMap(
           Option.match({
@@ -388,9 +564,10 @@ export const layer = Layer.effect(
           enabled: settings.dailyDigestEnabled,
           awayMs: settings.dailyDigestAwayHours * HOUR_MS,
         });
-        return [next.due, next.clock] as const;
+        return [next, next.clock] as const;
       });
-      if (due) yield* runDigests().pipe(permit.withPermits(1));
+      if (due.due) yield* runDigests().pipe(permit.withPermits(1));
+      if (due.remoteDue) yield* discoverRemoteProjects().pipe(permit.withPermits(1));
     }).pipe(
       Effect.catchCause((cause) => Effect.logWarning("Daily digest check failed", { cause })),
       Effect.andThen(Effect.sleep(AWAY_POLL)),
@@ -398,6 +575,6 @@ export const layer = Layer.effect(
     );
     yield* forkParked(watchAway);
 
-    return DailyDigestService.of({ runNow, preparePage, rememberPage });
+    return DailyDigestService.of({ runNow, startRemote, preparePage, rememberPage });
   }),
 );

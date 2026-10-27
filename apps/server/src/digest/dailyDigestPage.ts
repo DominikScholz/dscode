@@ -11,7 +11,11 @@ export function renderDailyDigestSnapshot(snapshot: DailyDigestPageSnapshot): st
   const visuals = snapshot.content.visuals.flatMap((visual): Visual[] => {
     if (visual.kind !== "image") return [visual];
     const image = snapshot.images[visual.path];
-    return image?.startsWith("data:image/") ? [{ ...visual, path: image }] : [];
+    return image?.startsWith("data:image/")
+      ? [{ ...visual, path: image }]
+      : snapshot.context.remote && visual.threadId
+        ? [visual]
+        : [];
   });
   return renderDailyDigestPage({ ...snapshot.content, visuals }, snapshot.context);
 }
@@ -42,8 +46,11 @@ function threadHref(environmentId: string, threadId: string, prompt?: string): s
   return prompt === undefined ? path : `${path}?prompt=${encodeURIComponent(prompt)}`;
 }
 
-function newThreadHref(prompt: string): string {
-  return `${APP_ORIGIN}/new?prompt=${encodeURIComponent(prompt)}`;
+function newThreadHref(prompt: string, context: DailyDigestPageContext): string {
+  const target = context.remote
+    ? `&environmentId=${encodeURIComponent(context.environmentId)}&projectId=${encodeURIComponent(context.remote.projectId)}`
+    : "";
+  return `${APP_ORIGIN}/new?prompt=${encodeURIComponent(prompt)}${target}`;
 }
 
 const line = (opacity: number) => `color-mix(in srgb,var(--foreground) ${opacity}%,transparent)`;
@@ -51,29 +58,35 @@ const line = (opacity: number) => `color-mix(in srgb,var(--foreground) ${opacity
 // Theme variables only, so the page follows light, dark, and custom themes.
 const STYLES = `
 html,body{background:transparent!important}
-.dd{--hair:${line(6)};--surface:color-mix(in srgb,var(--foreground) 4%,var(--background));--control:color-mix(in srgb,var(--foreground) 9%,var(--background));--control-hover:color-mix(in srgb,var(--foreground) 13%,var(--background));--lit-strong:${line(26)};--lit-mid:${line(9)};--rim:${line(4.5)};--groove:light-dark(${line(10)},rgb(0 0 0/.55));--groove-light:light-dark(transparent,rgb(255 255 255/.06));--grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.04 0.04 0.04 0 -0.06'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.04 -0.04 -0.04 0 0.06'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0/128px 128px;display:flex;flex-direction:column;gap:22px;max-width:1240px;margin:0 auto;padding:6px 4px 28px}
+.dd{--hair:${line(6)};--surface:color-mix(in srgb,var(--foreground) 4%,var(--background));--control:color-mix(in srgb,var(--foreground) 9%,var(--background));--control-hover:color-mix(in srgb,var(--foreground) 13%,var(--background));--lit-strong:${line(26)};--lit-mid:${line(9)};--rim:${line(4.5)};--groove:light-dark(${line(10)},rgb(0 0 0/.55));--groove-light:light-dark(transparent,rgb(255 255 255/.06));--grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.04 0.04 0.04 0 -0.06'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.04 -0.04 -0.04 0 0.06'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E") 0 0/128px 128px;container-type:inline-size;display:flex;flex-direction:column;gap:20px;max-width:1240px;margin:0 auto;padding:6px 4px 28px}
 .ok{--tone:color-mix(in srgb,var(--success) 62%,var(--foreground))}
 .run{--tone:color-mix(in srgb,var(--info) 58%,var(--foreground))}
 .ask{--tone:color-mix(in srgb,var(--warning) 66%,var(--foreground))}
 .bad{--tone:color-mix(in srgb,var(--destructive) 70%,var(--foreground))}
 .off{--tone:var(--muted-foreground)}
-.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:10px}
-.ttl{display:flex;align-items:center;gap:14px;min-width:0}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.ttl{display:flex;align-items:center;gap:12px;min-width:0;flex-wrap:wrap}
 .tile{display:grid;place-items:center;flex:none;width:36px;height:36px;border-radius:10px;font-size:15px;font-weight:700;color:var(--background);background:var(--foreground)}
 .tile.mono{color:var(--mono);background:color-mix(in srgb,var(--mono) 14%,transparent);font-family:var(--font-mono);font-size:14px}
 .tile.emoji{background:var(--control);font-size:20px}
 .tile.icon{overflow:hidden;background:none}
 .tile img{width:100%;height:100%;object-fit:contain}
-.ttl h1{margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em;white-space:nowrap}
+.ttl h1{display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;min-width:0;margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em}
+.ttl h1>span:first-child{flex-shrink:0}
+.project-title{display:inline-flex;align-items:center;gap:8px;min-width:0}
+.project-title>span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .raised{border:1px solid transparent;background:var(--control)}
 .pill{display:inline-flex;align-items:center;height:34px;padding:0 15px;border-radius:11px;font-size:14px;font-weight:600}
 .chip{display:inline-flex;align-items:center;gap:7px;height:24px;padding:0 9px 0 8px;border-radius:7px;font-size:12px;font-weight:500;white-space:nowrap;color:color-mix(in srgb,var(--foreground) 82%,transparent);background:${line(7)}}
 .chip::before{content:"";width:6px;height:6px;border-radius:999px;background:var(--tone)}
 .card{position:relative;border-radius:16px;background:var(--grain),var(--surface)}
 .card::after{content:"";position:absolute;inset:0;z-index:1;border-radius:inherit;padding:1px;pointer-events:none;background:radial-gradient(var(--lit,22rem 10rem at 3rem 3rem),var(--lit-strong),var(--lit-mid) 40%,var(--rim));-webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask:linear-gradient(#000 0 0) content-box exclude,linear-gradient(#000 0 0)}
-.hero{display:grid;gap:22px}
-@media (min-width:900px){.hero{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}}
-.brief{display:flex;flex-direction:column;justify-content:space-between;gap:44px;min-height:310px;padding:30px 34px 34px;overflow:hidden;background:radial-gradient(90% 80% at 0% 0%,${line(7)},transparent 65%),var(--grain),var(--surface)}
+.layout{display:grid;align-items:start;gap:20px}
+.image-rail{display:grid;align-items:start;gap:20px;min-width:0}
+@container (min-width:512px){.image-rail{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (min-width:896px){.layout.with-images{grid-template-columns:minmax(0,1fr) 16rem;grid-template-rows:min-content 1fr}.image-rail{grid-column:2;grid-row:1 / span 2;grid-template-columns:minmax(0,1fr)}}
+.detail{container-type:inline-size;display:flex;flex-direction:column;gap:20px;min-width:0}
+.brief{display:flex;flex-direction:column;gap:20px;min-width:0;padding:24px;overflow:hidden;background:radial-gradient(90% 80% at 0% 0%,${line(7)},transparent 65%),var(--grain),var(--surface)}
 .brief-top{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .mood{display:inline-flex;align-items:center;height:30px;padding:0 13px;border-radius:999px;font-size:13px;color:color-mix(in srgb,var(--foreground) 85%,transparent);background:color-mix(in srgb,var(--background) 60%,transparent);box-shadow:inset 0 0 0 1px ${line(7)},inset 0 1px 2px rgb(0 0 0/.25)}
 .stamp{font-size:12px;color:var(--muted-foreground)}
@@ -91,7 +104,10 @@ html,body{background:transparent!important}
 .comb{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));align-items:end;height:34px;margin:14px 44px 0 0}
 .comb i{justify-self:center;width:2px;min-height:2px;border-radius:1px;background:${line(32)}}
 .axis{display:flex;justify-content:space-between;margin:12px 44px 0 0;font-size:11.5px;color:var(--muted-foreground);font-variant-numeric:tabular-nums}
-.stats{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+.stats{columns:1;column-gap:16px;margin-bottom:-16px}
+.stats>.stat{break-inside:avoid-column;margin-bottom:16px}
+@container (min-width:576px){.stats{columns:2}}
+@container (min-width:1024px){.stats{columns:4}}
 .stat{padding:20px 22px 16px}
 .stat header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
 .stat h3{margin:0;font-size:13px;font-weight:500;color:var(--muted-foreground)}
@@ -109,15 +125,15 @@ html,body{background:transparent!important}
 .stat .st{min-width:22px;text-align:center}
 .stat .none,.stat .more{margin:4px 0 2px;font-size:12.5px;color:var(--muted-foreground)}
 .stat .spark{width:100%;height:28px}
-.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:30px 4px -4px}
+.sec{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 4px -8px}
 .sec h2{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;color:color-mix(in srgb,var(--foreground) 62%,transparent)}
 .sec span{font-size:12.5px;color:var(--muted-foreground)}
 .table{overflow:hidden}
 .tr{display:grid;gap:6px 24px;align-items:center;padding:17px 26px;border-top:1px solid var(--groove);box-shadow:inset 0 1px 0 var(--groove-light)}
 .tr:first-child{border-top:0;box-shadow:none}
-@media (min-width:820px){.tr{grid-template-columns:minmax(0,1.7fr) 124px minmax(0,1fr) 92px}}
+@container (min-width:768px){.tr{grid-template-columns:minmax(0,1.7fr) 124px minmax(0,1fr) 92px}}
 .th{padding-top:15px;padding-bottom:13px;font-size:12px;color:var(--muted-foreground);background:${line(2)}}
-@media (max-width:819px){.th{display:none}}
+@container (max-width:767px){.th{display:none}}
 .name{display:flex;gap:12px;min-width:0}
 .name .dot{flex:none;width:7px;height:7px;margin-top:7px;border-radius:999px;background:var(--tone)}
 .name b{display:block;font-size:14.5px;font-weight:600}
@@ -125,11 +141,11 @@ html,body{background:transparent!important}
 .note{margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .note.risk{color:color-mix(in srgb,var(--warning) 48%,var(--foreground))}
 .act{justify-self:end}
-@media (max-width:819px){.act{justify-self:start}}
+@container (max-width:767px){.act{justify-self:start}}
 .btn{display:inline-flex;align-items:center;height:32px;padding:0 13px;border-radius:10px;font-size:13px;font-weight:500;text-decoration:none;white-space:nowrap;color:var(--foreground);background:var(--control)}
 .btn:hover{background:var(--control-hover)}
 .proceed{display:grid;gap:22px;align-items:start}
-@media (min-width:900px){.proceed.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@container (min-width:768px){.proceed.two{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
 .list{padding:24px 26px 10px}
 .list h3{margin:0 0 6px;font-size:15px;font-weight:600}
 .row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 14px;align-items:center;padding:16px 0;border-top:1px solid var(--groove);box-shadow:inset 0 1px 0 var(--groove-light)}
@@ -140,10 +156,10 @@ html,body{background:transparent!important}
 .row p{grid-column:2;margin:0;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .row .btn{grid-column:3;grid-row:1 / span 2}
 .vis{display:flex;flex-direction:column;overflow:hidden;margin:0}
-.shot{position:relative;flex:1;min-height:240px;overflow:hidden;border-radius:17px 17px 0 0;background:var(--background);border-bottom:1px solid var(--hair)}
-.shot img{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:top center}
-.gallery .shot{flex:none;aspect-ratio:16/10;min-height:0}
+.shot{overflow:hidden;background:var(--background);border-bottom:1px solid var(--hair)}
+.shot img{display:block;width:100%;height:auto}
 .cap{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:16px 22px 18px}
+.image-rail .cap{flex-direction:column;align-items:flex-start}
 .cap b{display:block;font-size:14.5px;font-weight:600}
 .cap span{display:block;margin-top:3px;font-size:13px;line-height:1.5;color:var(--muted-foreground)}
 .cap.over{padding:26px 30px 6px}
@@ -156,8 +172,10 @@ html,body{background:transparent!important}
 .bar.hi .fill{background:var(--foreground)}
 .bar b{min-width:58px;text-align:right;white-space:nowrap;font-weight:600;font-variant-numeric:tabular-nums}
 .bar b i{font-style:normal;font-weight:400;color:var(--muted-foreground)}
-.gallery{display:grid;gap:22px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
-.threads{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(260px,1fr))}
+.gallery{display:grid;gap:22px;align-items:start;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))}
+.threads{display:grid;gap:10px}
+@container (min-width:576px){.threads{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@container (min-width:1024px){.threads{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .thread{--lit:12rem 6rem at 1.5rem 1.5rem;display:grid;gap:6px;min-width:0;padding:11px 12px 10px;border-radius:12px;text-decoration:none;color:inherit}
 .thread:hover{background:var(--grain),var(--control)}
 .thread .line{display:flex;align-items:center;justify-content:space-between;gap:10px;min-width:0}
@@ -172,7 +190,7 @@ html,body{background:transparent!important}
 .spark{display:grid;grid-template-columns:repeat(var(--n),minmax(0,1fr));align-items:end;width:120px;height:20px}
 .spark i{justify-self:center;width:2px;min-height:1px;border-radius:1px;background:${line(40)}}
 code{font-family:var(--font-mono);font-size:.86em;padding:1px 5px;border-radius:5px;background:${line(8)}}
-@media (max-width:600px){.brief,.plot-card{padding:22px}.headline{font-size:20px}.tr{padding:14px 18px}.list{padding:20px 18px 6px}.row{grid-template-columns:auto minmax(0,1fr)}.row .btn{grid-column:2;grid-row:auto;justify-self:start;margin-top:8px}}
+@container (max-width:600px){.brief,.plot-card{padding:22px}.headline{font-size:20px}.tr{padding:14px 18px}.list{padding:20px 18px 6px}.row{grid-template-columns:auto minmax(0,1fr)}.row .btn{grid-column:2;grid-row:auto;justify-self:start;margin-top:8px}}
 `;
 
 function formatTime(ms: number, timeZone: string | undefined, options: Intl.DateTimeFormatOptions) {
@@ -230,12 +248,19 @@ function formatNumber(value: number): string {
   return value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function visualCard(visual: Visual, environmentId: string, className: string): string {
+function visualCard(
+  visual: Visual,
+  environmentId: string,
+  className: string,
+  remote?: DailyDigestPageContext["remote"],
+): string {
   const open = visual.threadId
     ? `<a class="btn" href="${escapeHtml(threadHref(environmentId, visual.threadId))}">Open</a>`
     : "";
   const caption = `<div><b>${rich(visual.title)}</b>${visual.caption ? `<span>${rich(visual.caption)}</span>` : ""}</div>${open}`;
   if (visual.kind === "image") {
+    if (remote && !visual.path.startsWith("data:image/"))
+      return `<figure class="card vis ${className}"><div class="brief"><p>Screenshot from ${escapeHtml(remote.machine)}. Open its source thread to view it.</p>${open}</div><figcaption class="cap">${caption}</figcaption></figure>`;
     return `<figure class="card vis ${className}"><div class="shot"><img src="${escapeHtml(visual.path)}" alt="${escapeHtml(visual.title)}"></div><figcaption class="cap">${caption}</figcaption></figure>`;
   }
   const max = Math.max(...visual.items.map((item) => Math.abs(item.value)), Number.MIN_VALUE);
@@ -355,7 +380,6 @@ export function renderDailyDigestPage(
     day: "numeric",
     month: "long",
   });
-  const commitLabel = commits === 1 ? "1 commit" : `${commits} commits`;
   const sparkMax = Math.max(1, ...context.activity);
   const spark = `<div class="spark" style="--n:${context.activity.length}">${context.activity
     .map(
@@ -376,7 +400,7 @@ export function renderDailyDigestPage(
     : spark;
   const repo = context.repo;
   const stats = [
-    statCard("Commits", commits, commitList),
+    ...(context.remote ? [] : [statCard("Commits", commits, commitList)]),
     ...(repo === undefined
       ? []
       : [
@@ -417,17 +441,22 @@ export function renderDailyDigestPage(
             .join("")}</ul></section>`,
         ]),
   ].join("");
-  const [lead, ...moreVisuals] = content.visuals;
-  const heroSide =
-    lead === undefined
-      ? `<section class="card plot-card"><div class="card-head"><h2>Commits</h2><span class="legend"><i></i>Since ${since}</span></div>${plot(context.activity)}<div class="axis">${axis}</div></section>`
-      : visualCard(lead, environmentId, "lead");
-  const highlights =
-    moreVisuals.length === 0
+  const images = content.visuals.filter((visual) => visual.kind === "image");
+  const charts = content.visuals.filter((visual) => visual.kind === "bars");
+  const imageRail =
+    images.length === 0
       ? ""
-      : `<div class="sec"><h2>Highlights</h2></div><div class="gallery">${moreVisuals
-          .map((visual) => visualCard(visual, environmentId, ""))
-          .join("")}</div>`;
+      : `<div class="image-rail">${images.map((visual) => visualCard(visual, environmentId, "", context.remote)).join("")}</div>`;
+  const fallback =
+    content.visuals.length > 0
+      ? ""
+      : context.remote
+        ? `<section class="card brief"><h2>Thread activity</h2><p>${context.threads.length} threads covered. Git details come from the threads.</p></section>`
+        : `<section class="card plot-card"><div class="card-head"><h2>Commits</h2><span class="legend"><i></i>Since ${since}</span></div>${plot(context.activity)}<div class="axis">${axis}</div></section>`;
+  const highlights =
+    charts.length === 0
+      ? ""
+      : `<div class="sec"><h2>Highlights</h2></div><div class="gallery">${charts.map((visual) => visualCard(visual, environmentId, "", context.remote)).join("")}</div>`;
   const threadCards = context.threads.map((thread) => threadRow(thread, context)).join("");
   const threadList =
     threadCards === ""
@@ -458,7 +487,7 @@ export function renderDailyDigestPage(
             const answer = decision.threadId
               ? `<a class="btn" href="${escapeHtml(threadHref(environmentId, decision.threadId, decision.prompt))}">Answer</a>`
               : decision.prompt
-                ? `<a class="btn" href="${escapeHtml(newThreadHref(decision.prompt))}">Start thread</a>`
+                ? `<a class="btn" href="${escapeHtml(newThreadHref(decision.prompt, context))}">Start thread</a>`
                 : "";
             return `<div class="row"><span class="mk q ask"></span><b>${rich(decision.question)}</b><p>${rich(decision.context)}</p>${answer}</div>`;
           })
@@ -469,7 +498,7 @@ export function renderDailyDigestPage(
       : `<section class="card list"><h3>Next steps</h3>${content.nextSteps
           .map(
             (step, index) =>
-              `<div class="row"><span class="mk raised">${index + 1}</span><b>${rich(step.title)}</b><p>${rich(step.reason)}</p><a class="btn" href="${escapeHtml(newThreadHref(step.prompt))}">Start thread</a></div>`,
+              `<div class="row"><span class="mk raised">${index + 1}</span><b>${rich(step.title)}</b><p>${rich(step.reason)}</p><a class="btn" href="${escapeHtml(newThreadHref(step.prompt, context))}">Start thread</a></div>`,
           )
           .join("")}</section>`;
   const proceed =
@@ -477,14 +506,16 @@ export function renderDailyDigestPage(
       ? ""
       : `<div class="sec"><h2>How to proceed</h2></div><div class="proceed${decisions !== "" && steps !== "" ? " two" : ""}">${decisions}${steps}</div>`;
   return `<!doctype html><html><head><meta charset="utf-8"><style>${STYLES}</style></head><body><div class="dd">${context.threads.some((thread) => thread.provider) ? PROVIDER_SYMBOLS : ""}
-<header class="top"><div class="ttl">${projectTile(context)}<h1>${escapeHtml(context.projectTitle)} digest</h1><span class="chip ok">${commitLabel}</span></div><span class="pill raised">${today}</span></header>
-<div class="hero">
+<header class="top"><div class="ttl"><h1><span>Daily Digest -</span><span class="project-title">${projectTile(context)}<span>${escapeHtml(context.projectTitle)}</span></span></h1>${context.remote ? `<span class="chip ok">${escapeHtml(context.remote.machine)}</span>` : ""}</div><span class="pill raised">${today}</span></header>
+<div class="layout${images.length > 0 ? " with-images" : ""}">
 <section class="card brief"><div class="brief-top"><span class="mood">${rich(content.mood)}</span><span class="stamp">Summarized at ${summarized}</span></div><div><p class="headline">${rich(content.headline)}</p><p class="summary">${rich(content.summary)}</p></div></section>
-${heroSide}
-</div>
-<div class="stats">${stats}</div>
+${imageRail}
+<div class="detail">
 ${highlights}
+${fallback}
+${stats === "" ? "" : `<div class="stats">${stats}</div>`}
 ${threadList}
+</div></div>
 ${happened}
 ${proceed}
 </div></body></html>`;

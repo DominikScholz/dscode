@@ -126,6 +126,12 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
 
   // A card in a thread's page starts beside it when the link names no repository.
   const sourceProject = () => {
+    if (link.kind === "new" && link.project)
+      return projects.find(
+        (entry) =>
+          entry.environmentId === link.project?.environmentId &&
+          entry.id === link.project.projectId,
+      );
     if (source === undefined) return undefined;
     const thread = threads.find(
       (entry) => entry.environmentId === source.environmentId && entry.id === source.threadId,
@@ -298,14 +304,19 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     const pullRequestThread = localPullRequestThread ?? serverPullRequestThread ?? undefined;
     const repository = link.kind === "new" ? link.repository : link.pullRequest;
     const project =
-      repository === null
+      repository === null || (link.kind === "new" && link.project)
         ? sourceProject()
         : findPromptLinkProjects(recentProjects(), repository)[0];
     if (pullRequestThread !== undefined) {
       setState({ status: "opened" });
       setLaunch({ kind: "thread", thread: pullRequestThread });
     } else if (project === undefined) {
-      if (repository === null) {
+      if (link.kind === "new" && link.project) {
+        setState({
+          status: "failed",
+          message: "Connect to the project's environment to start this thread.",
+        });
+      } else if (repository === null) {
         setLaunch({ kind: "scratch" });
       } else {
         setState({ status: "missing-repository", repository });

@@ -1,4 +1,9 @@
-import { DailyDigestPageContent, OrchestratorMcpFailure } from "@t3tools/contracts";
+import {
+  DailyDigestPublishInput,
+  DailyDigestStartRemoteInput,
+  OrchestratorMcpFailure,
+  ThreadId,
+} from "@t3tools/contracts";
 import {
   DIGEST_PUBLISH_TOOL_NAME,
   HTML_RENDER_COLUMN_WIDTH,
@@ -110,7 +115,7 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
 const DigestPublishTool = Tool.make(DIGEST_PUBLISH_TOOL_NAME, {
   description:
     "Daily digest threads only. Publish the digest page from its content; the design, title, activity chart, and links are built for you. Text may use `backticks` for code. Call it once, after you have read everything.",
-  parameters: DailyDigestPageContent,
+  parameters: DailyDigestPublishInput,
   success: Schema.Struct({
     htmlRender: Schema.Struct({
       attachmentId: Schema.String,
@@ -135,7 +140,23 @@ const DigestPublishTool = Tool.make(DIGEST_PUBLISH_TOOL_NAME, {
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, false);
 
-export const DigestToolkit = Toolkit.make(DigestPublishTool);
+const DigestStartRemoteTool = Tool.make("digest_start_remote", {
+  description:
+    "Digest discovery threads only. Start a local digest for a project found through another machine's T3 tools. Skips unchanged projects and digests already running. Never starts an agent on the source machine.",
+  parameters: DailyDigestStartRemoteInput,
+  success: Schema.Struct({ threadId: Schema.NullOr(ThreadId) }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    DailyDigestService.DailyDigestService,
+  ],
+})
+  .annotate(Tool.Title, "Start remote project digest")
+  .annotate(Tool.Destructive, false);
+
+export const DigestToolkit = Toolkit.make(DigestPublishTool, DigestStartRemoteTool);
 
 export const HtmlPreviewToolkit = Toolkit.make(HtmlPreviewTool);
 

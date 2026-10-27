@@ -66,6 +66,24 @@ export const layerRender = McpToolAccess.toLayer(HtmlRenderToolkit, {
 const DIGEST_FALLBACK_HEIGHT = 1800;
 
 export const layerDigest = McpToolAccess.toLayer(DigestToolkit, {
+  digest_start_remote: McpToolAccess.actsAsCaller((input) =>
+    Effect.gen(function* () {
+      const scope = yield* McpInvocationContext.McpInvocationContext;
+      const { thread } = yield* McpInvocationContext.requireThreadScope(
+        scope,
+        "digest_start_remote",
+      );
+      const digest = yield* DailyDigestService.DailyDigestService;
+      return yield* digest
+        .startRemote(thread.threadId, input)
+        .pipe(
+          Effect.mapError(
+            (error) =>
+              new OrchestratorMcpFailure({ code: "invalid_request", message: error.message }),
+          ),
+        );
+    }),
+  ),
   digest_publish: McpToolAccess.actsAsCaller((input) =>
     Effect.gen(function* () {
       const scope = yield* McpInvocationContext.McpInvocationContext;
@@ -90,7 +108,7 @@ export const layerDigest = McpToolAccess.toLayer(DigestToolkit, {
         .pipe(Effect.mapError(toFailure));
       // Without a snapshot the page keeps the design it was published with.
       yield* digest
-        .rememberPage(reference.attachmentId, page.snapshot)
+        .rememberPage(thread.threadId, reference.attachmentId, page.snapshot)
         .pipe(
           Effect.catchCause((cause) =>
             Effect.logWarning("Could not keep a digest snapshot", { cause }),

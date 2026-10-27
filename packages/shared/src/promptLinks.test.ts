@@ -37,6 +37,17 @@ describe("sanitizeLinkedPrompt", () => {
 });
 
 describe("parseNewThreadLink", () => {
+  it("keeps an explicit environment and project together for remote digest actions", () => {
+    expect(parseNewThreadLink("?prompt=Ship&environmentId=idom&projectId=mobile")).toMatchObject({
+      ok: true,
+      value: { project: { environmentId: "idom", projectId: "mobile" } },
+    });
+    expect(parseNewThreadLink("?prompt=Ship&projectId=mobile").ok).toBe(false);
+    expect(parseNewThreadLink("?prompt=Ship&environmentId=idom").ok).toBe(false);
+    expect(
+      withoutPromptLinkParams("?prompt=Ship&environmentId=idom&projectId=mobile&view=all"),
+    ).toBe("?view=all");
+  });
   it("reads a shared prompt with its optional repository and model", () => {
     const result = parseNewThreadLink(
       "?prompt=Rate+me&repo=https://github.com/pingdotgg/t3code.git&provider=Codex&model=gpt-5",
