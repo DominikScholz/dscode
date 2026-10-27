@@ -17,7 +17,7 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { htmlRenderFileName, type HtmlRenderReference } from "@t3tools/shared/htmlRender";
 import { sanitizeLinkedPrompt } from "@t3tools/shared/promptLinks";
 import { useAtomValue } from "@effect/atom-react";
-import { ArrowRightIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowRightIcon } from "@phosphor-icons/react";
 import { useNavigate } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
 import { type CSSProperties, type ReactNode, useEffect, useState } from "react";
@@ -328,11 +328,11 @@ function DigestView(props: {
         {content.sections.map((section) => (
           <BriefingRow
             key={section.title}
-            marker={<StatusDot status={section.status} />}
             title={section.title}
-            aside={<StatusLabel status={section.status} />}
+            chip={<StatusChip status={section.status} />}
             detail={section.summary}
             issue={section.issue}
+            action={section.threadId ? "Open" : undefined}
             onClick={section.threadId ? () => openThread(section.threadId!) : undefined}
           />
         ))}
@@ -343,8 +343,8 @@ function DigestView(props: {
       {content.decisions.map((decision) => (
         <BriefingRow
           key={decision.question}
-          marker={<span className="size-1.5 rounded-full bg-warning text-warning digest-halo" />}
           title={decision.question}
+          chip={<DigestChip color={CHIP_COLORS.amber}>Your call</DigestChip>}
           detail={decision.context}
           action={decision.threadId || decision.prompt ? "Answer" : undefined}
           onClick={
@@ -356,14 +356,9 @@ function DigestView(props: {
           }
         />
       ))}
-      {content.nextSteps.map((step, index) => (
+      {content.nextSteps.map((step) => (
         <BriefingRow
           key={step.title}
-          marker={
-            <span className="font-medium text-muted-foreground text-xs tabular-nums">
-              {index + 1}
-            </span>
-          }
           title={step.title}
           detail={step.reason}
           action="Start"
@@ -385,7 +380,7 @@ function DigestView(props: {
 
   const hero = (
     <section className="relative flex flex-1 flex-col justify-between gap-6 overflow-hidden rounded-2xl px-8 pt-6 pb-7 squircle digest-lit">
-      <span className="font-medium text-muted-foreground text-sm">{content.mood}</span>
+      <p className="m-0 font-medium text-foreground text-sm">{content.mood}</p>
       <div className="flex flex-col gap-3">
         <p className="m-0 max-w-[36ch] text-pretty font-semibold text-3xl leading-tight tracking-tight">
           <Rich text={content.headline} />
@@ -560,60 +555,82 @@ function DigestView(props: {
   );
 }
 
-const STATUS_DOTS = {
-  shipped: "bg-success",
-  in_progress: "bg-info",
-  blocked: "bg-warning",
-  research: "bg-violet-400",
-  idle: "bg-muted-foreground/50",
+// Fey's palette: one hue per meaning, shown as a tint rather than a solid fill.
+const CHIP_COLORS = {
+  green: "oklch(0.78 0.16 158)",
+  blue: "oklch(0.74 0.13 250)",
+  amber: "oklch(0.8 0.15 72)",
+  violet: "oklch(0.74 0.13 300)",
+  gray: "oklch(0.72 0 0)",
 } as const;
 
-function StatusDot(props: { readonly status: Snapshot["content"]["sections"][number]["status"] }) {
-  return <span className={cn("size-1.5 rounded-full", STATUS_DOTS[props.status])} />;
+const STATUS_CHIP_COLORS = {
+  shipped: CHIP_COLORS.green,
+  in_progress: CHIP_COLORS.blue,
+  blocked: CHIP_COLORS.amber,
+  research: CHIP_COLORS.violet,
+  idle: CHIP_COLORS.gray,
+} as const;
+
+function DigestChip(props: { readonly color: string; readonly children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex h-5 min-w-0 shrink-0 items-center gap-1.5 rounded-sm px-1.5 font-medium text-xs leading-none digest-chip"
+      style={{ "--chip": props.color } as CSSProperties}
+    >
+      {props.children}
+    </span>
+  );
 }
 
-function StatusLabel(props: {
-  readonly status: Snapshot["content"]["sections"][number]["status"];
-}) {
-  return <span className="text-muted-foreground text-xs">{STATUS_LABELS[props.status]}</span>;
+function StatusChip(props: { readonly status: Snapshot["content"]["sections"][number]["status"] }) {
+  return (
+    <DigestChip color={STATUS_CHIP_COLORS[props.status]}>
+      {props.status === "in_progress" ? (
+        <span className="size-1.5 rounded-full bg-current digest-halo" />
+      ) : null}
+      {STATUS_LABELS[props.status]}
+    </DigestChip>
+  );
 }
 
 function BriefingCard(props: { readonly title: string; readonly children: ReactNode }) {
   return (
-    <section className={cn(CARD, "flex flex-col overflow-hidden pb-3")}>
-      <h2 className="m-0 px-6 pt-5 pb-2 font-medium text-muted-foreground text-sm">
-        {props.title}
-      </h2>
-      <div className="flex flex-col gap-0.5 px-3">{props.children}</div>
+    <section className="flex min-w-0 flex-col gap-3">
+      <h2 className="m-0 px-1 font-semibold text-base text-foreground">{props.title}</h2>
+      <div className={cn(CARD, "flex flex-1 flex-col gap-0.5 overflow-hidden p-3")}>
+        {props.children}
+      </div>
     </section>
   );
 }
 
 function BriefingRow(props: {
-  readonly marker: ReactNode;
   readonly title: string;
   readonly detail: string;
-  readonly aside?: ReactNode;
+  readonly chip?: ReactNode;
   readonly issue?: string | undefined;
   readonly action?: string | undefined;
   readonly onClick?: (() => void) | undefined;
 }) {
   const content = (
     <>
-      <span className="flex h-5 w-3 shrink-0 items-center justify-center">{props.marker}</span>
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate font-medium text-sm">
+      <span className="flex min-w-0 flex-1 flex-col gap-1">
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="min-w-0 truncate font-medium text-sm">
             <Rich text={props.title} />
           </span>
-          {props.aside}
+          {props.chip}
         </span>
         <span className="line-clamp-2 text-muted-foreground text-sm">
           <Rich text={props.detail} />
         </span>
         {props.issue ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-muted-foreground text-xs">
-            <WarningCircleIcon aria-hidden weight="fill" className="size-3 shrink-0 text-warning" />
+          <span className="mt-0.5 flex min-w-0 items-center gap-2 text-foreground/75 text-xs">
+            <span
+              className="size-1.5 shrink-0 rounded-full bg-current digest-halo"
+              style={{ color: CHIP_COLORS.amber }}
+            />
             <span className="truncate">
               <Rich text={props.issue} />
             </span>
@@ -621,7 +638,7 @@ function BriefingRow(props: {
         ) : null}
       </span>
       {props.action ? (
-        <span className="flex h-5 shrink-0 items-center gap-1 text-muted-foreground text-xs group-hover/briefing:text-foreground">
+        <span className="flex h-5 shrink-0 items-center gap-1 text-muted-foreground/60 text-xs group-hover/briefing:text-foreground">
           {props.action}
           <ArrowRightIcon aria-hidden className="size-3" />
         </span>
