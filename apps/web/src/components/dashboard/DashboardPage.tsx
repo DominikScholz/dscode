@@ -10,7 +10,6 @@ import * as Schema from "effect/Schema";
 
 import { isElectron } from "../../env";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
-import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { cn } from "../../lib/utils";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
@@ -57,7 +56,6 @@ const DEFAULT_DASHBOARD_SECTION_FILTER: readonly DashboardSection[] = [
 ];
 
 export function DashboardPage() {
-  useEscapeToGoBack();
   // Scratch threads have no repository to graph.
   const groups = useSettingsProjectGroups().filter((group) => !group.isScratch);
   const threads = useThreadShells();
@@ -83,7 +81,7 @@ export function DashboardPage() {
 
   return (
     <SidebarInset className="h-dvh min-h-0 overflow-hidden overscroll-y-none isolate">
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background text-foreground">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col bg-background surface-grain text-foreground">
         {/* Keeps the window drag strip and the collapsed-sidebar toggle's room. */}
         <WorkspacePageHeader electron={isElectron} />
         <div className="flex shrink-0 flex-wrap items-center gap-x-6 gap-y-3 pb-5 pl-(--workspace-gutter-start) pr-(--workspace-gutter-end)">
@@ -162,7 +160,7 @@ function DashboardSectionFilterBar(props: {
             aria-pressed={pressed}
             onClick={(event) => props.onSelect(section, event.shiftKey)}
             className={cn(
-              "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
+              "flex h-7 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-3.5",
               pressed
                 ? "relative bg-(--panel-surface-active) text-foreground shadow-(--panel-drop) panel-edge"
                 : "text-muted-foreground hover:text-foreground",
@@ -189,7 +187,7 @@ function ProjectCard({
     <Link
       to="/project-graph/$projectKey"
       params={{ projectKey: group.projectKey }}
-      className="flex items-center gap-3 rounded-xl bg-(--row-surface) px-3 py-2.5 outline-none squircle transition-colors hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      className="flex items-center gap-3 rounded-xl bg-(--row-surface) px-3 py-2.5 outline-none transition-colors hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
     >
       <ProjectFavicon project={group} className="size-8 shrink-0" />
       <div className="flex min-w-0 flex-1 flex-col gap-1">

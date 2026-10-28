@@ -17,6 +17,7 @@ import {
   collectLimitNotices,
   collectLimitPools,
   elapsedShare,
+  limitProjection,
   paceOf,
   paceRemainingPercent,
   usesChatGptSharing,
@@ -57,6 +58,31 @@ describe("pace", () => {
     expect(paceOf(window, now)).toBe("under");
     expect(paceOf({ ...window, usedPercent: 62 }, now)).toBe("on");
     expect(paceOf({ ...window, usedPercent: 80 }, now)).toBe("ahead");
+  });
+
+  it("projects the average pace to the reset, with the run-out time and the even pace", () => {
+    const steady = limitProjection(window, now);
+    const fast = limitProjection({ ...window, usedPercent: 90 }, now);
+
+    // Three hours in at 40%: about 67% by the reset, with 30% an hour left to spend.
+    expect(steady?.projectedPercent).toBeCloseTo(66.67, 2);
+    expect(steady?.runsOutAt).toBeNull();
+    // That pace empties the quota 4.5 hours from now, 2.5 hours after the reset.
+    expect(steady?.exhaustsAt).toBe(now + 4.5 * 3_600_000);
+    expect(limitProjection({ ...window, usedPercent: 0 }, now)?.exhaustsAt).toBeNull();
+    expect(steady?.evenPercentPerHour).toBe(30);
+    // At 30% an hour the last 10% lasts 20 minutes.
+    expect(fast?.runsOutAt).toBe(now + 20 * 60_000);
+    expect(limitProjection({ ...window, usedPercent: 100 }, now)?.runsOutAt).toBe(now);
+    expect(limitProjection({ ...window, resetsAt: undefined }, now)).toBeNull();
+  });
+
+  it("holds the forecast until a tenth of the window has passed", () => {
+    // The five-hour window started at 09:00; a pace read from its first half hour is noise.
+    const windowStart = Date.parse("2026-09-03T09:00:00.000Z");
+    expect(limitProjection(window, now)?.forecastFrom).toBe(windowStart + 30 * 60_000);
+    const justReset = limitProjection(window, windowStart + 10 * 60_000);
+    expect(justReset?.forecastFrom).toBeGreaterThan(windowStart + 10 * 60_000);
   });
 });
 

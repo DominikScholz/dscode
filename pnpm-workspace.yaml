@@ -22,7 +22,7 @@ allowBuilds:
   node-pty: true
   # Ships N-API prebuilds; its install script only rebuilds from source.
   objc-js: false
-  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-8d2f84a8.tgz": true
+  "react-native-enriched-markdown@file:apps/mobile/deps/react-native-enriched-markdown-1.2.0-t3.16-558767d9.tgz": true
   sharp: true
   "@tsc-rs/typescript": true
   utf-8-validate: false
@@ -185,7 +185,7 @@ minimumReleaseAgeExclude:
   - "react@19.3.0"
   - "react-dom@19.3.0"
   - "react-native@0.88.0"
-  - "react-native-keyboard-controller@1.22.7"
+  - "react-native-keyboard-controller@1.22.8"
   - "react-native-worklets@0.13.0"
   - "react-native-reanimated@4.7.1"
   - "react-native-screens@4.28.0"
@@ -246,7 +246,7 @@ overrides:
   node-pty: 1.2.0-beta.15
   react-native-gesture-handler: 3.3.0
   react-native-reanimated: 4.7.1
-  react-native-keyboard-controller: 1.22.7
+  react-native-keyboard-controller: 1.22.8
   react-native-pdf-jsi: 5.0.0
   react-native-webview: 14.0.1
   "@expo/ui": 58.0.20
@@ -359,6 +359,7 @@ patchedDependencies:
   micromark-extension-gfm-table@2.1.1: patches/micromark-extension-gfm-table@2.1.1.patch
   alchemy@2.0.0-beta.80: patches/alchemy@2.0.0-beta.80.patch
   expo-audio@58.0.9: patches/expo-audio@58.0.9.patch
+  expo-video@58.0.11: patches/expo-video@58.0.11.patch
   expo-network@58.0.3: patches/expo-network@58.0.3.patch
   "@clerk/expo-native-components@0.4.0": patches/@clerk__expo-native-components@0.4.0.patch
   "@effect/vitest@4.0.5": patches/@effect__vitest@4.0.5.patch
@@ -379,7 +380,7 @@ patchedDependencies:
   # Screens v5 stack, split and tab screens leave at once, like legacy screens. Exiting animations
   # inside one otherwise hold its removal for a later mount, after its stack has moved on.
   react-native-reanimated@4.7.1: patches/react-native-reanimated@4.7.1.patch
-  react-native-keyboard-controller@1.22.7: patches/react-native-keyboard-controller@1.22.7.patch
+  react-native-keyboard-controller@1.22.8: patches/react-native-keyboard-controller@1.22.8.patch
   react-native-pdf-jsi@5.0.0: patches/react-native-pdf-jsi@5.0.0.patch
   # Android: a nested WebView hands a vertical drag to its scrolling parent at the page's edge.
   react-native-webview@14.0.1: patches/react-native-webview@14.0.1.patch

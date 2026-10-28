@@ -721,7 +721,7 @@ export function BranchToolbarBranchSelector({
           >
             <GitBranchIcon
               className={cn(
-                "size-3 shrink-0 opacity-70",
+                "size-3 shrink-0",
                 displayMode === "panel" && THREAD_DETAILS_PANEL_ICON_CLASS,
               )}
             />

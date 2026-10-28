@@ -61,21 +61,24 @@ export function SettingsProjectOverviewRouteScreen({
     setIsRemoving(false);
   };
   const navigation = useNavigation();
-  const { selectedTargets, projectGroups, selectedProjectKey, selectProject, selectAll } =
-    useSettingsEnvironmentFilter();
-  const latestProjectKey = useRef(selectedProjectKey);
-  useEffect(() => {
-    latestProjectKey.current = selectedProjectKey;
-  }, [selectedProjectKey]);
+  const {
+    selectedTargets,
+    projectGroups,
+    selectedProjectKey,
+    selectProject,
+    getSelectedProjectKey,
+    selectAll,
+  } = useSettingsEnvironmentFilter();
   // The filter can move to another project while a removal is still running.
   const finishProjectRemoval = (projectKey: string | null) => {
-    if (latestProjectKey.current !== projectKey) return;
+    if (getSelectedProjectKey() !== projectKey) return;
     if (navigation.isFocused())
       leaveSettingsPage(navigation, workspaceHasColumns(), DEFAULT_SETTINGS_PAGE);
     // Otherwise the filter keeps pointing at the removed project as an unavailable one.
     selectProject(null);
   };
   const requestedProjectKey = route.params?.projectKey;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Consume project navigation params into the persistent settings filter.
   useEffect(() => {
     if (!requestedProjectKey) return;
     selectProject(requestedProjectKey);

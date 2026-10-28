@@ -2,6 +2,7 @@ import { memo, type MouseEventHandler, type PointerEventHandler } from "react";
 import { CheckIcon, ChevronDownIcon, ChevronLeftIcon, Minimize2Icon, PlayIcon } from "lucide-react";
 import { CornerUpRight, ListPlus } from "lucide";
 import { MorphIcon } from "~/components/MorphIcon";
+import { useClientSettings } from "~/hooks/useSettings";
 import { formatContextWindowTokens } from "~/lib/contextWindow";
 import { cn } from "~/lib/utils";
 import { useShortcutModifierState } from "../../shortcutModifierState";
@@ -110,6 +111,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
   const pointerFocusProps = preserveComposerFocusOnPointerDown
     ? { onPointerDown: preventPointerFocus }
     : undefined;
+  const redesign = useClientSettings((s) => s.redesignEnabled);
   const shortcutModifiers = useShortcutModifierState();
   const isQueuing =
     !isEditingQueuedMessage &&
@@ -131,7 +133,7 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
             className={cn(
               // Same tile as send, but dark and monochrome: a raised panel chip
               // with a light stop square, so it never competes with send.
-              "relative flex shrink-0 cursor-pointer items-center justify-center rounded-xl bg-(--panel-surface-hover) text-foreground shadow-(--panel-drop) panel-edge squircle transition-colors duration-150 hover:bg-(--panel-surface-active) disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none",
+              "relative flex shrink-0 cursor-pointer items-center justify-center rounded-xl bg-(--panel-surface-hover) text-foreground shadow-(--panel-drop) panel-edge transition-colors duration-150 hover:bg-(--panel-surface-active) disabled:pointer-events-none disabled:opacity-40 [&_svg]:pointer-events-none",
               insidePendingAction ? "size-8 sm:size-7" : "size-9 sm:size-8",
             )}
             {...pointerFocusProps}
@@ -306,8 +308,8 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
     <button
       type={showResume ? "button" : "submit"}
       className={cn(
-        // The composer's focal control: a soft off-white tile with a dark arrow.
-        "relative isolate flex h-9 w-9 items-center justify-center overflow-hidden rounded-xl bg-foreground/90 text-background shadow-(--panel-drop) squircle transition-colors duration-150 enabled:cursor-pointer enabled:hover:bg-foreground disabled:pointer-events-none disabled:opacity-35 disabled:shadow-none sm:h-8 sm:w-8 [&_svg]:pointer-events-none",
+        "relative isolate flex h-9 w-9 items-center justify-center overflow-hidden rounded-full shadow-xs transition-all duration-150 enabled:cursor-pointer enabled:inset-shadow-control-highlight hover:scale-105 active:inset-shadow-control-pressed active:shadow-none disabled:pointer-events-none disabled:shadow-none disabled:hover:scale-100 sm:h-8 sm:w-8 [&_svg]:pointer-events-none",
+        "bg-message-action text-message-action-foreground enabled:shadow-message-action/24 hover:bg-message-action-hover disabled:bg-foreground/12 disabled:text-muted-foreground",
       )}
       {...pointerFocusProps}
       onClick={showResume ? onResume : onSubmitMessage}
@@ -357,12 +359,16 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           render={
             <button
               type="button"
-              className={cn(
-                "relative flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-xl px-3 font-medium text-xs tabular-nums outline-none squircle transition-colors duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 sm:px-2.5 [&_svg]:pointer-events-none [&_svg]:size-3.5",
-                keepFullHistory
-                  ? "text-muted-foreground hover:bg-(--panel-surface-hover) hover:text-foreground"
-                  : "bg-(--panel-surface-hover) bg-(image:--panel-glow-warning) text-foreground shadow-(--panel-drop) panel-edge [--panel-edge-gradient:var(--panel-edge-warning)] hover:bg-(--panel-surface-active)",
-              )}
+              className={
+                redesign
+                  ? "flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-(--control-radius) px-2 font-medium text-base text-foreground/80 tabular-nums outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:text-sm aria-pressed:bg-accent/60 aria-pressed:text-foreground [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:text-muted-foreground"
+                  : cn(
+                      "flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border px-2.5 text-xs tabular-nums outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64 sm:h-8 [&_svg]:pointer-events-none [&_svg]:size-3.5",
+                      keepFullHistory
+                        ? "border-border text-muted-foreground hover:text-foreground"
+                        : "border-warning/40 text-warning hover:bg-warning/8",
+                    )
+              }
               {...pointerFocusProps}
               aria-pressed={!keepFullHistory}
               aria-label={`Compact ${compactTokens} tokens of history before sending`}
@@ -372,8 +378,19 @@ export const ComposerPrimaryActions = memo(function ComposerPrimaryActions({
           }
         >
           <Minimize2Icon aria-hidden="true" />
-          {keepFullHistory ? "Full" : "Compact"}
-          <span className="text-muted-foreground">{compactTokens}</span>
+          {/* The new design keeps the token count in the tooltip so the permission label keeps its room. */}
+          {redesign ? (
+            keepFullHistory ? (
+              "Keep full"
+            ) : (
+              "Compact next"
+            )
+          ) : (
+            <>
+              {keepFullHistory ? "Full" : "Compact"}
+              <span>{compactTokens}</span>
+            </>
+          )}
         </TooltipTrigger>
         <TooltipPopup>
           <div>

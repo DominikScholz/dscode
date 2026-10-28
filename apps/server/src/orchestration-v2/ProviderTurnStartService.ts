@@ -9,6 +9,8 @@ import {
   type OrchestrationV2Run,
   type OrchestrationV2RunAttempt,
   type OrchestrationV2TurnItem,
+  isCompactionCommandMessage,
+  parseGoalCommand,
   RunId,
   ThreadId,
 } from "@t3tools/contracts";
@@ -22,7 +24,6 @@ import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as Predicate from "effect/Predicate";
 import * as Schema from "effect/Schema";
-import * as HostProcess from "@t3tools/shared/HostProcess";
 
 import * as ServerConfig from "../config.ts";
 import { withWorkspaceLease } from "../workspace/workspaceLease.ts";
@@ -121,8 +122,6 @@ export const layer: Layer.Layer<
     const idAllocator = yield* IdAllocator.IdAllocatorV2;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
-    const serverConfig = yield* ServerConfig.ServerConfig;
-    const serverSettings = yield* ServerSettings.ServerSettingsService;
     const gitWorkflow = yield* GitWorkflowService.GitWorkflowService;
     const projects = yield* ProjectService.ProjectService;
     const providerAuth = yield* ProviderAuthService.ProviderAuthService;
@@ -201,6 +200,7 @@ export const layer: Layer.Layer<
                 const request = turnItems.find((item) => item.type === "run_interrupt_request");
                 return request?.type === "run_interrupt_request" ? request.message : undefined;
               }),
+              // @effect-diagnostics-next-line effectSucceedWithVoid:off - This optional result requires undefined, not the wider void type.
               Effect.catchCause(() => Effect.succeed(undefined)),
             ),
       };
@@ -284,11 +284,12 @@ export const layer: Layer.Layer<
                     source.status === "interrupted" ||
                     (source.status === "completed" &&
                       handoff.delivery === undefined &&
+                      // Compaction and /goal turns defer history to the next turn.
                       projection.messages.some(
                         (message) =>
                           message.id === source.userMessageId &&
-                          message.attachments.length === 0 &&
-                          message.text.trim().toLowerCase() === "/compact",
+                          (isCompactionCommandMessage(message) ||
+                            parseGoalCommand(message) !== null),
                       ))),
               ))),
       );
@@ -507,14 +508,14 @@ export const layer: Layer.Layer<
                   path: worktreePath,
                 }),
               ),
-              Effect.catchCause((cause) =>
-                Cause.hasInterruptsOnly(cause)
-                  ? Effect.failCause(cause)
-                  : Effect.logWarning("provider turn start failed to recreate worktree", {
-                      threadId: projection.thread.id,
-                      worktreePath,
-                      cause: Cause.pretty(cause),
-                    }),
+              Effect.catchCauseIf(
+                (cause) => !Cause.hasInterruptsOnly(cause),
+                (cause) =>
+                  Effect.logWarning("provider turn start failed to recreate worktree", {
+                    threadId: projection.thread.id,
+                    worktreePath,
+                    cause: Cause.pretty(cause),
+                  }),
               ),
             );
           }
@@ -693,6 +694,7 @@ export const layer: Layer.Layer<
         return undefined;
       });
       let effectiveHandoffs = handoffs;
+      let resumeFellBack = false;
       const loadedProviderThread = yield* Effect.gen(function* () {
         if (nativeForkTransfer !== undefined) {
           const sourceProjection = yield* projectionStore.getThreadRecords(
@@ -818,7 +820,15 @@ export const layer: Layer.Layer<
           ),
           createdAt,
         });
-        effectiveHandoffs = [handoff, ...effectiveHandoffs];
+        // Delivery ranks later handoffs as newer history. Pending handoffs from
+        // earlier runs predate this summary; handoffs for this run (provider-switch
+        // delta, merge-back) are newer and must stay last.
+        effectiveHandoffs = [
+          ...effectiveHandoffs.filter((candidate) => candidate.targetRunId !== run.id),
+          handoff,
+          ...effectiveHandoffs.filter((candidate) => candidate.targetRunId === run.id),
+        ];
+        resumeFellBack = true;
         yield* eventSink.write({
           events: [
             {
@@ -1029,6 +1039,9 @@ export const layer: Layer.Layer<
         text: message.text,
         records: message.context?.records ?? [],
       });
+      // Codex and Claude parse /goal from the prompt, so it goes verbatim and history waits a turn.
+      const goalDriver = session.driver === "codex" || session.driver === "claudeAgent";
+      const goalCommand = goalDriver && parseGoalCommand(message) !== null;
       // The provider turn marks cancellation work delivered; restart continuations use their own text or resume natively.
       const noteContinuation = isRestartNoteContinuation(
         run,
@@ -1043,8 +1056,8 @@ export const layer: Layer.Layer<
           projection.messages
             .filter(
               (candidate) =>
-                candidate.attachments.length === 0 &&
-                candidate.text.trim().toLowerCase() === "/compact",
+                isCompactionCommandMessage(candidate) ||
+                (goalDriver && parseGoalCommand(candidate) !== null),
             )
             .map((candidate) => candidate.id),
         ),
@@ -1145,8 +1158,11 @@ export const layer: Layer.Layer<
         ...runningProviderThread,
         contextUsage: handoffUsage,
       };
+      // The resume fallback summary already covers every earlier run in order. A
+      // retry copy after it would rank older missed requests as the newest history.
       const missedRuns = projection.runs.filter(
         (source) =>
+          !resumeFellBack &&
           source.ordinal < run.ordinal &&
           source.providerThreadId === providerThread.id &&
           (source.status === "failed" || source.status === "interrupted") &&
@@ -1189,7 +1205,7 @@ export const layer: Layer.Layer<
                 ];
           const delivery = yield* deliverContextHandoffs({
             handoffs: [...effectiveHandoffs, ...retryHandoff],
-            deferInline: compact,
+            deferInline: compact || goalCommand,
             providerThread: runningProviderThread,
             budget: Effect.gen(function* () {
               return handoffBudget({
@@ -1243,7 +1259,10 @@ export const layer: Layer.Layer<
             ...(noteContinuation ? promptedInput : turnInput),
             message: {
               ...turnInput.message,
-              text: context === "" ? userText : `${context}\n\nUser message:\n${userText}`,
+              text:
+                context === "" || goalCommand
+                  ? userText
+                  : `${context}\n\nUser message:\n${userText}`,
             },
           }).pipe(
             // Clear pending handoff markers for refused prompts so the next turn retains the native session.

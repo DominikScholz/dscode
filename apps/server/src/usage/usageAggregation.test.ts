@@ -210,6 +210,132 @@ describe("UsageAggregator", () => {
   });
 });
 
+function aggregateSeries(
+  records: readonly UsageRecord[],
+  options: {
+    readonly timeZone: string;
+    readonly sinceDay: string;
+    readonly untilDay: string;
+    readonly stepHours?: 1 | 4;
+    readonly untilMs?: number;
+  },
+) {
+  const aggregator = new UsageAggregator({
+    timeZone: options.timeZone,
+    sinceDay: options.sinceDay,
+    untilDay: options.untilDay,
+    seriesStepHours: options.stepHours ?? 1,
+    ...(options.untilMs === undefined ? {} : { seriesUntilMs: options.untilMs }),
+    rates,
+  });
+  for (const item of records) aggregator.add(item);
+  return aggregator.finish();
+}
+
+function nonZeroSlots(values: readonly number[] | undefined) {
+  return (values ?? []).flatMap((value, index) => (value === 0 ? [] : [[index, value]]));
+}
+
+describe("UsageAggregator series", () => {
+  it("places slots on wall-clock hours in the requested zone", () => {
+    const { series } = aggregateSeries(
+      [
+        record({ timestampMs: Date.parse("2026-08-01T05:59:00.000Z") }),
+        record({ timestampMs: Date.parse("2026-08-01T22:30:00.000Z") }),
+      ],
+      { timeZone: "Europe/Berlin", sinceDay: "2026-08-01", untilDay: "2026-08-02" },
+    );
+
+    expect(series?.rows).toHaveLength(1);
+    expect(series?.rows[0]?.totalTokens).toHaveLength(48);
+    // 07:59 and 00:30 the next day in Berlin; tokens exclude the reasoning subset.
+    expect(nonZeroSlots(series?.rows[0]?.totalTokens)).toEqual([
+      [7, 1160],
+      [24, 1160],
+    ]);
+  });
+
+  it("groups wider slots by local hour", () => {
+    const { series } = aggregateSeries(
+      [
+        record({ timestampMs: Date.parse("2026-08-01T13:00:00.000Z") }),
+        record({ timestampMs: Date.parse("2026-08-01T15:59:59.999Z") }),
+        record({ timestampMs: Date.parse("2026-08-01T16:00:00.000Z") }),
+      ],
+      { timeZone: "UTC", sinceDay: "2026-08-01", untilDay: "2026-08-01", stepHours: 4 },
+    );
+
+    expect(nonZeroSlots(series?.rows[0]?.totalTokens)).toEqual([
+      [3, 2320],
+      [4, 1160],
+    ]);
+  });
+
+  it("folds a repeated fall-back hour into one slot", () => {
+    const { series } = aggregateSeries(
+      [
+        // 02:30 CEST, then 02:30 CET after clocks go back.
+        record({ timestampMs: Date.parse("2026-10-25T00:30:00.000Z") }),
+        record({ timestampMs: Date.parse("2026-10-25T01:30:00.000Z") }),
+      ],
+      { timeZone: "Europe/Berlin", sinceDay: "2026-10-25", untilDay: "2026-10-25" },
+    );
+
+    expect(series?.rows[0]?.totalTokens).toHaveLength(24);
+    expect(nonZeroSlots(series?.rows[0]?.totalTokens)).toEqual([[2, 2320]]);
+  });
+
+  it("ends at the current slot and keeps later records out of the series only", () => {
+    const result = aggregateSeries(
+      [
+        record({ timestampMs: Date.parse("2026-08-02T10:20:00.000Z") }),
+        record({ timestampMs: Date.parse("2026-08-02T11:05:00.000Z") }),
+      ],
+      {
+        timeZone: "UTC",
+        sinceDay: "2026-08-01",
+        untilDay: "2026-08-02",
+        untilMs: Date.parse("2026-08-02T10:30:00.000Z"),
+      },
+    );
+
+    expect(result.series?.rows[0]?.totalTokens).toHaveLength(35);
+    expect(nonZeroSlots(result.series?.rows[0]?.totalTokens)).toEqual([[34, 1160]]);
+    expect(result.buckets[0]?.records).toBe(2);
+  });
+
+  it("adds up to the daily buckets beside it", () => {
+    const result = aggregateSeries(
+      [
+        record({ timestampMs: Date.parse("2026-08-01T01:00:00.000Z") }),
+        record({ timestampMs: Date.parse("2026-08-01T09:00:00.000Z"), speed: "fast" }),
+        record({ timestampMs: Date.parse("2026-08-01T17:00:00.000Z"), reportedCostUsd: 0.5 }),
+      ],
+      { timeZone: "UTC", sinceDay: "2026-08-01", untilDay: "2026-08-01" },
+    );
+    const [bucket] = result.buckets;
+    const [row] = result.series?.rows ?? [];
+
+    expect(row?.totalTokens.reduce((sum, value) => sum + value, 0)).toBe(3 * 1160);
+    expect(row?.costUsd.reduce((sum, value) => sum + value, 0)).toBeCloseTo(
+      bucket?.costUsd ?? 0,
+      6,
+    );
+  });
+
+  it("is omitted for hourly requests and windows past the slot cap", () => {
+    const hourly = aggregate([record()], "UTC", "hour");
+    const year = aggregateSeries([record()], {
+      timeZone: "UTC",
+      sinceDay: "2026-01-01",
+      untilDay: "2026-12-31",
+    });
+
+    expect(hourly.series).toBeNull();
+    expect(year.series).toBeNull();
+  });
+});
+
 describe("resolveModelAliases", () => {
   it("follows chains to the final model and drops chains that enter a loop", () => {
     expect(

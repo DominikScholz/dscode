@@ -9,10 +9,7 @@ import {
   type EnvironmentProject,
   type EnvironmentThreadShell,
 } from "@t3tools/client-runtime/state/shell";
-import {
-  threadSearchMatchKey,
-  type EnvironmentThreadSearchMatch,
-} from "@t3tools/client-runtime/state/thread-search";
+import { threadSearchMatchKey } from "@t3tools/client-runtime/state/thread-search";
 import { type EnvironmentId, type SidebarProjectGroupingMode } from "@t3tools/contracts";
 import { useAtomValue } from "@effect/atom-react";
 import { useFocusEffect } from "@react-navigation/native";
@@ -488,7 +485,7 @@ export function HomeScreen(props: HomeScreenProps) {
       bumpSnoozeWakeTick((tick) => tick + 1);
     }, delayMs);
     return () => clearTimeout(id);
-    // snoozeWakeTick re-arms clamped timers even when the wake date exceeds 32-bit setTimeout and stays unchanged.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- snoozeWakeTick re-arms clamped timers even when the wake date exceeds 32-bit setTimeout and stays unchanged.
   }, [nextSnoozeWakeAt, snoozeWakeTick]);
   // Called as `props.onSelectThread(...)`, the compiler would cache this handler on the whole
   // props object, which is new on every render of Home's parent.
@@ -595,9 +592,6 @@ export function HomeScreen(props: HomeScreenProps) {
         timeLabel={item.timeLabel}
         showTrailingDivider={item.showTrailingDivider}
         project={projectByKey.get(scopedProjectKey(thread.environmentId, thread.projectId)) ?? null}
-        projectTitle={v2ProjectTitleByProjectKey.get(
-          scopedProjectKey(thread.environmentId, thread.projectId),
-        )}
         providerInstance={resolveProviderInstance(thread)}
         providers={providersByEnvironmentId.get(thread.environmentId)}
         environmentLabel={
@@ -748,6 +742,7 @@ export function HomeScreen(props: HomeScreenProps) {
       {listHeader}
       {Platform.OS === "ios" && workspace ? (
         <ThreadListFilters
+          gutter={primaryColumn ? 8 : 0}
           environments={props.environments}
           projects={projectScopes.map((scope) => ({ key: scope.key, label: scope.title }))}
           selectedEnvironmentId={props.selectedEnvironmentId}

@@ -67,7 +67,6 @@ interface TargetPathAndPosition {
 }
 
 // cmd shims reparse %* after escaping is gone; newlines and quotes can expose shell operators.
-// oxlint-disable-next-line no-control-regex
 const WINDOWS_SHIM_UNSAFE_ARG_PATTERN = /[\u0000-\u001f\u007f"]/;
 const TARGET_WITH_POSITION_PATTERN = /^(.*?):(\d+)(?::(\d+))?$/;
 const POWERSHELL_ARGUMENTS_PREFIX = [
@@ -818,20 +817,29 @@ export const make = Effect.gen(function* () {
   }).pipe(Effect.uninterruptible);
   const cachedAvailableEditors = Effect.flatMap(acquireEditorDiscovery, Deferred.await);
 
+  // Forwarders retain the underlying launcher and discovery spans.
   return ExternalLauncher.of({
-    resolveAvailableEditors: () => cachedAvailableEditors,
-    resolveFileManagerRevealKind: () =>
-      provideCommandResolutionServices(resolveFileManagerRevealKind()).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      ),
-    launchBrowser: (target) =>
-      launchBrowser(target).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      ),
-    launchEditor: (input) =>
-      provideCommandResolutionServices(launchEditor(input)).pipe(
-        Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
-      ),
+    resolveAvailableEditors: Effect.fnUntraced(function* () {
+      return yield* cachedAvailableEditors;
+    }),
+    resolveFileManagerRevealKind: Effect.fnUntraced(
+      function* () {
+        return yield* provideCommandResolutionServices(resolveFileManagerRevealKind());
+      },
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    ),
+    launchBrowser: Effect.fnUntraced(
+      function* (target) {
+        return yield* launchBrowser(target);
+      },
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    ),
+    launchEditor: Effect.fnUntraced(
+      function* (input) {
+        return yield* provideCommandResolutionServices(launchEditor(input));
+      },
+      Effect.provideService(ChildProcessSpawner.ChildProcessSpawner, spawner),
+    ),
   });
 });
 

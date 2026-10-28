@@ -5,6 +5,7 @@ import {
   type UsageBucket,
   type UsageDay,
   type UsageProviderKind,
+  type UsageSeriesRow,
   UsageSummary,
 } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
@@ -559,5 +560,139 @@ describe("mergeUsage", () => {
 
     expect(merged.sessions).toBe(1);
     expect(merged.providers[0]?.sessions).toBe(1);
+  });
+});
+
+function seriesRow(overrides: Partial<UsageSeriesRow> = {}): UsageSeriesRow {
+  return {
+    provider: "claude",
+    model: "claude-fable-5",
+    totalTokens: [0, 100, 0],
+    costUsd: [0, 1, 0],
+    ...overrides,
+  };
+}
+
+function withSeries(
+  usageSummary: UsageSummary,
+  rows: readonly UsageSeriesRow[],
+  stepHours: 4 | 12 = 12,
+): UsageSummary {
+  return { ...usageSummary, series: { stepHours, rows } };
+}
+
+describe("mergeUsage series", () => {
+  it("adds owned rows per provider into local slots and counts a shared directory once", () => {
+    const claude = { provider: "claude" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const codex = { provider: "codex" as const, hostId: "mac", homePath: "/home/theo/.codex" };
+    const claudeRow = seriesRow({ sourcePath: claude.homePath });
+    const merged = mergeUsage(
+      [
+        environment(
+          "env-a",
+          withSeries(summary([bucket({ sourcePath: claude.homePath })], [claude]), [claudeRow]),
+        ),
+        environment(
+          "env-b",
+          withSeries(
+            summary(
+              [
+                bucket({ sourcePath: claude.homePath }),
+                bucket({ provider: "codex", model: "gpt-6", sourcePath: codex.homePath }),
+              ],
+              [claude, codex],
+            ),
+            [
+              claudeRow,
+              seriesRow({
+                provider: "codex",
+                model: "gpt-6",
+                sourcePath: codex.homePath,
+                totalTokens: [5, 0, 7],
+                costUsd: [0.5, 0, 0.25],
+              }),
+            ],
+          ),
+        ),
+      ],
+      USAGE_CONTRACT_VERSION,
+    );
+
+    expect(merged.series?.stepHours).toBe(12);
+    expect(
+      merged.series?.slots.map(({ day, hour, totalTokens, costUsd, byProvider }) => [
+        day,
+        hour,
+        totalTokens,
+        costUsd,
+        byProvider.get("claude")?.totalTokens,
+      ]),
+    ).toEqual([
+      ["2026-08-01", 0, 5, 0.5, 0],
+      ["2026-08-01", 12, 100, 1, 100],
+      ["2026-08-02", 0, 7, 0.25, 0],
+    ]);
+  });
+
+  it("falls back to daily when a contributing environment sends no series", () => {
+    const claude = { provider: "claude" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const codex = { provider: "codex" as const, hostId: "pc", homePath: "/home/theo/.codex" };
+    const current = environment(
+      "current",
+      withSeries(summary([bucket({ sourcePath: claude.homePath })], [claude]), [
+        seriesRow({ sourcePath: claude.homePath }),
+      ]),
+    );
+    const olderIdle = environment("older-idle", summary([], [codex]));
+    const olderBusy = environment(
+      "older-busy",
+      summary([bucket({ provider: "codex", model: "gpt-6", sourcePath: codex.homePath })], [codex]),
+    );
+
+    expect(mergeUsage([current, olderIdle], USAGE_CONTRACT_VERSION).series).not.toBeNull();
+    expect(mergeUsage([current, olderBusy], USAGE_CONTRACT_VERSION).series).toBeNull();
+  });
+
+  it("lets a server with a series own a folder another server on the same machine also reads", () => {
+    const shared = { provider: "claude" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const withChart = environment(
+      "fork",
+      withSeries(summary([bucket({ sourcePath: shared.homePath })], [shared]), [
+        seriesRow({ sourcePath: shared.homePath }),
+      ]),
+    );
+    const nightly = environment("nightly", {
+      ...summary([bucket({ sourcePath: shared.homePath })], [shared]),
+      readAt: "2026-08-08T00:00:00.000Z",
+    });
+
+    const merged = mergeUsage([nightly, withChart], USAGE_CONTRACT_VERSION);
+
+    expect(merged.costUsd).toBe(10);
+    expect(merged.contributingEnvironments).toEqual(["fork"]);
+    expect(merged.series?.slots.map((slot) => slot.totalTokens)).toEqual([0, 100, 0]);
+  });
+
+  it("falls back to daily when a newer partial scan supplements another environment's cells", () => {
+    const source = { provider: "claude" as const, hostId: "mac", homePath: "/home/theo/.claude" };
+    const row = seriesRow({ sourcePath: source.homePath });
+    const complete = environment(
+      "old",
+      withSeries(summary([bucket({ sourcePath: source.homePath })], [source]), [row]),
+    );
+    const partialSummary = withSeries(
+      summary(
+        [bucket({ day: "2026-08-08" as UsageDay, sourcePath: source.homePath, costUsd: 3 })],
+        [source],
+      ),
+      [row],
+    );
+    const partial = environment("new", {
+      ...partialSummary,
+      readAt: "2026-08-08T01:00:00.000Z",
+      sources: partialSummary.sources.map((entry) => ({ ...entry, status: "partial" as const })),
+    });
+
+    expect(mergeUsage([complete, partial], USAGE_CONTRACT_VERSION).series).toBeNull();
   });
 });

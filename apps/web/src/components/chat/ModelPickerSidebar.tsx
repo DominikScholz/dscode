@@ -25,15 +25,16 @@ function describeUnavailableInstance(entry: ProviderInstanceEntry): string {
   return msg ? `${label}: ${kind}. ${msg}` : `${label}: ${kind}.`;
 }
 
-const NEW_BADGE_CLASS =
-  "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full text-update-foreground";
+const BADGE_BASE_CLASS =
+  "pointer-events-none absolute -right-0.5 top-0.5 z-10 flex size-3.5 items-center justify-center rounded-full bg-transparent shadow-sm ";
+const NEW_BADGE_CLASS = `${BADGE_BASE_CLASS} text-update-foreground `;
 
 const PICKER_TOOLTIP_SIDE = "left" as const;
 const PICKER_TOOLTIP_SIDE_OFFSET = 8;
 
 const railButtonClassName = (isSelected: boolean, isDisabled = false) =>
   cn(
-    "relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground outline-none squircle transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
+    "relative isolate flex aspect-square w-full cursor-pointer items-center justify-center rounded-xl text-muted-foreground outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
     isSelected
       ? "bg-(--popup-row-highlight) text-foreground shadow-(--panel-drop) panel-edge"
       : "hover:bg-(--popup-row-selected) hover:text-foreground",

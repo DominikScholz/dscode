@@ -102,9 +102,11 @@ function DragHandle(props: {
   canMoveDown: boolean;
 }) {
   const latest = useRef(props);
+  /* oxlint-disable react/refs -- The pan gesture captures its callbacks once per `disabled` change; they read the latest handlers when native gesture events fire. */
   latest.current = props;
   const gesture = useMemo(
     () =>
+      // oxlint-disable-next-line react/capitalized-calls -- Gesture.Pan is a gesture factory, not a React component.
       Gesture.Pan()
         .enabled(!props.disabled)
         .minDistance(0)
@@ -114,8 +116,9 @@ function DragHandle(props: {
         .onUpdate((event) => latest.current.onMove(event.translationY))
         .onEnd((event) => latest.current.onMove(event.translationY))
         .onFinalize((_, success) => latest.current.onEnd(!success)),
-    [props.disabled],
+    [props.disabled, latest],
   );
+  /* oxlint-enable react/refs */
   return (
     <GestureDetector gesture={gesture}>
       <View
@@ -270,8 +273,9 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
   const drag = useRef<Drag | null>(null);
   const frame = useRef<number | null>(null);
   const [preview, setPreview] = useState<Drag | null>(null);
-  const translateY = useRef(new Animated.Value(0)).current;
+  const [translateY] = useState(() => new Animated.Value(0));
   const latest = useRef({ rows, planners, moveThread });
+  // oxlint-disable-next-line react/refs -- The autoscroll rAF loop started at drag start reads the current rows and planners on every frame.
   latest.current = { rows, planners, moveThread };
 
   function stop() {
@@ -284,6 +288,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     .map((row) => `${row.key}:${row.thread?.pinOrderKey}:${row.thread?.activeOrderKey}`)
     .join("|");
   useEffect(() => {
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies, react/set-state-in-effect -- A changed thread order cancels the in-progress drag and clears its preview; stop only touches refs and state setters.
     stop();
   }, [orderVersion]);
   useEffect(
@@ -347,6 +352,7 @@ export function ThreadArrangementSheet(props: { onClose: () => void }) {
     };
     setPreview({ ...drag.current });
     update(0);
+    // oxlint-disable-next-line react/purity -- runs in an event handler (oxc#27309)
     let last = performance.now();
     const tick = () => {
       const current = drag.current;

@@ -34,24 +34,13 @@ export function costPerMillionTokens(model: ModelTotals): number | null {
     : (model.costUsd / pricedTokens) * 1_000_000;
 }
 
-const ink = (percent: number) =>
-  `color-mix(in oklab, var(--foreground) ${percent}%, var(--background))`;
-
-const TYPE_COLORS = {
-  input: ink(60),
-  cacheRead: ink(30),
-  cacheWrite: ink(72),
-  output: ink(100),
-  other: ink(44),
-};
-
 export function costTypeSegments(cost: CategoryCost): readonly ShareSegment[] {
   return [
-    { label: "Input", value: cost.input, color: TYPE_COLORS.input },
-    { label: "Cache read", value: cost.cacheRead, color: TYPE_COLORS.cacheRead },
-    { label: "Cache write", value: cost.cacheWrite, color: TYPE_COLORS.cacheWrite },
-    { label: "Output", value: cost.output, color: TYPE_COLORS.output },
-    { label: "Other", value: cost.unsplit >= 0.005 ? cost.unsplit : 0, color: TYPE_COLORS.other },
+    { label: "Input", value: cost.input },
+    { label: "Cache read", value: cost.cacheRead },
+    { label: "Cache write", value: cost.cacheWrite },
+    { label: "Output", value: cost.output },
+    { label: "Other", value: cost.unsplit >= 0.005 ? cost.unsplit : 0 },
   ];
 }
 
@@ -59,17 +48,17 @@ export function tokenTypeSegments(
   tokens: Omit<UsageTokenTotals, "reasoningTokens">,
 ): readonly ShareSegment[] {
   return [
-    { label: "Input", value: tokens.uncachedInputTokens, color: TYPE_COLORS.input },
-    { label: "Cache read", value: tokens.cachedInputTokens, color: TYPE_COLORS.cacheRead },
-    { label: "Cache write", value: tokens.cacheCreationTokens, color: TYPE_COLORS.cacheWrite },
-    { label: "Output", value: tokens.outputTokens, color: TYPE_COLORS.output },
+    { label: "Input", value: tokens.uncachedInputTokens },
+    { label: "Cache read", value: tokens.cachedInputTokens },
+    { label: "Cache write", value: tokens.cacheCreationTokens },
+    { label: "Output", value: tokens.outputTokens },
   ];
 }
 
 export function speedCostSegments(cost: SpeedCost): readonly ShareSegment[] {
   return [
-    { label: "Standard", value: cost.standard, color: ink(34) },
-    { label: "Fast", value: cost.fast, color: ink(66) },
-    { label: "Ultrafast", value: cost.ultrafast, color: ink(100) },
+    { label: "Standard", value: cost.standard },
+    { label: "Fast", value: cost.fast },
+    { label: "Ultrafast", value: cost.ultrafast },
   ];
 }

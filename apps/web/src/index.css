@@ -4,6 +4,9 @@
 @custom-variant light (&:not(.dark, .dark *));
 /* Window Controls Overlay: active when Electron exposes native titlebar control geometry. */
 @custom-variant wco (&:is(.wco, .wco *));
+/* Beta "New design" (Settings -> Beta) sets data-redesign on <html>. The variant adds no
+   specificity, so it loses to dark:, hover: and other variants on the same property. */
+@custom-variant redesign (&:where([data-redesign] *));
 
 /* Secondary hovering pointers reveal sidebar actions on touch-primary devices. */
 @custom-variant any-hover {
@@ -103,7 +106,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --sidebar-control-gap: 0.5rem;
   --sidebar-icon-color: color-mix(
     in srgb,
-    var(--contrast-sidebar-muted-foreground) 60%,
+    var(--contrast-sidebar-muted-foreground) 85%,
     var(--sidebar)
   );
   --sidebar-row-content-inset: 0.625rem;
@@ -217,6 +220,16 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --text-4xs--line-height: 1;
   --text-5xs: 0.4375rem;
   --text-5xs--line-height: 1;
+  /* Figure steps between Tailwind's own, for dense dashboards (Usage): label is 13px, stat 15px,
+     figure 17px, hero 22px. Registered with tailwind-merge alongside the steps above. */
+  --text-label: 0.8125rem;
+  --text-label--line-height: 1.25rem;
+  --text-stat: 0.9375rem;
+  --text-stat--line-height: 1.25rem;
+  --text-figure: 1.0625rem;
+  --text-figure--line-height: 1.25rem;
+  --text-hero: 1.375rem;
+  --text-hero--line-height: 1;
   /* Motion. drawer is the decelerating curve for surfaces that slide or pop in
      (composer context, pills). */
   --inset-shadow-control-highlight: 0 1px rgb(255 255 255 / 16%);
@@ -224,7 +237,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   /* The composer's elevation: a soft drop pulled in under the surface, shared
      by the composer, its context strip and attached banners. */
-  --shadow-composer: 0 12px 28px -18px rgb(0 0 0 / 40%);
+  --shadow-composer: 0 1px 2px rgb(0 0 0 / 5%);
   --shadow-composer-dark: 0 14px 32px -18px rgb(0 0 0 / 75%);
   /* Overlap the lower toolbar backdrop by one pixel to cover the composer seam. */
   --spacing-composer-seam: calc(var(--spacing) * 4 - 1px);
@@ -254,6 +267,11 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
      compositor updates discrete frames instead of every vsync. */
   --animate-status-pulse: status-pulse 2s infinite;
   --animate-status-ping: status-ping 2s infinite;
+  /* Stash pulses hold a highlight for 1.2s; the row then eases back over 200ms, the count snaps.
+     The row alternates two identical keyframes so each stash restarts it without a remount. */
+  --animate-stash-pulse-row: stash-pulse-row 1400ms;
+  --animate-stash-pulse-row-alt: stash-pulse-row-alt 1400ms;
+  --animate-stash-pulse-count: stash-pulse-count 1400ms step-start;
   --color-warning-foreground: var(--warning-foreground);
   --color-warning: var(--warning);
   --color-warning-surface: var(--warning-surface);
@@ -336,6 +354,24 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     }
     100% {
       opacity: 1;
+    }
+  }
+  @keyframes stash-pulse-row {
+    from,
+    85.7% {
+      color: var(--color-foreground);
+    }
+  }
+  @keyframes stash-pulse-row-alt {
+    from,
+    85.7% {
+      color: var(--color-foreground);
+    }
+  }
+  @keyframes stash-pulse-count {
+    from,
+    85.7% {
+      color: var(--color-primary);
     }
   }
   @keyframes status-pulse {
@@ -1130,7 +1166,7 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
+  --radius: 0.5rem;
   --background: var(--color-zinc-25);
   /* Resolved on the root, so subtrees that re-scope --background (the app
      sidebar) can still paint the exact main-canvas color. */
@@ -1143,34 +1179,35 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --toolbar-control-foreground: var(--foreground);
   --toolbar-control-hover: var(--accent);
   --surface-raised: color-mix(in srgb, var(--card) 20%, transparent);
-  --foreground: var(--color-zinc-800);
+  --foreground: var(--color-zinc-900);
   --card: var(--color-white);
-  --card-foreground: var(--color-zinc-800);
+  --card-foreground: var(--color-zinc-900);
   --popover: var(--color-white);
-  --popover-foreground: var(--color-zinc-800);
+  --popover-foreground: var(--color-zinc-900);
   --primary: oklch(0.488 0.217 264);
   --primary-foreground: var(--color-white);
-  --secondary: var(--color-zinc-50);
-  --secondary-foreground: var(--color-zinc-800);
-  --muted: var(--color-zinc-50);
-  --muted-foreground: var(--color-zinc-500);
+  --secondary: var(--color-neutral-50);
+  --secondary-foreground: var(--color-neutral-800);
+  --muted: var(--color-neutral-50);
+  --muted-foreground: var(--color-neutral-500);
   --placeholder: var(--muted-foreground);
   --secondary-label: var(--muted-foreground);
   --icon-muted: var(--muted-foreground);
-  --message-surface: var(--accent);
+  /* One step past the accent, so a user turn stands off the near-white canvas. */
+  --message-surface: color-mix(in srgb, var(--color-zinc-200) 55%, var(--color-zinc-100));
   --message-foreground: var(--foreground);
   --message-action: var(--primary);
   --message-action-foreground: var(--primary-foreground);
   --message-action-hover: color-mix(in srgb, var(--primary) 90%, var(--background));
-  --accent: var(--color-zinc-100);
-  --accent-foreground: var(--color-zinc-900);
+  --accent: var(--color-neutral-100);
+  --accent-foreground: var(--color-neutral-900);
   --error: var(--color-red-500);
   --error-foreground: var(--color-red-700);
   --tool-error-icon: var(--error);
   --error-surface: color-mix(in srgb, var(--error) 8%, transparent);
   --destructive: var(--error);
-  --border: var(--color-zinc-200);
-  --input: var(--color-zinc-300);
+  --border: var(--color-neutral-200);
+  --input: var(--color-neutral-300);
   --ring: var(--primary);
   --destructive-foreground: var(--error-foreground);
   --info: var(--color-blue-500);
@@ -1192,8 +1229,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --sidebar: var(--background);
   --sidebar-foreground: var(--foreground);
   --sidebar-muted-foreground: var(--muted-foreground);
-  --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-50);
+  --sidebar-control-surface: var(--color-neutral-100);
+  --sidebar-row-hover: var(--color-neutral-50);
   --sidebar-row-active: var(--color-white);
   --sidebar-row-selected: var(--color-white);
   --sidebar-border: var(--border);
@@ -1202,41 +1239,41 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
   --code-foreground: var(--foreground);
   --terminal-background: var(--background);
   --terminal-foreground: var(--foreground);
-  --terminal-cursor: rgb(38 56 78);
-  --terminal-selection-background: rgb(37 63 99 / 20%);
+  --terminal-cursor: rgb(40 40 40);
+  --terminal-selection-background: rgb(40 40 40 / 18%);
 
   @variant dark {
     color-scheme: dark;
-    /* A slightly lifted, faintly blue near-black. Text grays share the tint,
-       and control fills, borders, and inputs mix from a soft blue so buttons
-       carry it too, separating by tone rather than milky gray fills. */
-    --background: oklch(0.16 0.004 264);
-    --control-tint: oklch(0.82 0.06 264);
+    /* A near-black with a whisper of blue, after Fey: content carries the colour, the greys only
+       lean cool. Controls, borders and inputs mix from a faintly cool light grey. */
+    --background: oklch(0.162 0.0025 264);
+    --control-tint: oklch(0.9 0.02 264);
     --surface-raised: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --foreground: oklch(0.97 0.004 264);
+    --foreground: oklch(0.97 0.002 264);
     --card: color-mix(in srgb, var(--background) 97%, var(--color-white));
     --card-foreground: var(--foreground);
     --popover: color-mix(in srgb, var(--background) 97%, var(--color-white));
-    --popover-foreground: var(--foreground);
+    --popover-foreground: var(--color-neutral-100);
     --primary: oklch(0.571 0.21 264);
-    --secondary: --alpha(var(--control-tint) / 4%);
-    --secondary-foreground: var(--foreground);
-    --muted: --alpha(var(--control-tint) / 4%);
-    --muted-foreground: oklch(0.6 0.012 264);
-    --accent: --alpha(var(--control-tint) / 6%);
-    --accent-foreground: var(--foreground);
+    --secondary: --alpha(var(--color-white) / 3%);
+    --secondary-foreground: var(--color-neutral-100);
+    --muted: --alpha(var(--color-white) / 3%);
+    --muted-foreground: var(--color-neutral-400);
+    --accent: --alpha(var(--color-white) / 4%);
+    --accent-foreground: var(--color-neutral-100);
+    --message-surface: var(--accent);
     --error: color-mix(in srgb, var(--color-red-500) 90%, var(--color-white));
     --error-foreground: var(--color-red-400);
     --tool-error-icon: #fca5a5;
     --error-surface: color-mix(in srgb, var(--error) 16%, transparent);
-    --border: --alpha(var(--control-tint) / 7%);
-    --input: --alpha(var(--control-tint) / 10%);
+    --border: --alpha(var(--color-white) / 8%);
+    --input: --alpha(var(--color-white) / 11%);
     --info-foreground: var(--color-blue-400);
     --guest-foreground: var(--color-fuchsia-300);
     --success-foreground: var(--color-emerald-400);
     --warning-foreground: var(--color-amber-400);
     --warning-surface: color-mix(in srgb, var(--warning) 16%, transparent);
-    --update-foreground: var(--color-blue-400);
+    --update-foreground: var(--foreground);
     --update-surface: color-mix(in srgb, var(--update) 18%, transparent);
     --sidebar: var(--background);
     --sidebar-control-surface: var(--muted);
@@ -1244,8 +1281,8 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --sidebar-row-active: var(--accent);
     --sidebar-row-selected: var(--muted);
     --sidebar-stage-fade: var(--background);
-    --terminal-cursor: rgb(180 203 255);
-    --terminal-selection-background: rgb(180 203 255 / 25%);
+    --terminal-cursor: rgb(225 225 225);
+    --terminal-selection-background: rgb(225 225 225 / 22%);
   }
 }
 
@@ -1253,34 +1290,34 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
    the sidebar and main panel read as one surface; rows carry the hierarchy. */
 [data-app-sidebar] {
   --background: var(--color-zinc-25);
-  --foreground: var(--color-zinc-800);
+  --foreground: var(--color-zinc-900);
   --card: var(--color-white);
-  --card-foreground: var(--color-zinc-800);
+  --card-foreground: var(--color-zinc-900);
   --accent: var(--color-zinc-100);
   --accent-foreground: var(--color-zinc-900);
   --muted: var(--color-zinc-50);
   --muted-foreground: var(--color-zinc-500);
   --border: var(--color-zinc-200);
   --input: var(--color-zinc-300);
-  --sidebar: var(--app-canvas);
-  --sidebar-foreground: var(--color-zinc-800);
+  --sidebar: var(--color-zinc-50);
+  --sidebar-foreground: var(--color-zinc-900);
   --sidebar-muted-foreground: var(--color-zinc-500);
   --sidebar-control-surface: var(--color-zinc-100);
-  --sidebar-row-hover: var(--color-zinc-50);
+  --sidebar-row-hover: var(--color-zinc-25);
   --sidebar-row-active: var(--color-white);
   --sidebar-row-selected: var(--color-white);
-  --sidebar-border: var(--color-zinc-200);
+  --sidebar-border: var(--color-neutral-200);
   --sidebar-stage-fade: var(--sidebar);
 
   @variant dark {
     --background: var(--app-canvas);
-    --foreground: #f1f3f7;
+    --foreground: #f2f2f2;
     --card: var(--app-canvas);
     --card-foreground: var(--foreground);
     --accent: color-mix(in srgb, var(--app-canvas) 94%, var(--color-white));
-    --accent-foreground: #f7f9ff;
+    --accent-foreground: #f7f7f7;
     --muted: color-mix(in srgb, var(--app-canvas) 85%, var(--color-black));
-    --muted-foreground: oklch(0.7 0.012 264);
+    --muted-foreground: oklch(0.7 0.006 264);
     --border: --alpha(var(--control-tint) / 8%);
     --input: --alpha(var(--control-tint) / 16%);
     --sidebar: var(--app-canvas);
@@ -1293,6 +1330,54 @@ html[data-mobile-composer-route-transition="true"]::view-transition-old(t3-mobil
     --sidebar-border: var(--border);
     --sidebar-stage-fade: var(--sidebar);
   }
+}
+
+/* New design: modified files get a muted blue so added and deleted files lead. Built from the
+   info token, which themes do not override, so it stays blue in every theme. */
+html[data-redesign] {
+  --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 50%, var(--muted-foreground));
+}
+
+html.dark[data-redesign] {
+  /* On black a gray mix stays as bright as the blue, so dim with transparency instead. */
+  --diff-modified-icon: color-mix(in srgb, var(--info-foreground) 65%, transparent);
+  --diff-added-icon: var(--success-foreground);
+}
+
+/* Blue-orange already spends blue on additions. */
+html[data-redesign][data-diff-color-scheme="blue-orange"] {
+  --diff-modified-icon: var(--muted-foreground);
+  --diff-added-icon: initial;
+}
+
+html.dark[data-redesign][data-diff-color-scheme="blue-orange"] {
+  --diff-modified-icon: color-mix(in srgb, var(--muted-foreground) 65%, transparent);
+}
+
+/* New design: sections in the provider detail pane sit flat in its card instead of nesting
+   cards inside it. Headings and row dividers still separate them. */
+[data-redesign] [data-provider-detail] [data-slot="settings-group"] {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* New design: a diff header's copy button shows on file hover or focus. */
+@media (hover: hover) {
+  [data-redesign] diffs-container:not(:hover) [data-diff-copy-path]:not(:focus-within) {
+    opacity: 0;
+  }
+}
+
+/* New design: the default dark canvas is true black, matching the sidebar. Raised surfaces
+   keep the tone they had over neutral-950 so cards, popovers, and the composer still lift. */
+html.dark[data-redesign]:not([data-theme-id]) {
+  --background: #000;
+  --surface-raised: color-mix(in srgb, var(--color-neutral-950) 97%, var(--color-white));
+  --card: color-mix(in srgb, var(--color-neutral-950) 97%, var(--color-white));
+  --popover: color-mix(in srgb, var(--color-neutral-950) 97%, var(--color-white));
+  /* A user turn sits above the composer tone, level with the selected sidebar row. */
+  --message-surface: color-mix(in srgb, var(--color-neutral-950) 92%, var(--color-white));
 }
 
 /* Theme files are expressed in app color roles and mapped to the existing
@@ -1566,12 +1651,12 @@ html[data-theme-id] [data-app-sidebar] {
 /* The surface language (after Fey): charcoal panels one step off the canvas
    with a faint top-left sheen, a hairline edge lit from the top-left corner
    that fades across the surface (panel-edge), a faint inner top highlight over
-   a shallow drop, superellipse corners (squircle), and darker pressed-in wells
+   a shallow drop, and darker pressed-in wells
    for controls nested inside a panel. Resolved on the root from theme colors,
    so every theme matches and subtrees that re-scope colors share it. */
 :root {
-  /* What surfaces mix in to step up from the canvas: the foreground in light,
-     a soft blue in dark so raised surfaces carry a faint cool hue. */
+  /* What surfaces mix in to step up from the canvas: the foreground in light, a light grey
+     in dark. */
   --surface-tint: var(--foreground);
   --panel-surface: color-mix(in srgb, var(--surface-tint) 4%, var(--background));
   --panel-surface-hover: color-mix(in srgb, var(--surface-tint) 6.5%, var(--background));
@@ -1645,7 +1730,7 @@ html[data-theme-id] [data-app-sidebar] {
   --popup-row-highlight: color-mix(in srgb, var(--surface-tint) 6%, var(--popover));
 
   @variant dark {
-    --surface-tint: oklch(0.86 0.05 262);
+    --surface-tint: oklch(0.9 0.02 262);
     --popup-surface: color-mix(in srgb, var(--surface-tint) 6%, var(--background));
     --popup-edge-gradient: radial-gradient(
       140% 180% at 0% 0%,
@@ -1690,17 +1775,11 @@ html[data-theme-id] [data-app-sidebar] {
   pointer-events: auto;
 }
 
-/* Superellipse corners where supported; plain rounded corners elsewhere. */
-@utility squircle {
-  corner-shape: squircle;
-}
-
 /* A darker pressed-in well for controls nested inside a panel (segmented
    controls, search fields). */
 @utility panel-well {
   background-color: var(--panel-well);
   box-shadow: var(--panel-well-shadow);
-  corner-shape: squircle;
 }
 
 /* Menus, selects, and popovers. Pair with panel-edge, which picks up the
@@ -1716,11 +1795,265 @@ html[data-theme-id] [data-app-sidebar] {
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-saturation));
   box-shadow: var(--popup-drop);
-  corner-shape: squircle;
 
   @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
     background-color: var(--popup-surface);
   }
+}
+
+/* A window's backdrop: one broad, soft spotlight in the UI's blue-grey tint from behind the
+   headline, falling off into a vignette at the edges and corners. */
+@utility window-glow {
+  --window-glow: oklch(0.92 0 0);
+  --window-vignette: rgb(0 0 0 / 0.06);
+  background-image:
+    radial-gradient(
+      90% 70% at 35% 0%,
+      color-mix(in srgb, var(--window-glow) 3%, transparent),
+      transparent 100%
+    ),
+    radial-gradient(130% 110% at 50% 35%, transparent 40%, var(--window-vignette) 100%);
+
+  /* An opaque neutral near-black ramp, so the theme's own tint never shows through, lit from the
+     top by the leading provider's colour as Fey lights a page by its ticker. */
+  @variant dark {
+    --window-vignette: rgb(0 0 0 / 0.2);
+    background-color: var(--usage-window-fill);
+    background-image:
+      radial-gradient(70% 45% at 30% 0%, var(--usage-brand-light, transparent), transparent 75%),
+      radial-gradient(130% 110% at 50% 35%, transparent 45%, var(--window-vignette) 100%),
+      linear-gradient(
+        180deg,
+        oklch(0.2 0.005 264),
+        var(--usage-window-fill) 40%,
+        oklch(0.175 0.005 264)
+      );
+  }
+}
+
+/* A subtree in neutral greys whatever the theme's tint. The outer element captures the theme's
+   colours; the inner one, marked data-neutral-palette, re-declares them nearly without chroma. */
+@utility neutral-capture {
+  --neutral-from-foreground: var(--foreground);
+  --neutral-from-muted-foreground: var(--muted-foreground);
+  --neutral-from-border: var(--border);
+  --neutral-from-input: var(--input);
+  --neutral-from-muted: var(--muted);
+  --neutral-from-accent: var(--accent);
+}
+
+@utility neutral-palette {
+  --foreground: oklch(from var(--neutral-from-foreground) l calc(c * 0.1) h / alpha);
+  --muted-foreground: oklch(from var(--neutral-from-muted-foreground) l calc(c * 0.1) h / alpha);
+  --border: oklch(from var(--neutral-from-border) l calc(c * 0.1) h / alpha);
+  --input: oklch(from var(--neutral-from-input) l calc(c * 0.1) h / alpha);
+  --muted: oklch(from var(--neutral-from-muted) l calc(c * 0.1) h / alpha);
+  --accent: oklch(from var(--neutral-from-accent) l calc(c * 0.1) h / alpha);
+
+  @variant dark {
+    --muted-foreground: oklch(
+      from var(--neutral-from-muted-foreground) calc(l + 0.07) calc(c * 0.1) h / alpha
+    );
+  }
+}
+
+/* Film grain: a tile of fractal noise, rasterised once and repeated, that breaks up flat dark
+   surfaces the way print does. */
+@utility grain {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0.33 0.33 0.33 0 0 0 0 0 0 1'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='1.6' intercept='-0.3'/%3E%3CfeFuncG type='linear' slope='1.6' intercept='-0.3'/%3E%3CfeFuncB type='linear' slope='1.6' intercept='-0.3'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 128px 128px;
+  opacity: 0.05;
+
+  /* Overlay leaves mid-grey neutral, so on near-black the grain adds texture without lifting it. */
+  @variant dark {
+    mix-blend-mode: overlay;
+    opacity: 0.85;
+  }
+}
+
+/* A chart point's soft halo, in the element's text color. */
+@utility chart-glow {
+  box-shadow:
+    0 0 0 4px color-mix(in srgb, currentColor 18%, transparent),
+    0 0 14px 2px color-mix(in srgb, currentColor 45%, transparent);
+}
+
+/* Usage, after Fey: the window's surfaces as variables, so cards, edges and dots agree. Dark mode
+   takes the theme's lightness and drops its hue. */
+@utility usage-window {
+  --usage-window-fill: var(--background);
+  --usage-card-fill: color-mix(in srgb, var(--foreground) 3%, var(--background));
+  --usage-card-edge: color-mix(in srgb, var(--foreground) 8%, transparent);
+  --usage-lit-strong: color-mix(in srgb, var(--foreground) 22%, transparent);
+  --usage-lit-mid: color-mix(in srgb, var(--foreground) 12%, transparent);
+  --usage-groove: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --usage-groove-light: transparent;
+  text-rendering: geometricPrecision;
+
+  @variant dark {
+    --usage-window-fill: oklch(0.19 0.005 264);
+    --usage-card-fill: oklch(0.215 0.005 264);
+    --usage-card-edge: rgb(255 255 255 / 0.045);
+    --usage-lit-strong: rgb(255 255 255 / 0.3);
+    --usage-lit-mid: rgb(255 255 255 / 0.1);
+    --usage-groove: rgb(0 0 0 / 0.6);
+    --usage-groove-light: rgb(255 255 255 / 0.065);
+    border-color: rgb(255 255 255 / 0.07);
+  }
+}
+
+@utility usage-card {
+  background-color: var(--usage-card-fill);
+  border: 1px solid var(--usage-card-edge);
+
+  @variant dark {
+    background-image: var(--surface-grain-fine);
+    background-size: var(--surface-grain-size);
+  }
+}
+
+/* A card lit by the provider tile in its top-left corner: a soft pool of the tile's colour
+   (--tile-glow) behind the content, and an edge that brightens only near the tile, fading to the
+   plain hairline elsewhere, as on Fey's position cards. Its radius is about a third of the tile's
+   width, as Fey's is. The edge is a masked overlay. */
+@utility usage-card-lit {
+  position: relative;
+  border-radius: 0.875rem;
+  background-color: var(--usage-card-fill);
+  background-image:
+    radial-gradient(15rem 9rem at 3rem 3rem, var(--tile-glow, transparent), transparent 100%),
+    radial-gradient(
+      90% 220% at 0% 0%,
+      color-mix(in oklab, var(--tile-glow, transparent) 22%, transparent),
+      transparent 100%
+    );
+
+  @variant dark {
+    background-image:
+      radial-gradient(15rem 9rem at 3rem 3rem, var(--tile-glow, transparent), transparent 100%),
+      radial-gradient(
+        90% 220% at 0% 0%,
+        color-mix(in oklab, var(--tile-glow, transparent) 22%, transparent),
+        transparent 100%
+      ),
+      var(--surface-grain-fine);
+    background-size: auto, auto, var(--surface-grain-size);
+  }
+
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    pointer-events: none;
+    background: radial-gradient(
+      22rem 10rem at 3rem 3rem,
+      var(--usage-lit-strong),
+      var(--usage-lit-mid) 40%,
+      var(--usage-card-edge) 100%
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
+  }
+}
+
+/* A provider's tile, after Fey's: the brand fill with a slight inner highlight, a soft halo of its
+   own colour (--tile-color), and a wide, blurred dark shadow that sets it into the card. */
+/* A limit bar's empty track, sunk into the card like the grooves: shaded from the top edge, with a
+   faint lit lip along the bottom. */
+@utility limit-track {
+  background-color: color-mix(in srgb, var(--foreground) 6%, transparent);
+  box-shadow:
+    inset 0 2px 2px -1px rgb(0 0 0 / 0.45),
+    inset 0 -1px 0 color-mix(in srgb, var(--foreground) 6%, transparent);
+}
+
+/* Behind even pace: a flat red tint, as Fey marks a loss, that brightens into the red pace tick
+   on an eased curve, so the tick reads as glowing. */
+@utility pace-shortfall {
+  background: linear-gradient(
+    to right,
+    color-mix(in oklab, var(--destructive) 30%, transparent) calc(100% - 3rem),
+    color-mix(in oklab, var(--destructive) 34%, transparent) calc(100% - 2.25rem),
+    color-mix(in oklab, var(--destructive) 42%, transparent) calc(100% - 1.5rem),
+    color-mix(in oklab, var(--destructive) 56%, transparent) calc(100% - 0.875rem),
+    color-mix(in oklab, var(--destructive) 76%, transparent) calc(100% - 0.375rem),
+    var(--destructive)
+  );
+}
+
+@utility provider-tile {
+  background-color: var(--tile-color);
+  /* Listed top first: a dim opaque frame tinted by the tile, a shadow cast below it, then the halo.
+     The shadow's offset plus inset spread outruns its blur, so it pools below and never rises
+     past the top edge. */
+  box-shadow:
+    0 0 0 2px color-mix(in oklab, var(--tile-color) 18%, oklch(0.3 0.005 264)),
+    0 18px 16px -2px rgb(0 0 0 / 0.45),
+    0 0 30px 5px color-mix(in oklab, var(--tile-color) 26%, transparent);
+}
+
+/* The dimmed app behind the Usage window, in neutral black rather than the theme's tint. */
+body:has([data-app-modal].usage-window) [data-slot="dialog-backdrop"] {
+  @variant dark {
+    background-color: rgb(6 6 5 / 0.8);
+  }
+}
+
+/* Rows in a card parted by the same engraving as a strip's dividers: dark, with a light edge. */
+@utility groove-rows {
+  & > * + * {
+    border-top: 1px solid var(--usage-groove);
+    box-shadow: inset 0 1px 0 var(--usage-groove-light);
+  }
+}
+
+/* A card's header row parted from its body by a full-width engraving, as on Fey's cards. */
+@utility groove-under {
+  border-bottom: 1px solid var(--usage-groove);
+  box-shadow: 0 1px 0 var(--usage-groove-light);
+}
+
+/* A stats strip's divider: a short groove between columns rather than a drawn line. */
+@utility groove-divider {
+  position: relative;
+
+  &:not(:first-child)::before {
+    content: "";
+    position: absolute;
+    /* Centred by margins, not a transform, so the line keeps snapping to whole pixels. */
+    inset-inline-start: 0;
+    inset-block: 0;
+    margin-block: auto;
+    width: 1px;
+    height: 2.625rem;
+    background: var(--usage-groove);
+    box-shadow: 1px 0 0 var(--usage-groove-light);
+  }
+}
+
+/* The faint dot field behind charts, fading out toward the plot's edges. */
+@utility chart-dot-grid {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, var(--foreground) 16%, transparent) 0.7px,
+    transparent 1px
+  );
+  background-size: 10px 10px;
+  -webkit-mask-image:
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
+  -webkit-mask-composite: source-in;
+  mask-image:
+    linear-gradient(to right, transparent, #000 18%, #000 82%, transparent),
+    linear-gradient(to bottom, transparent, #000 30%, #000 70%, transparent);
+  mask-composite: intersect;
 }
 
 /* A 1px ring painted with --panel-edge-gradient, for an absolutely positioned
@@ -1747,7 +2080,6 @@ html[data-theme-id] [data-app-sidebar] {
     inset: 0;
     z-index: 20;
     border-radius: inherit;
-    corner-shape: squircle;
     pointer-events: none;
     padding: 1px;
     background: var(--panel-edge-gradient);
@@ -1763,7 +2095,8 @@ html[data-theme-id] [data-app-sidebar] {
 
 /* Recompute contrast wherever a subtree owns its own semantic color palette. */
 :root,
-[data-app-sidebar] {
+[data-app-sidebar],
+[data-neutral-palette] {
   --contrast-toolbar-foreground: color-mix(
     in oklab,
     color-mix(
@@ -1884,6 +2217,21 @@ body {
   padding: 0;
 }
 
+/* New design: sidebar row metadata sits a step below read titles (75% white). */
+[data-redesign] [data-app-sidebar] {
+  @variant dark {
+    --secondary-label: #8f8f8f;
+  }
+}
+
+/* Lighter default icon stroke. In the base layer so stroke-* utilities still win; any
+   CSS beats lucide's stroke-width="2" attribute. */
+@layer base {
+  :where(svg.lucide[stroke-width="2"]) {
+    stroke-width: 1.75;
+  }
+}
+
 html,
 body {
   min-height: calc(100svh + env(safe-area-inset-top));
@@ -1901,6 +2249,8 @@ body {
 html.dark body,
 body {
   background-color: var(--app-chrome-background);
+  background-image: var(--surface-grain);
+  background-size: var(--surface-grain-size);
 }
 
 #root {
@@ -1919,16 +2269,17 @@ body {
   --desktop-window-right-resize-inset: 6px;
 }
 
-/* App-chrome grain. Baked into each surface's own background (behind
-   content) rather than a fixed overlay on top: a full-viewport overlay
-   forces the compositor to re-blend every frame any animation produces,
-   which multiplied idle GPU cost. The overlay's 0.035 opacity lives in the
-   SVG rect instead. Surfaces that float over the body (e.g. the inset main
-   card) must opt in via the surface-grain utility, or they lose the
-   grain's subtle brightening and stand out against the body. */
+/* App-chrome grain. Baked into each surface's own background (behind content) rather than a
+   fixed overlay on top: a full-viewport overlay forces the compositor to re-blend every frame
+   any animation produces, which multiplied idle GPU cost. The tile is film grain as specks: white
+   where the noise runs bright and black where it runs dark, each a few percent opaque, so it adds
+   texture to any surface, light or dark, without lifting it. Surfaces that float over the body
+   (e.g. the inset main card) opt in via the surface-grain utility. */
 :root {
-  --surface-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
-  --surface-grain-size: 256px 256px;
+  --surface-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.083 0.083 0.083 0 -0.125'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.083 -0.083 -0.083 0 0.125'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  --surface-grain-size: 128px 128px;
+  /* Half the grain, for cards above a grained canvas: Fey keeps its cards smoother. */
+  --surface-grain-fine: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n' color-interpolation-filters='sRGB'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch' result='t'/%3E%3CfeColorMatrix in='t' result='w' values='0 0 0 0 1 0 0 0 0 1 0 0 0 0 1 0.04 0.04 0.04 0 -0.06'/%3E%3CfeColorMatrix in='t' result='k' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 -0.04 -0.04 -0.04 0 0.06'/%3E%3CfeMerge%3E%3CfeMergeNode in='w'/%3E%3CfeMergeNode in='k'/%3E%3C/feMerge%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 /* The live T3 Chat texture is a 128px grayscale tile with a constant 7/255
@@ -1986,7 +2337,7 @@ code {
 }
 
 /* Window drag region (frameless titlebar) */
-.drag-region {
+@utility drag-region {
   -webkit-app-region: drag;
 }
 
@@ -2198,9 +2549,32 @@ code {
   text-decoration: none;
 }
 
-/* File links and context chips own their color and focus ring. */
+/* Body text sits a step below full ink; emphasis takes the full step, as a value beside its
+   label. */
+.chat-markdown strong {
+  color: var(--foreground);
+}
+
+/* File links and context chips own their color and focus ring. Links are ink, not a hue, so a
+   faint dotted underline marks them at rest; hover brings it to full strength. */
 .chat-markdown a:not(.chat-markdown-file-link, :has([data-slot="context-chip-label"])) {
-  color: var(--info-foreground);
+  color: var(--foreground);
+}
+
+.chat-markdown
+  a:not(
+    .chat-markdown-file-link,
+    :has([data-slot="context-chip-label"]),
+    [data-markdown-image-link]
+  ) {
+  background-image: radial-gradient(
+    circle,
+    color-mix(in srgb, currentcolor 45%, transparent) 0.75px,
+    transparent 1px
+  );
+  background-position: left bottom;
+  background-repeat: repeat-x;
+  background-size: 4px 2px;
 }
 
 .chat-markdown
@@ -2282,21 +2656,25 @@ code {
 }
 
 .chat-markdown :not(pre) > code {
-  border: 1px solid var(--contrast-border);
-  border-radius: 0.375rem;
+  border: 1px solid transparent;
+  border-radius: 0.25rem;
   box-decoration-break: clone;
   -webkit-box-decoration-break: clone;
-  background: var(--muted);
-  padding: 0.1rem 0.35rem;
+  background: color-mix(in srgb, var(--contrast-foreground) 10%, transparent);
+  padding: 0.1em 0.35em;
   color: var(--contrast-foreground);
-  font-size: 0.75rem;
+  font-size: 0.85em;
+}
+
+.chat-markdown strong {
+  font-weight: 600;
 }
 
 .chat-markdown pre {
   max-width: 100%;
   overflow-x: auto;
   border: 1px solid var(--contrast-border);
-  border-radius: 0.75rem;
+  border-radius: 0.5rem;
   background: var(--muted);
   padding: 0.8rem 0.9rem;
   scrollbar-width: thin;
@@ -2369,6 +2747,15 @@ code {
   font-size: 0.75rem;
 }
 
+/* New design: tables sit one step under 15px prose instead of three. */
+[data-redesign] .chat-markdown table {
+  font-size: 0.875rem;
+}
+
+[data-redesign] .chat-markdown :is(td, th) {
+  text-wrap: pretty;
+}
+
 /* Top-aligned so wrapped rows share a first line, and the outer columns sit
    flush with the surrounding prose. */
 .chat-markdown th,
@@ -2437,8 +2824,8 @@ code {
 :root {
   --diff-addition: var(--success);
   --diff-deletion: var(--destructive);
-  --diff-addition-foreground: light-dark(var(--color-emerald-600), var(--color-emerald-400));
-  --diff-deletion-foreground: light-dark(var(--color-red-600), var(--color-red-400));
+  --diff-addition-foreground: light-dark(var(--color-emerald-700), var(--color-emerald-400));
+  --diff-deletion-foreground: light-dark(var(--color-red-700), var(--color-red-400));
 }
 
 /* Chat width setting. Comfortable keeps the default --chat-content-max-width,

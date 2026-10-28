@@ -13,15 +13,16 @@ export function SettingsGroup({
 }) {
   return (
     <div
+      data-slot="settings-group"
       {...props}
       className={cn(
         "relative overflow-visible text-foreground",
         variant === "grouped"
-          ? "rounded-xl border border-border/60 bg-card/40 shadow-xs/5"
+          ? "rounded-xl border border-border/60 bg-card/40 shadow-xs/5 dark:border-foreground/7 dark:bg-foreground/3 dark:shadow-none"
           : "space-y-1",
         variant === "grouped" &&
           divided &&
-          "[&>*+*]:border-t [&>*+*]:border-border/50 [&>[data-slot=settings-row]]:rounded-none",
+          "[&>*+*]:border-t [&>*+*]:border-border/50 dark:[&>*+*]:border-foreground/6 [&>[data-slot=settings-row]]:rounded-none",
         className,
       )}
     />

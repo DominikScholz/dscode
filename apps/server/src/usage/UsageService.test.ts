@@ -960,6 +960,16 @@ describe("UsageService", () => {
             hourly.reduce((sum, b) => sum + b.records, 0),
             3,
           );
+          assert.isUndefined(first.series);
+          const withSeries = yield* service.readSummary({ ...window, seriesStepHours: 1 });
+          const museRows = withSeries.series?.rows.filter((row) => row.provider === "muse") ?? [];
+          assert.strictEqual(
+            museRows.reduce(
+              (sum, row) => sum + row.totalTokens.reduce((rowSum, value) => rowSum + value, 0),
+              0,
+            ),
+            360,
+          );
           const appended = encodeUnknownJsonString(entry("appended", "child"));
           const file = NodePath.join(child, "session.jsonl");
           yield* Effect.promise(() => NodeFSP.appendFile(file, appended.slice(0, -10)));
@@ -2610,6 +2620,7 @@ describe("UsageService", () => {
       );
 
       let orphanedAt: number | undefined;
+      // oxlint-disable-next-line t3code/no-polling-loop-in-tests -- Fixed-count scheduler interruption matrix; each iteration exercises a different interruption point.
       for (let interruptAt = 1; interruptAt <= 31; interruptAt += 1) {
         const tasks: Array<() => void> = [];
         const dispatcher: Scheduler.SchedulerDispatcher = {

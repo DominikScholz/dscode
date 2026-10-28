@@ -2,6 +2,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog";
 import { XIcon } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 
+import { cn } from "~/lib/utils";
 import { useCloseAppModal } from "./sidebar/mainAppLocation";
 import { Button } from "./ui/button";
 import { DialogBackdrop } from "./ui/dialog";
@@ -12,7 +13,15 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
  * backdrop returns to the page that opened it. Keyboard guards that skip dialogs exempt
  * `[data-app-modal]`, because these pages own their shortcuts.
  */
-export function AppRouteModal({ label, children }: { label: string; children: ReactNode }) {
+export function AppRouteModal({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
   const closeAppModal = useCloseAppModal();
   const [open, setOpen] = useState(true);
   // Text selection that ends on the backdrop is not a dismissal.
@@ -52,7 +61,10 @@ export function AppRouteModal({ label, children }: { label: string; children: Re
             aria-label={label}
             data-slot="dialog-popup"
             data-app-modal=""
-            className="relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background max-sm:pt-safe max-sm:pb-safe text-foreground outline-none transition-[opacity,scale] duration-150 ease-out [-webkit-app-region:no-drag] data-ending-style:scale-[0.985] data-ending-style:opacity-0 data-starting-style:scale-[0.985] data-starting-style:opacity-0 sm:max-h-[60rem] sm:max-w-[80rem] sm:rounded-2xl sm:border sm:shadow-2xl/40"
+            className={cn(
+              "relative flex size-full min-h-0 min-w-0 flex-col overflow-hidden bg-background surface-grain max-sm:pt-safe max-sm:pb-safe text-foreground outline-none transition-[opacity,scale] duration-150 ease-out [-webkit-app-region:no-drag] data-ending-style:scale-[0.985] data-ending-style:opacity-0 data-starting-style:scale-[0.985] data-starting-style:opacity-0 sm:max-h-[60rem] sm:max-w-[80rem] sm:rounded-2xl sm:border sm:shadow-2xl/40",
+              className,
+            )}
           >
             {children}
           </DialogPrimitive.Popup>

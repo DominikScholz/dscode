@@ -243,7 +243,7 @@ export function TimelineMinimap({
                   }}
                   style={{ top }}
                 >
-                  <span className="absolute inset-0 rounded-full bg-foreground/90 opacity-0 transition-opacity duration-150 group-data-[in-view=true]/strip:opacity-100" />
+                  <span className="absolute inset-0 rounded-full bg-foreground/55 opacity-0 transition-opacity duration-150 group-data-[in-view=true]/strip:opacity-100" />
                 </span>
               );
             })}

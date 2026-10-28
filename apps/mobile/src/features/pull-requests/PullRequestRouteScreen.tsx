@@ -111,6 +111,7 @@ import {
 } from "./PullRequestPresentation";
 import { usePullRequestFilesSection } from "./PullRequestFiles";
 import { PullRequestDescription } from "./PullRequestDescription";
+import { PullRequestMediaVisibleContext } from "./PullRequestMedia";
 import { PullRequestMarkdownRepository } from "./PullRequestMarkdown";
 import {
   PullRequestStatusMenu,
@@ -387,9 +388,10 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
     if (!guidesEnabled && section === "guide") {
       requestedSection.current = "overview";
       currentScrollOffset.current = scrollOffsets.current.overview ?? -insets.top;
+      // oxlint-disable-next-line react/set-state-in-effect -- When guides turn off, the tab and its saved scroll offset must switch to overview together.
       setSection("overview");
     }
-  }, [guidesEnabled, section, insets.top]);
+  }, [guidesEnabled, section, insets.top, currentScrollOffset, requestedSection, scrollOffsets]);
   const tabContent = activityContent;
   const filesY = useRef(0);
   const descriptionY = useRef(0);
@@ -399,7 +401,7 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
   const result = useEnvironmentQuery(detailAtom);
   const pullRefresh = usePullToRefresh(detailAtom);
   const { refresh: refreshDetail } = result;
-  useFocusEffect(() => refreshDetail());
+  useFocusEffect(refreshDetail);
   const pr = usePullRequestLiveChecks(params, result.data);
   const summary = params.initialSummary;
   const identity = pr ?? summary;
@@ -794,7 +796,9 @@ export function PullRequestRouteScreen({ route }: StaticScreenProps<PullRequestP
                         listAnimationsReady && !item.key.endsWith(":body") ? PR_ROW_EXIT : undefined
                       }
                     >
-                      {item.content}
+                      <PullRequestMediaVisibleContext value={section === tab}>
+                        {item.content}
+                      </PullRequestMediaVisibleContext>
                     </Animated.View>
                   )}
                   recycleItems={false}
@@ -893,7 +897,7 @@ function PullRequestFileRouteContent({ route }: PullRequestFileRouteProps) {
     route.params.focus ? route.params.path : undefined,
   );
   const { refresh: refreshDetail } = detail;
-  useFocusEffect(() => refreshDetail());
+  useFocusEffect(refreshDetail);
   const { loadMore } = result;
   const parsed = filter.parsed;
   const reviewDraft = usePullRequestReviewDraft(route.params);

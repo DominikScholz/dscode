@@ -31,6 +31,7 @@ export function resolveChatCanvasLayout({
   composerHeight = 0,
   detailsCard = null,
   findBar = null,
+  centerBesideDetails = false,
 }: {
   container: PreviewMiniPlayerSize;
   preview: ChatCanvasPreview | null;
@@ -42,6 +43,8 @@ export function resolveChatCanvasLayout({
   composerHeight?: number;
   detailsCard?: PreviewMiniPlayerObstacles["detailsCard"];
   findBar?: PreviewMiniPlayerObstacles["detailsCard"];
+  /** Center the chat in the space left of the details card when it would otherwise crowd it. */
+  centerBesideDetails?: boolean;
 }) {
   // The lane pads both sides and centers chat in what remains. A full-width
   // chat leaves one side open and lets its max width do the narrowing; a
@@ -69,9 +72,23 @@ export function resolveChatCanvasLayout({
     Math.min(laneStart, laneRight - Math.min(centeredWidth, minChatWidth)),
   );
   const normalWidth = Math.max(0, Math.min(centeredWidth, laneRight - clearStart));
+  const canvasCenterLeft = (container.width - normalWidth) / 2;
+  // Beside a card it would crowd, the chat centers between the card and the canvas edge. The shift
+  // eases to zero as clearance grows, so very wide windows keep the chat still and a resize
+  // never jumps it.
+  const besideShift =
+    detailsCard && centerBesideDetails
+      ? Math.min(
+          (container.width - detailsCard.left) / 2,
+          Math.max(
+            0,
+            (container.width - detailsCard.left) / 2 - (laneRight - canvasCenterLeft - normalWidth),
+          ),
+        )
+      : 0;
   const normalLeft = Math.max(
     clearStart,
-    Math.min((container.width - normalWidth) / 2, laneRight - normalWidth),
+    Math.min(canvasCenterLeft - besideShift, laneRight - normalWidth),
   );
   let chat = placeChat(normalLeft, normalWidth);
   let frame: PreviewMiniPlayerFrame | null = null;

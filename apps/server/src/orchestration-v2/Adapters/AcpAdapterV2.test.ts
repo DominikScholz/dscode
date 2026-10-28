@@ -13,6 +13,7 @@ import { decodeAcpReplayTranscript, makeAcpReplayRuntime } from "./AcpAdapterV2.
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as DocumentText from "../../provider/DocumentText.ts";
 import { assert, describe, it } from "@effect/vitest";
 import {
   CheckpointId,
@@ -100,6 +101,7 @@ const DROID_SETTINGS = Schema.decodeSync(AcpRegistrySettings)({ agentId: "factor
 const layerHost = TestProviderHost.layer().pipe(Layer.provide(NodeServices.layer));
 
 const layerTest = Layer.mergeAll(
+  DocumentText.layer.pipe(Layer.provide(NodeServices.layer)),
   NodeServices.layer,
   IdAllocator.layer,
   McpProviderSessions.layer,
@@ -4167,6 +4169,7 @@ describe("AcpAdapterV2", () => {
       const responseWritten = yield* Deferred.make<void>();
       const releaseResponseAcknowledgement = yield* Deferred.make<void>();
       const responseLifecycle: Array<string> = [];
+      const responseFailed = yield* Deferred.make<void>();
       const instanceId = ProviderInstanceId.make("acp-test-normal-close-held-response");
       const adapter = yield* makeAcpAdapterV2({
         instanceId,
@@ -4189,6 +4192,7 @@ describe("AcpAdapterV2", () => {
           onNativeResponseLifecycle: (event) =>
             Effect.sync(() => {
               responseLifecycle.push(event.type);
+              if (event.type === "failed") Deferred.doneUnsafe(responseFailed, Effect.void);
             }),
         },
       });
@@ -4242,9 +4246,7 @@ describe("AcpAdapterV2", () => {
       yield* Deferred.await(responseWritten);
 
       const closeFiber = yield* Scope.close(sessionScope, Exit.void).pipe(Effect.forkScoped);
-      while (!responseLifecycle.includes("failed")) {
-        yield* Effect.yieldNow;
-      }
+      yield* Deferred.await(responseFailed);
       const responseExit = yield* Fiber.join(responseFiber);
       if (Exit.isSuccess(responseExit)) {
         assert.fail("normal close must fail a response whose transport acknowledgement is held");
@@ -6232,6 +6234,7 @@ describe("AcpAdapterV2", () => {
         type RuntimeService = AcpSessionRuntime.AcpSessionRuntime["Service"];
         let sessionUpdateHandler: Parameters<RuntimeService["handleSessionUpdate"]>[0] | undefined;
         const promptGates: Array<Deferred.Deferred<EffectAcpSchema.PromptResponse, never>> = [];
+        const promptStarted = yield* Queue.unbounded<void>();
         const capturedMutation: {
           current:
             | ((mutation: {
@@ -6302,6 +6305,7 @@ describe("AcpAdapterV2", () => {
                   Effect.gen(function* () {
                     const gate = yield* Deferred.make<EffectAcpSchema.PromptResponse>();
                     promptGates.push(gate);
+                    yield* Queue.offer(promptStarted, undefined);
                     return yield* Deferred.await(gate);
                   }),
               }),
@@ -6352,9 +6356,7 @@ describe("AcpAdapterV2", () => {
             makeTurnInput({ threadId, providerThread, instanceId, runtimePolicy, now, ordinal: 1 }),
           )
           .pipe(Effect.forkScoped);
-        while (promptGates.length < 1) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(promptStarted);
         assert.isDefined(sessionUpdateHandler, "session update handler must be wired");
         const applyMutation = capturedMutation.current;
         if (applyMutation === null) {
@@ -6487,9 +6489,7 @@ describe("AcpAdapterV2", () => {
             }),
           )
           .pipe(Effect.forkScoped);
-        while (promptGates.length < 2) {
-          yield* Effect.yieldNow;
-        }
+        yield* Queue.take(promptStarted);
         if (sessionUpdateHandler === undefined || capturedMutation.current === null) {
           return yield* Effect.die("extensions and session handler must be wired for turn 2");
         }

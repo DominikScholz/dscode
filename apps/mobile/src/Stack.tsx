@@ -65,7 +65,10 @@ import { ThreadPullRequestsSheet } from "./features/threads/ThreadPullRequestsSh
 import { ThreadAgentsSheet } from "./features/threads/ThreadAgentsSheet";
 import { ThreadBackgroundWorkSheet } from "./features/threads/ThreadBackgroundWorkSheet";
 import { ThreadQueueSheet } from "./features/threads/ThreadQueueControl";
-import { ThreadRouteScreen } from "./features/threads/ThreadRouteScreen";
+import {
+  FullscreenThreadRouteScreen,
+  ThreadRouteScreen,
+} from "./features/threads/ThreadRouteScreen";
 import { McpAppFullscreenScreen } from "./features/threads/McpAppFullscreenScreen";
 import { ConnectionsRouteScreen } from "./features/connection/ConnectionsRouteScreen";
 import { ConnectionsNewRouteScreen } from "./features/connection/ConnectionsNewRouteScreen";
@@ -80,7 +83,6 @@ import {
   NewTaskEnvironmentPickerRouteScreen,
 } from "./features/threads/NewTaskContextPickerScreens";
 import {
-  ExistingThreadSettingsRouteProvider,
   ExistingThreadSettingsRouteScreen,
   NewTaskThreadSettingsRouteScreen,
 } from "./features/threads/ThreadSettingsSheet";
@@ -548,20 +550,18 @@ function RootStackLayout(props: {
         <ThreadOutboxDrainWorker />
         <ShowcaseCaptureCoordinator pathname={pathname} />
         <SettingsEnvironmentFilterProvider open={settingsOpen}>
-          <ExistingThreadSettingsRouteProvider>
-            <WorkspaceConnectionStatusProvider>
-              <AndroidWorkspaceTabsProvider state={props.state}>
-                <AdaptiveWorkspaceLayout
-                  pathname={workspaceLocation.pathname}
-                  workspaceRouteKey={workspaceLocation.routeKey}
-                  selectedPullRequestKey={selectedPullRequestKey(props.state)}
-                >
-                  {props.children}
-                  <HardwareKeyboardCommandOverlay />
-                </AdaptiveWorkspaceLayout>
-              </AndroidWorkspaceTabsProvider>
-            </WorkspaceConnectionStatusProvider>
-          </ExistingThreadSettingsRouteProvider>
+          <WorkspaceConnectionStatusProvider>
+            <AndroidWorkspaceTabsProvider state={props.state}>
+              <AdaptiveWorkspaceLayout
+                pathname={workspaceLocation.pathname}
+                workspaceRouteKey={workspaceLocation.routeKey}
+                selectedPullRequestKey={selectedPullRequestKey(props.state)}
+              >
+                {props.children}
+                <HardwareKeyboardCommandOverlay />
+              </AdaptiveWorkspaceLayout>
+            </AndroidWorkspaceTabsProvider>
+          </WorkspaceConnectionStatusProvider>
         </SettingsEnvironmentFilterProvider>
       </HardwareKeyboardCommandProvider>
     </NewTaskFlowProvider>
@@ -819,6 +819,13 @@ const RootStackConfig = createWorkspaceStackNavigator({
       linking: `${THREAD_LINKING_PREFIX}/terminal`,
       options: SOLID_HEADER_OPTIONS,
     }),
+    ThreadInspectorFullscreen: createNativeStackScreen({
+      screen: FullscreenThreadRouteScreen,
+      options: {
+        ...THREAD_HEADER_OPTIONS,
+        presentation: "fullScreenModal",
+      },
+    }),
     ThreadDevicePreview: createNativeStackScreen({
       screen: DevicePreviewRouteScreen,
       linking: `${THREAD_LINKING_PREFIX}/devices`,
@@ -1073,6 +1080,7 @@ export const RootStack = RootStackConfig.with(function AdaptiveRootStack({ Navig
   const nativeMetrics = useNativeLayoutMetrics();
   const usesSplitView = deriveLayout({ width, height, nativeMetrics }).usesSplitView;
 
+  /* oxlint-disable react/no-unstable-nested-components -- React Navigation invokes screenLayout as a render callback. */
   return (
     <Navigator
       screenLayout={(props) => <GuardedScreenLayout {...props} />}
@@ -1083,6 +1091,8 @@ export const RootStack = RootStackConfig.with(function AdaptiveRootStack({ Navig
       }
     />
   );
+
+  /* oxlint-enable react/no-unstable-nested-components */
 });
 
 type RootStackType = typeof RootStack;

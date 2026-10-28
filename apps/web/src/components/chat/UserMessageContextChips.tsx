@@ -1,10 +1,12 @@
+import { documentIconColorForFileName } from "~/pierre-icons";
+import { isSvgAttachment } from "@t3tools/shared/image";
 import { useRenderedAppearance } from "../../hooks/useTheme";
 import { PullRequestGlyph } from "../pullRequest/pullRequestIcons";
 import { ReadOnlySourcePreview } from "../files/AttachmentFilePreview";
 import { useRightPanelStore } from "~/rightPanelStore";
 import { COMPOSER_CONTEXT_KINDS } from "@t3tools/contracts";
 import { formatAttachmentSize } from "@t3tools/client-runtime/state/attachments";
-import { use, type ReactNode } from "react";
+import { use, type CSSProperties, type ReactNode } from "react";
 import { FileDiff } from "@pierre/diffs/react";
 import { DiffWorkerPoolProvider } from "../DiffWorkerPoolProvider";
 import {
@@ -60,12 +62,14 @@ function UserMessageMentionChip(props: {
   copyMarkdown: string;
 }) {
   const ctx = use(TimelineRowCtx);
+  const accent = documentIconColorForFileName(props.record.path);
   return (
     <Tooltip>
       <TooltipTrigger
         render={
           <ContextChip
             kind="mention"
+            style={accent ? ({ "--context-chip-accent": accent } as CSSProperties) : undefined}
             render={<button type="button" />}
             aria-label={`Preview ${props.record.path}`}
             data-markdown-copy={props.copyMarkdown}
@@ -143,7 +147,7 @@ function UserMessagePreviewAnnotationDetails(props: {
   const ctx = use(TimelineRowCtx);
   const visibleElements = props.record.elements ?? [];
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 ">
       {props.image?.previewUrl ? (
         <button
           type="button"
@@ -236,7 +240,7 @@ function UserMessageElementDetails({
     ? `${record.source.fileName}${record.source.lineNumber === null ? "" : `:${record.source.lineNumber}`}`
     : null;
   return (
-    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 squircle">
+    <div className="max-w-full overflow-hidden rounded-2xl border border-border/70 bg-background/70 ">
       <div className="border-b border-border/70 px-3 py-2.5">
         <div className="truncate text-message-foreground text-xs font-medium">
           {record.pageTitle?.trim() || record.pageUrl}
@@ -268,6 +272,7 @@ function UserMessageElementDetails({
 }
 
 interface UserMessageContextRenderContext {
+  environmentId: import("@t3tools/contracts").EnvironmentId;
   reference: ChatMarkdownContextReference;
   annotationImage: ChatImageAttachment | null;
   attachment: ChatImageAttachment | ChatFileAttachment | null;
@@ -378,6 +383,11 @@ const userMessageContextPresentationRegistry = createContextPresentationRegistry
         return (
           <FileChip
             name={record.name}
+            svgPreview={
+              isSvgAttachment(attachment)
+                ? { environmentId: context.environmentId, attachmentId: attachment.id }
+                : undefined
+            }
             size={size}
             isVideo={isVideo}
             theme={context.resolvedTheme}
@@ -509,13 +519,14 @@ export function UserMessageContextReferenceChip(props: {
   onExpandVideo: (file: ChatFileAttachment) => void;
   onOpenFile: (file: ChatFileAttachment) => void;
 }) {
-  const { resolvedTheme } = use(TimelineRowCtx);
+  const { resolvedTheme, activeThreadEnvironmentId } = use(TimelineRowCtx);
   const copyMarkdown = formatComposerContextReference({
     kind: props.reference.kind,
     contextId: props.reference.contextId as ComposerContextId,
     label: props.reference.label,
   });
   return userMessageContextPresentationRegistry.render(props.reference.kind, props.record, {
+    environmentId: activeThreadEnvironmentId,
     reference: props.reference,
     annotationImage: props.annotationImage,
     attachment: props.attachment,
@@ -537,7 +548,7 @@ function UserMessageReviewCommentCard({ comment }: { comment: ReviewCommentConte
   );
 
   return (
-    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4 squircle">
+    <div className="space-y-2 rounded-2xl border border-border/70 bg-background/70 p-4 ">
       <div className="space-y-1">
         <div className="text-xs font-medium text-foreground">
           {formatWorkspaceRelativePath(comment.filePath, ctx.workspaceRoot)}

@@ -88,7 +88,7 @@ export interface UsageView {
 
 export function mergeAnsweredUsage(
   environments: readonly EnvironmentUsageStatus[],
-  keepBucket?: (bucket: UsageBucket) => boolean,
+  keep?: (entry: Pick<UsageBucket, "provider" | "model">) => boolean,
 ): MergedUsage {
   const answered: EnvironmentUsage[] = environments.flatMap(({ environmentId, label, summary }) =>
     summary === null
@@ -97,14 +97,24 @@ export function mergeAnsweredUsage(
           {
             environmentId,
             label,
-            summary:
-              keepBucket === undefined
-                ? summary
-                : { ...summary, buckets: summary.buckets.filter(keepBucket) },
+            summary: keep === undefined ? summary : filterSummary(summary, keep),
           },
         ],
   );
   return mergeUsage(answered, USAGE_CONTRACT_VERSION);
+}
+
+function filterSummary(
+  summary: UsageSummary,
+  keep: (entry: Pick<UsageBucket, "provider" | "model">) => boolean,
+): UsageSummary {
+  return {
+    ...summary,
+    buckets: summary.buckets.filter(keep),
+    ...(summary.series === undefined
+      ? {}
+      : { series: { ...summary.series, rows: summary.series.rows.filter(keep) } }),
+  };
 }
 
 const NO_HIDDEN_PROVIDERS: ReadonlySet<UsageProviderKind> = new Set();
@@ -120,10 +130,7 @@ function withoutProviders(
       : {
           ...environment,
           summary: {
-            ...environment.summary,
-            buckets: environment.summary.buckets.filter(
-              (bucket) => !hiddenProviders.has(bucket.provider),
-            ),
+            ...filterSummary(environment.summary, (entry) => !hiddenProviders.has(entry.provider)),
             sources: environment.summary.sources.filter(
               (source) => !hiddenProviders.has(source.fingerprint.provider),
             ),
@@ -162,6 +169,7 @@ export function useUsage(
     resolution: input.resolution,
     sinceTime: input.sinceTime,
     untilTime: input.untilTime,
+    seriesStepHours: input.seriesStepHours,
   });
   const atom = usageByWindowAtom(windowKey);
   const environments = useAtomValue(atom);

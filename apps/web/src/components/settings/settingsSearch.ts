@@ -9,6 +9,9 @@ import {
   type SourceControlDefinition,
 } from "@t3tools/client-runtime/source-control-clients";
 import { DEFAULT_KEYBINDINGS } from "@t3tools/shared/keybindings";
+import * as Schema from "effect/Schema";
+import { TYPOGRAPHY_ADVANCED_STORAGE_KEY } from "../../appearanceFonts";
+import { writeLocalStorageValue } from "../../hooks/useLocalStorage";
 import { commandLabel } from "./KeybindingsSettings.logic";
 import {
   validateSettingsScopeSearch,
@@ -84,8 +87,8 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/snap-shot": "SnapShots",
   "/settings/providers": "Providers",
   "/settings/integrations": "Integrations",
-  "/settings/scheduled-tasks": "Scheduled Tasks",
-  "/settings/source-control": "Source Control",
+  "/settings/scheduled-tasks": "Scheduled tasks",
+  "/settings/source-control": "Source control",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
   "/settings/beta": "Beta",
@@ -337,15 +340,21 @@ export const SETTINGS_SEARCH_ITEMS = [
   },
   {
     id: "snooze-limited-threads",
-    title: "Snooze limited threads",
+    title: "Snooze until limits reset",
     to: "/settings/general",
     searchTerms: ["usage quota rate limit reset wake recover continue"],
   },
   {
     id: "auto-resume-limited-threads",
-    title: "Auto-resume limited threads",
+    title: "Resume after usage limits",
     to: "/settings/general",
     searchTerms: ["usage quota rate limit reset recover continue"],
+  },
+  {
+    id: "new-design",
+    title: "New design",
+    to: "/settings/beta",
+    searchTerms: ["beta redesign look style sidebar composer black quieter classic"],
   },
   {
     id: "working-shelf",
@@ -1232,4 +1241,29 @@ export function searchSettings(
         left.index - right.index,
     )
     .map(({ item }) => item);
+}
+
+// Font smoothing only renders on macOS, so a search jump to it elsewhere
+// must not flip the section - the target would never mount to be scrolled to.
+const ADVANCED_TYPOGRAPHY_TARGET_IDS: ReadonlySet<string> = new Set([
+  "prompt-font",
+  "terminal-font",
+  ...(typeof navigator !== "undefined" && isMacPlatform(navigator.platform)
+    ? ["font-smoothing"]
+    : []),
+]);
+
+export function isAdvancedTypographyTarget(targetId: string): boolean {
+  return ADVANCED_TYPOGRAPHY_TARGET_IDS.has(targetId);
+}
+
+/**
+ * Opens the persisted section a search result lives in before jumping to it, so
+ * its row is mounted to scroll to. The terminal reads the same flag, so it must
+ * stay on after the jump.
+ */
+export function revealSettingsSearchTarget(targetId: string): void {
+  if (isAdvancedTypographyTarget(targetId)) {
+    writeLocalStorageValue(TYPOGRAPHY_ADVANCED_STORAGE_KEY, true, false, Schema.Boolean);
+  }
 }

@@ -894,8 +894,12 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
   return ProviderAdapter.ProviderAdapterV2.of({
     instanceId: adapterOptions.instanceId,
     driver: CursorAgentSdk.CURSOR_PROVIDER,
-    getCapabilities: () => Effect.succeed(CursorProviderCapabilitiesV2),
-    planSelectionTransition: () => Effect.succeed(turnScopedSelectionTransition()),
+    getCapabilities: Effect.fn("CursorAdapter.getCapabilities")(function () {
+      return Effect.succeed(CursorProviderCapabilitiesV2);
+    }),
+    planSelectionTransition: Effect.fn("CursorAdapter.planSelectionTransition")(function () {
+      return Effect.succeed(turnScopedSelectionTransition());
+    }),
     openSession: Effect.fn("CursorAdapterV2.openSession")(
       function* (input: ProviderAdapter.ProviderAdapterV2OpenSessionInput) {
         const sessionScope = yield* Effect.scope;
@@ -2206,13 +2210,14 @@ export const makeCursorAdapterV2 = Effect.fn("makeCursorAdapterV2")(function* (
             );
           }
           const userText = t3OrchestrationPromptForFirstRun({
-            prompt: providerMessageTextWithAttachmentPaths({
+            prompt: yield* providerMessageTextWithAttachmentPaths({
               text:
                 cursorSkillNames === undefined
                   ? rawText
                   : rewriteCursorSkillMentions(rawText, cursorSkillNames),
               attachments: turnInput.message.attachments,
               resolveAttachmentPath: host.resolveAttachmentPath,
+              resolveExtractedTextPath: host.resolveExtractedTextPath,
             }),
             runOrdinal: turnInput.runOrdinal,
             hasT3Mcp: mcpServers !== undefined,

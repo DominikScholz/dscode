@@ -52,7 +52,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon data-slot="select-icon">
-        {icon ?? <ChevronDownIcon className="-me-1 size-3 opacity-50" />}
+        {icon ?? <ChevronDownIcon className="-me-1 size-3.5 opacity-70" />}
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   );
@@ -77,7 +77,7 @@ function SelectButton({
       children: (
         <>
           <span className="min-w-0 flex-1 truncate text-left">{children}</span>
-          <ChevronDownIcon aria-hidden className="-me-1 size-3 shrink-0 opacity-50" />
+          <ChevronDownIcon aria-hidden className="-me-1 size-3.5 shrink-0 opacity-70" />
         </>
       ),
     },
@@ -146,7 +146,7 @@ function SelectPopup({
           >
             <SelectPrimitive.List
               className={cn(
-                "max-h-(--available-height) overflow-y-auto rounded-[inherit] p-1 squircle",
+                "max-h-(--available-height) overflow-y-auto rounded-[inherit] p-1",
                 className,
               )}
               data-slot="select-list"
@@ -177,7 +177,7 @@ function SelectItem({
   return (
     <SelectPrimitive.Item
       className={cn(
-        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-xl px-2 py-1 squircle text-base outline-none data-selected:not-data-highlighted:bg-(--popup-row-selected) data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-(--popup-row-highlight) data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-xl px-2 py-1 text-base outline-none data-selected:not-data-highlighted:bg-(--popup-row-selected) data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-highlighted:bg-(--popup-row-highlight) data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="select-item"

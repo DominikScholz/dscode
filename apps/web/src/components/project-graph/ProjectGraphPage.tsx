@@ -188,7 +188,7 @@ export function ProjectGraphPage({
     </div>
   );
   return (
-    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col bg-background surface-grain">
       <ProjectGraph
         key={`${member.environmentId}:${member.id}`}
         member={member}
@@ -471,6 +471,7 @@ function GraphLog({
   const unsettledCount = threads.filter(
     (thread) => thread.archivedAt === null && thread.settledAt === null,
   ).length;
+  // oxlint-disable-next-line t3code/react-effect-budget -- Observe the graph viewport size to bound its virtualized rows.
   useEffect(() => {
     if (!scroller.current) return;
     return observeResize(scroller.current, (entries) => {
@@ -1033,6 +1034,7 @@ const GraphRow = memo(function GraphRow({
   );
   const email = node.author?.email.trim().toLowerCase() ?? "";
   const [resolved, setResolved] = useState<{ email: string; url: string | null } | null>(null);
+  // oxlint-disable-next-line t3code/react-effect-budget -- Resolve missing author avatars and discard responses after the row changes.
   useEffect(() => {
     if (directAvatar || !email) return;
     let active = true;

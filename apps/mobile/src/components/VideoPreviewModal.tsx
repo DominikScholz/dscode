@@ -64,6 +64,7 @@ function useLocalPlayback(source: LocalVideoPreviewSource): PlaybackState {
   );
   const { id: attachmentId, fileUri } = attachment;
   useEffect(() => {
+    // oxlint-disable-next-line react/set-state-in-effect -- A new attachment clears the previous attachment's result before loading.
     setUri(null);
     setError(null);
     const controller = new AbortController();
@@ -87,6 +88,7 @@ function useLocalPlayback(source: LocalVideoPreviewSource): PlaybackState {
         () => undefined,
       );
     };
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies -- A different attachment restarts the load even when it resolves to the same cached file URI.
   }, [attachmentId, fileUri]);
   const mimeType = videoMimeType(attachment) ?? attachment.mimeType;
   return {
@@ -208,9 +210,10 @@ export function VideoPreviewModal(props: {
 }) {
   const isFocused = useIsFocused();
   const hasSource = props.source !== null;
+  const { onRequestClose } = props;
   useEffect(() => {
-    if (!isFocused && hasSource) props.onRequestClose();
-  }, [isFocused, hasSource, props.onRequestClose]);
+    if (!isFocused && hasSource) onRequestClose();
+  }, [isFocused, hasSource, onRequestClose]);
   const { source } = props;
   if (source === null || !isFocused) return null;
   return source.type === "local" ? (

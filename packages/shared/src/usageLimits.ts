@@ -554,6 +554,48 @@ export function paceOf(window: ServerProviderUsageWindow, now: number): LimitPac
   return elapsed === null ? null : paceOfShares(window.usedPercent, elapsed);
 }
 
+export interface LimitProjection {
+  /** Share of the window elapsed, from 0 to 1. */
+  readonly elapsed: number;
+  /** Where the average pace so far lands at the reset; can pass 100. */
+  readonly projectedPercent: number;
+  /** When that pace reaches 100%, even past the reset; null when nothing is used yet. */
+  readonly exhaustsAt: number | null;
+  /** exhaustsAt when it lands before the reset. */
+  readonly runsOutAt: number | null;
+  /** The pace, in percent per hour, that ends exactly at 100% at the reset. */
+  readonly evenPercentPerHour: number;
+  /** When enough of the window has passed for its pace to mean anything. */
+  readonly forecastFrom: number;
+}
+
+/** Share of a window to wait before forecasting from its pace. */
+const FORECAST_AFTER = 0.1;
+
+export function limitProjection(
+  window: ServerProviderUsageWindow,
+  now: number,
+): LimitProjection | null {
+  const resetsAt = resetMillis(window);
+  const elapsed = elapsedShare(window, now);
+  if (resetsAt === null || elapsed === null || elapsed <= 0 || !window.windowDurationMins) {
+    return null;
+  }
+  const used = Math.max(0, Math.min(100, window.usedPercent));
+  const elapsedMs = elapsed * window.windowDurationMins * MINUTE;
+  const projectedPercent = used / elapsed;
+  const remainingHours = Math.max(0, resetsAt - now) / HOUR;
+  const exhaustsAt = used >= 100 ? now : used > 0 ? now + ((100 - used) / used) * elapsedMs : null;
+  return {
+    elapsed,
+    projectedPercent,
+    exhaustsAt,
+    runsOutAt: exhaustsAt !== null && exhaustsAt < resetsAt ? exhaustsAt : null,
+    evenPercentPerHour: remainingHours > 0 ? (100 - used) / remainingHours : 0,
+    forecastFrom: resetsAt - (1 - FORECAST_AFTER) * window.windowDurationMins * MINUTE,
+  };
+}
+
 function paceOfShares(usedPercent: number, elapsed: number): LimitPace {
   const gap = usedPercent - elapsed * 100;
   if (gap > 5) return "ahead";

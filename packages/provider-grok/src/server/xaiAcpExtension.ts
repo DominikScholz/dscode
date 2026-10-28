@@ -1443,7 +1443,7 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
         pendingRef: pendingXAiPromptCompletionsRef,
         completedPromptIdsRef: completedXAiPromptIdsRef,
         notification,
-      }).pipe(Effect.catch(() => Effect.void));
+      }).pipe(Effect.ignore);
 
     yield* Effect.forEach(
       ["x.ai/session/prompt_complete", "_x.ai/session/prompt_complete"] as const,
@@ -1524,10 +1524,9 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
           .pipe(Effect.forkChild);
         return yield* Effect.raceFirst(
           Fiber.join(promptRpcFiber).pipe(
-            Effect.catchCause((cause) =>
-              Cause.hasInterruptsOnly(cause)
-                ? Effect.succeed(cancelledResponse)
-                : Effect.failCause(cause),
+            Effect.catchCauseIf(
+              (cause) => Cause.hasInterruptsOnly(cause),
+              (_cause) => Effect.succeed(cancelledResponse),
             ),
           ),
           Deferred.await(fallback.deferred),
@@ -1554,8 +1553,3 @@ export const makeXAiPromptCompletionRuntime = Effect.fn("makeXAiPromptCompletion
     } satisfies AcpSessionRuntime.AcpSessionRuntime["Service"];
   },
 );
-
-function promptResponseHasMissingXAiStopReason(response: EffectAcpSchema.PromptResponse): boolean {
-  const meta = response._meta;
-  return meta !== null && typeof meta === "object" && meta[xAiStopReasonMissingMetaKey] === true;
-}

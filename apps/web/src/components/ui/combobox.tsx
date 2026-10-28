@@ -169,7 +169,7 @@ function ComboboxPopup({
           )}
         >
           <ComboboxPrimitive.Popup
-            className="flex min-w-0 max-h-[min(var(--available-height),23rem)] flex-1 flex-col overflow-hidden rounded-[inherit] text-foreground squircle"
+            className="flex min-w-0 max-h-[min(var(--available-height),23rem)] flex-1 flex-col overflow-hidden rounded-[inherit] text-foreground"
             data-slot="combobox-popup"
             {...props}
           >
@@ -192,7 +192,7 @@ function ComboboxItem({
   return (
     <ComboboxPrimitive.Item
       className={cn(
-        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-xl px-2 py-1 squircle text-base outline-none data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:not-data-highlighted:bg-(--popup-row-selected) data-selected:text-foreground data-highlighted:bg-(--popup-row-highlight) data-highlighted:text-accent-foreground data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        "flex min-h-8 in-data-[side=none]:min-w-[calc(var(--anchor-width)+1.25rem)] cursor-pointer items-center rounded-sm px-2 py-1 text-base outline-none not-data-disabled:hover:bg-accent data-disabled:pointer-events-none data-disabled:cursor-not-allowed data-selected:bg-foreground/[0.08] data-selected:text-foreground data-highlighted:bg-accent data-highlighted:text-accent-foreground [&[data-highlighted][data-selected]]:bg-accent [&[data-highlighted][data-selected]]:text-accent-foreground redesign:data-selected:bg-foreground/[0.06] redesign:data-highlighted:bg-foreground/[0.09] redesign:[&[data-highlighted][data-selected]]:bg-foreground/[0.09] redesign:not-data-disabled:hover:bg-foreground/[0.09] data-disabled:opacity-64 sm:min-h-7 sm:text-sm [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0",
         className,
       )}
       data-slot="combobox-item"

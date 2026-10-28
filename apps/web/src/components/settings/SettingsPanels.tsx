@@ -3,7 +3,7 @@ import { NotificationSettings } from "./NotificationSettings";
 import { PRIVACY_POLICY_URL, T3_CODE_REPOSITORY_URL } from "../../legalLinks";
 import { CheckIcon, ChevronRightIcon } from "lucide-react";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
   type DesktopUpdateChannel,
   IDLE_COMPACTION_MODES,
@@ -409,6 +409,9 @@ export function useSettingsRestore(onRestored?: () => void) {
     ...(settings.mathRenderingEnabled !== DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled
       ? ["Render math"]
       : []),
+    ...(settings.redesignEnabled !== DEFAULT_UNIFIED_SETTINGS.redesignEnabled
+      ? ["New design"]
+      : []),
     ...(settings.panelAnimationDurationMs !== DEFAULT_UNIFIED_SETTINGS.panelAnimationDurationMs
       ? ["Panel animations"]
       : []),
@@ -448,10 +451,10 @@ export function useSettingsRestore(onRestored?: () => void) {
       ? ["Auto-settle merged threads"]
       : []),
     ...(settings.autoResumeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.autoResumeLimitedThreads
-      ? ["Auto-resume limited threads"]
+      ? ["Resume after usage limits"]
       : []),
     ...(settings.snoozeLimitedThreads !== DEFAULT_UNIFIED_SETTINGS.snoozeLimitedThreads
-      ? ["Snooze limited threads"]
+      ? ["Snooze until limits reset"]
       : []),
     ...(settings.wordWrap !== DEFAULT_UNIFIED_SETTINGS.wordWrap ? ["Word wrap"] : []),
     ...(settings.persistComposerContextStrip !==
@@ -582,6 +585,7 @@ export function useSettingsRestore(onRestored?: () => void) {
       diffColorScheme: DEFAULT_UNIFIED_SETTINGS.diffColorScheme,
       chatWidth: DEFAULT_UNIFIED_SETTINGS.chatWidth,
       mathRenderingEnabled: DEFAULT_UNIFIED_SETTINGS.mathRenderingEnabled,
+      redesignEnabled: DEFAULT_UNIFIED_SETTINGS.redesignEnabled,
       timestampFormat: DEFAULT_UNIFIED_SETTINGS.timestampFormat,
       notificationMode: DEFAULT_UNIFIED_SETTINGS.notificationMode,
       inAppNotificationsEnabled: DEFAULT_UNIFIED_SETTINGS.inAppNotificationsEnabled,
@@ -708,17 +712,12 @@ function LegacyFeaturesSection() {
   const [open, setOpen] = useState(false);
   const searchTargetId = useSettingsSearchTargetId();
   const targetRef = useSettingsSearchTarget<HTMLElement>("legacy-features");
-  const lastExpandedTargetRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (searchTargetId === null) {
-      lastExpandedTargetRef.current = null;
-      return;
-    }
-    if (!LEGACY_FEATURE_TARGET_IDS.has(searchTargetId)) return;
-    if (lastExpandedTargetRef.current === searchTargetId) return;
-    lastExpandedTargetRef.current = searchTargetId;
-    setOpen(true);
-  }, [searchTargetId]);
+  // A search jump to a legacy setting opens the fold before its row mounts.
+  const [seenSearchTargetId, setSeenSearchTargetId] = useState<string | null>(null);
+  if (seenSearchTargetId !== searchTargetId) {
+    setSeenSearchTargetId(searchTargetId);
+    if (searchTargetId !== null && LEGACY_FEATURE_TARGET_IDS.has(searchTargetId)) setOpen(true);
+  }
 
   return (
     <section id="legacy-features" ref={targetRef} tabIndex={-1} className="space-y-2.5">
@@ -949,14 +948,14 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ autoResumeLimitedThreads: Boolean(checked) })
               }
-              aria-label="Auto-resume limited threads"
+              aria-label="Resume after usage limits"
             />
           }
         />
         <SettingsRow
           serverScoped
           {...searchableSetting("snooze-limited-threads")}
-          description="Snooze usage-limit stops until the reported reset time. Combine with auto-resume to continue when they wake."
+          description="Snooze usage-limit stops until reset. Pair with resume to continue on wake."
           settingKeys={["snoozeLimitedThreads"]}
           control={
             <ScopedSwitch
@@ -965,7 +964,7 @@ export function GeneralSettingsPanel() {
               onCheckedChange={(checked) =>
                 updateSettings({ snoozeLimitedThreads: Boolean(checked) })
               }
-              aria-label="Snooze limited threads"
+              aria-label="Snooze until limits reset"
             />
           }
         />

@@ -1,5 +1,10 @@
 // @effect-diagnostics globalDate:off -- Usage windows are calendar days in the viewer's zone, derived from wall-clock "now" via Intl.
-import { UsageDay, type UsageResolution, type UsageSummaryInput } from "@t3tools/contracts";
+import {
+  UsageDay,
+  type UsageResolution,
+  type UsageSeriesStepHours,
+  type UsageSummaryInput,
+} from "@t3tools/contracts";
 
 import type { UsageContractMismatch } from "./usageMerge.ts";
 
@@ -161,7 +166,7 @@ export function formatHourShort(hourStart: string, timeZone?: string, hour12 = t
   return formatHour(zonedHourFormat, instant, hour12);
 }
 
-export function formatDateTimeShort(instant: string, timeZone?: string, hour12 = true): string {
+function formatDateTimeShort(instant: string, timeZone?: string, hour12 = true): string {
   const date = new Date(instant);
   if (Number.isNaN(date.getTime())) return instant;
   const dateHourFormat = dateTimeFormatter("en-US", {
@@ -205,6 +210,7 @@ export function makeWindow(
   days: number,
   now = new Date(),
   resolution: UsageResolution = "day",
+  seriesStepHours?: UsageSeriesStepHours,
 ): UsageSummaryInput {
   let timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   let format: Intl.DateTimeFormat;
@@ -249,5 +255,23 @@ export function makeWindow(
     untilDay: UsageDay.make(untilDay),
     timeZone,
     resolution,
+    ...(seriesStepHours === undefined ? {} : { seriesStepHours }),
   };
+}
+
+function formatWallHour(hour: number, hour12: boolean): string {
+  if (!hour12) return `${String(hour).padStart(2, "0")}:00`;
+  return `${hour % 12 === 0 ? 12 : hour % 12} ${hour < 12 ? "AM" : "PM"}`;
+}
+
+/** Series slots are wall-clock hours already, so no zone conversion applies. */
+export function formatSeriesSlot(
+  day: string,
+  hour: number,
+  stepHours: number,
+  hour12 = true,
+): string {
+  const start = formatWallHour(hour, hour12);
+  if (stepHours === 1) return `${formatDayShort(day)}, ${start}`;
+  return `${formatDayShort(day)}, ${start}–${formatWallHour((hour + stepHours) % 24, hour12)}`;
 }

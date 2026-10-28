@@ -29,6 +29,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
   acpRegistryIconUrl?: string | undefined;
   isFavorite: boolean;
   isSelected: boolean;
+  showSelection?: boolean;
   showProvider: boolean;
   preferShortName?: boolean;
   useTriggerLabel?: boolean;
@@ -60,14 +61,14 @@ export const ModelListRow = memo(function ModelListRow(props: {
     >
       <div className="min-w-0 flex-1 text-left">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="min-w-0 truncate">
+          <div className="min-w-0 truncate text-xs font-medium leading-snug redesign:text-sm redesign:font-normal">
             {props.useTriggerLabel
               ? getTriggerDisplayModelLabel(model)
               : getDisplayModelName(
                   model,
                   props.preferShortName ? { preferShortName: true } : undefined,
                 )}
-          </span>
+          </div>
           {props.showNewBadge ? (
             <span
               className="shrink-0 rounded border border-update/35 bg-update/15 px-0.5 py-px text-3xs font-bold uppercase leading-none tracking-wide text-update-foreground"
@@ -83,7 +84,7 @@ export const ModelListRow = memo(function ModelListRow(props: {
           ) : null}
         </div>
         {props.showProvider && (
-          <div className="flex items-center gap-1.5 text-muted-foreground text-xs leading-snug">
+          <div className="mt-1 flex items-center gap-1.5">
             <ProviderInstanceIcon
               driverKind={props.driverKind}
               displayName={props.providerDisplayName}
@@ -92,52 +93,54 @@ export const ModelListRow = memo(function ModelListRow(props: {
               className="size-3"
               iconClassName="size-3"
             />
-            <span className="truncate">{providerLabel}</span>
+            <span className="truncate text-xs font-normal leading-snug text-muted-foreground/70">
+              {providerLabel}
+            </span>
           </div>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-1">
-        {props.isSelected ? <CheckIcon className="size-3.5 text-foreground" aria-hidden /> : null}
+      <div className="flex shrink-0 items-center gap-1.5">
         {props.jumpLabel ? <Kbd>{props.jumpLabel}</Kbd> : null}
-        <span
-          className={cn(
-            "flex",
-            !props.isFavorite &&
-              "opacity-0 transition-opacity group-hover:opacity-100 group-data-highlighted:opacity-100 has-focus-visible:opacity-100 pointer-coarse:opacity-100",
-          )}
-        >
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  size="icon-xs"
-                  variant="ghost-muted"
-                  className="-mr-1 shrink-0"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    props.onToggleFavorite(props.instanceId, props.slug);
-                  }}
-                  onKeyDown={(event) => {
-                    event.stopPropagation();
-                  }}
-                  disabled={Boolean(props.disabledReason)}
-                  aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-                >
-                  <StarIcon
-                    className={cn(
-                      "size-3.5 sm:size-3",
-                      props.isFavorite && "fill-current text-warning",
-                    )}
-                  />
-                </Button>
-              }
-            />
-            <TooltipPopup side="top" align="center">
-              {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-            </TooltipPopup>
-          </Tooltip>
-        </span>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                size="icon-xs"
+                variant="ghost-muted"
+                className="-mr-1 shrink-0"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  props.onToggleFavorite(props.instanceId, props.slug);
+                }}
+                onKeyDown={(event) => {
+                  event.stopPropagation();
+                }}
+                disabled={Boolean(props.disabledReason)}
+                aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <StarIcon
+                  className={cn(
+                    "size-3.5 sm:size-3",
+                    props.isFavorite
+                      ? "fill-current text-warning"
+                      : "redesign:opacity-0 redesign:group-hover:opacity-100 redesign:group-data-highlighted:opacity-100 redesign:in-focus-visible:opacity-100 redesign:pointer-coarse:opacity-100",
+                  )}
+                />
+              </Button>
+            }
+          />
+          <TooltipPopup side="top" align="center">
+            {props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+          </TooltipPopup>
+        </Tooltip>
+        {/* Last, and always reserved, so stars and the check keep fixed columns. */}
+        {props.showSelection ? (
+          <CheckIcon
+            className={cn("size-3.5", !props.isSelected && "invisible")}
+            aria-hidden="true"
+          />
+        ) : null}
       </div>
     </ComboboxItem>
   );

@@ -2,7 +2,9 @@ import {
   EnvironmentId,
   EventId,
   MessageId,
+  NodeId,
   ORCHESTRATION_V2_WS_METHODS,
+  RuntimeRequestId,
   ThreadId,
   TurnItemId,
   type OrchestrationV2ThreadDetailSnapshot,
@@ -43,7 +45,8 @@ import {
   decodeOrDiscardOrchestrationCache,
 } from "../platform/orchestrationCache.ts";
 import * as RpcSession from "../rpc/session.ts";
-import { v2Projection, v2ThreadId } from "./orchestrationV2TestFixtures.ts";
+import { v2Now, v2Projection, v2ThreadId } from "./orchestrationV2TestFixtures.ts";
+import { onThreadRequestsResolved, type ThreadRequestsResolved } from "./threadRequests.ts";
 import { EMPTY_THREAD_HISTORY_META } from "./threadHistoryMerge.ts";
 import * as ThreadHistoryController from "./threadHistoryController.ts";
 import {
@@ -128,7 +131,7 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
   const observed = yield* Queue.unbounded<EnvironmentThreadState>();
   const latest = yield* Ref.make<EnvironmentThreadState>(EMPTY_ENVIRONMENT_THREAD_STATE);
   const retryCount = yield* Ref.make(0);
-  const subscriptionCount = yield* Ref.make(0);
+  const subscriptionCount = yield* SubscriptionRef.make(0);
   const loaderCalls = yield* Ref.make(0);
   const lastSubscribeAfterSequence = yield* Ref.make<number | undefined>(undefined);
   const lastRequestCompletionMarker = yield* Ref.make(false);
@@ -154,13 +157,13 @@ const makeHarness = Effect.fn("TestEnvironmentThreads.makeHarness")(function* (o
       readonly acceptCompactTurnItems?: true;
     }) =>
       Stream.unwrap(
-        Ref.updateAndGet(subscriptionCount, (count) => count + 1).pipe(
-          Effect.andThen(Ref.set(lastSubscribeAfterSequence, input.afterSequence)),
+        Ref.set(lastSubscribeAfterSequence, input.afterSequence).pipe(
           Effect.andThen(
             Ref.set(lastRequestCompletionMarker, input.requestCompletionMarker === true),
           ),
           Effect.andThen(Ref.set(lastAcceptBoundedSnapshot, input.acceptBoundedSnapshot)),
           Effect.andThen(Ref.set(lastAcceptCompactTurnItems, input.acceptCompactTurnItems)),
+          Effect.andThen(SubscriptionRef.update(subscriptionCount, (count) => count + 1)),
           Effect.as(streamFrom(inputs)),
         ),
       ),
@@ -303,6 +306,30 @@ const snapshot = (
 
 const synchronized = (): OrchestrationV2ThreadStreamItem => ({ kind: "synchronized" });
 
+const PENDING_QUESTION = {
+  id: RuntimeRequestId.make("question"),
+  nodeId: NodeId.make("question-node"),
+  providerTurnId: null,
+  nativeRequestRef: null,
+  kind: "user_input" as const,
+  status: "pending" as const,
+  responseCapability: { type: "message" as const },
+  createdAt: v2Now,
+  resolvedAt: null,
+};
+
+const questionResolved = (sequence: number): OrchestrationV2ThreadStreamItem => ({
+  kind: "event",
+  sequence,
+  event: {
+    id: EventId.make("event-request"),
+    type: "runtime-request.updated",
+    threadId: THREAD_ID,
+    occurredAt: v2Now,
+    payload: { ...PENDING_QUESTION, status: "resolved", resolvedAt: v2Now },
+  },
+});
+
 const titleUpdated = (title: string, sequence = 2): OrchestrationV2ThreadStreamItem => {
   const occurredAt = DateTime.makeUnsafe("2026-06-20T01:00:00.000Z");
   return {
@@ -371,7 +398,7 @@ describe("EnvironmentThreads", () => {
       let discarded = false;
       const h = yield* makeHarness({
         loadCached: decodeOrDiscardOrchestrationCache(
-          Schema.decodeUnknownEffect(schema)(stale).pipe(
+          Schema.decodeEffect(schema)(stale).pipe(
             Effect.map((stored) => Option.some(stored.snapshot)),
           ),
           Effect.sync(() => {
@@ -393,26 +420,31 @@ describe("EnvironmentThreads", () => {
     }),
   );
 
-  it.effect("loads the server thread when its local cache read fails", () =>
-    Effect.gen(function* () {
-      const h = yield* makeHarness({
-        loadCached: Effect.fail(
-          new Persistence.ConnectionPersistenceError({
-            operation: "load-thread",
-            message: "The database connection is closing.",
-          }),
-        ),
-        httpSnapshot: {
-          _tag: "present",
-          snapshot: { snapshotSequence: 7, projection: BASE_PROJECTION },
-        },
-      });
+  it.effect.each(["read failure", "cache miss"] as const)(
+    "loads the server thread after a %s",
+    (scenario) =>
+      Effect.gen(function* () {
+        const h = yield* makeHarness({
+          loadCached:
+            scenario === "cache miss"
+              ? Effect.succeedNone
+              : Effect.fail(
+                  new Persistence.ConnectionPersistenceError({
+                    operation: "load-thread",
+                    message: "The database connection is closing.",
+                  }),
+                ),
+          httpSnapshot: {
+            _tag: "present",
+            snapshot: { snapshotSequence: 7, projection: BASE_PROJECTION },
+          },
+        });
 
-      const state = yield* awaitThreadState(h.observed, (value) => value.status === "live");
-      expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
-      expect(yield* Ref.get(h.loaderCalls)).toBe(1);
-      expect(yield* Ref.get(h.subscriptionCount)).toBe(1);
-    }),
+        const state = yield* awaitThreadState(h.observed, (value) => value.status === "live");
+        expect(Option.getOrThrow(state.data)).toEqual(BASE_PROJECTION);
+        expect(yield* Ref.get(h.loaderCalls)).toBe(1);
+        expect(yield* SubscriptionRef.get(h.subscriptionCount)).toBe(1);
+      }),
   );
 
   it.effect("flushes newer data after an older background write completes", () =>
@@ -515,6 +547,11 @@ describe("EnvironmentThreads", () => {
 
   it.effect("prevents an old scope from replacing its successor's cached data", () =>
     Effect.gen(function* () {
+      const announced: ThreadRequestsResolved[] = [];
+      yield* Effect.acquireRelease(
+        Effect.sync(() => onThreadRequestsResolved((event) => announced.push(event))),
+        (unsubscribe) => Effect.sync(unsubscribe),
+      );
       const resumeCache: NonNullable<Parameters<typeof makeEnvironmentThreadState>[1]> = {
         snapshot: undefined,
         owner: undefined,
@@ -522,24 +559,28 @@ describe("EnvironmentThreads", () => {
       const oldScope = yield* Effect.acquireRelease(Scope.make(), (scope) =>
         Scope.close(scope, Exit.void),
       );
-      const old = yield* makeHarness({ cached: BASE_PROJECTION, resumeCache }).pipe(
-        Effect.provideService(Scope.Scope, oldScope),
-      );
+      const old = yield* makeHarness({
+        cached: { ...BASE_PROJECTION, runtimeRequests: [PENDING_QUESTION] },
+        resumeCache,
+      }).pipe(Effect.provideService(Scope.Scope, oldScope));
       yield* awaitThreadState(old.observed, (value) => value.status === "live");
       const successor = yield* makeHarness({ resumeCache });
-      yield* Queue.offer(successor.inputs, titleUpdated("Successor title", 9));
+      yield* Queue.offer(successor.inputs, titleUpdated("Successor title", 10));
       yield* awaitThreadState(
         successor.observed,
         (value) => Option.getOrNull(value.data)?.thread.title === "Successor title",
       );
-      yield* Queue.offer(old.inputs, titleUpdated("Old scope title", 8));
+      announced.length = 0;
+      yield* Queue.offerAll(old.inputs, [questionResolved(8), titleUpdated("Old scope title", 9)]);
       yield* awaitThreadState(
         old.observed,
         (value) => Option.getOrNull(value.data)?.thread.title === "Old scope title",
       );
       yield* Scope.close(oldScope, Exit.void);
 
-      expect(resumeCache.snapshot?.sequence).toBe(9);
+      // Draft pruners would delete the answer the successor still waits on.
+      expect(announced).toEqual([]);
+      expect(resumeCache.snapshot?.sequence).toBe(10);
       expect(Option.getOrThrow(resumeCache.snapshot!.state.data).thread.title).toBe(
         "Successor title",
       );
@@ -1515,9 +1556,7 @@ describe("EnvironmentThreads", () => {
         });
 
         const warm = yield* makeHarness(
-          cacheKind === "retained"
-            ? { resumeCache }
-            : { loadCached: Effect.succeed(Option.some(saved!)) },
+          cacheKind === "retained" ? { resumeCache } : { loadCached: Effect.succeedSome(saved!) },
         );
         yield* Queue.offer(warm.inputs, titleUpdated("Grown while closed", 200));
         yield* awaitThreadState(
@@ -1689,7 +1728,7 @@ describe("EnvironmentThreads", () => {
 
       expect(Option.getOrThrow(state.data).thread.title).toBe("Socket title");
       expect(yield* Ref.get(harness.loaderCalls)).toBeGreaterThanOrEqual(1);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(1);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(1);
       expect(yield* Ref.get(harness.removedThreads)).toEqual([]);
     }),
   );
@@ -1739,12 +1778,10 @@ describe("EnvironmentThreads", () => {
       expect(yield* Ref.get(harness.retryCount)).toBe(0);
 
       yield* harness.replaceSession;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) {
-          break;
-        }
-        yield* Effect.yieldNow;
-      }
+      yield* SubscriptionRef.changes(harness.subscriptionCount).pipe(
+        Stream.filter((count) => count >= 2),
+        Stream.runHead,
+      );
       yield* Queue.offer(
         harness.inputs,
         snapshot({
@@ -1761,7 +1798,7 @@ describe("EnvironmentThreads", () => {
       );
 
       expect(Option.isNone(recovered.error)).toBe(true);
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
     }),
   );
 
@@ -1793,6 +1830,37 @@ describe("EnvironmentThreads", () => {
         (value) => value.status === "live" && Option.isSome(value.data),
       );
       expect(Option.getOrThrow(live.data).thread.title).toBe("Caught-up title");
+    }),
+  );
+
+  it.effect("announces request resolution only from a synchronized projection", () =>
+    Effect.gen(function* () {
+      const announced = yield* Queue.unbounded<ThreadRequestsResolved>();
+      yield* Effect.acquireRelease(
+        Effect.sync(() => onThreadRequestsResolved((event) => Queue.offerUnsafe(announced, event))),
+        (unsubscribe) => Effect.sync(unsubscribe),
+      );
+      const harness = yield* makeHarness({
+        cached: { ...BASE_PROJECTION, runtimeRequests: [PENDING_QUESTION] },
+        completionMarker: true,
+      });
+      yield* awaitThreadState(
+        harness.observed,
+        (value) => value.status === "synchronizing" && Option.isSome(value.data),
+      );
+
+      // Answered on another device while this client was away.
+      yield* Queue.offerAll(harness.inputs, [
+        questionResolved(CACHED_SNAPSHOT_SEQUENCE + 1),
+        synchronized(),
+      ]);
+
+      expect(yield* Queue.take(announced)).toEqual({
+        environmentId: TARGET.environmentId,
+        threadId: THREAD_ID,
+        pendingRequestIds: [],
+      });
+      expect(yield* Queue.size(announced)).toBe(0);
     }),
   );
 
@@ -1848,11 +1916,11 @@ describe("EnvironmentThreads", () => {
       ]);
 
       yield* harness.replaceSession;
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        if ((yield* Ref.get(harness.subscriptionCount)) >= 2) break;
-        yield* Effect.yieldNow;
-      }
-      expect(yield* Ref.get(harness.subscriptionCount)).toBe(2);
+      yield* SubscriptionRef.changes(harness.subscriptionCount).pipe(
+        Stream.filter((count) => count >= 2),
+        Stream.runHead,
+      );
+      expect(yield* SubscriptionRef.get(harness.subscriptionCount)).toBe(2);
       expect(yield* Ref.get(harness.lastSubscribeAfterSequence)).toBe(CACHED_SNAPSHOT_SEQUENCE + 4);
     }),
   );

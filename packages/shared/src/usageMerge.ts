@@ -3,11 +3,15 @@ import {
   type EnvironmentId,
   type UsageBucket,
   type UsageProviderKind,
+  type UsageSeries,
+  type UsageSeriesRow,
   type UsageSource,
   type UsageSourceFingerprint,
   type UsageSummary,
   type UsageTokenTotals,
 } from "@t3tools/contracts";
+
+import { enumerateDays } from "./usageFormat.ts";
 
 export interface EnvironmentUsage {
   readonly environmentId: EnvironmentId;
@@ -58,6 +62,20 @@ export interface HourlyTotals {
   readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
 }
 
+export interface SeriesSlotTotals {
+  readonly day: string;
+  /** Local start hour; the slot spans SeriesTotals.stepHours. */
+  readonly hour: number;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly byProvider: ReadonlyMap<UsageProviderKind, { costUsd: number; totalTokens: number }>;
+}
+
+export interface SeriesTotals {
+  readonly stepHours: number;
+  readonly slots: readonly SeriesSlotTotals[];
+}
+
 export interface CostQuality {
   readonly providerReportedShare: number;
   readonly modelPricedShare: number;
@@ -100,6 +118,8 @@ export interface MergedUsage {
   readonly models: readonly ModelTotals[];
   readonly daily: readonly DailyTotals[];
   readonly hourly: readonly HourlyTotals[];
+  /** Null when any contributing environment lacks a matching series; charts fall back to daily. */
+  readonly series: SeriesTotals | null;
   readonly costQuality: CostQuality;
   readonly categoryCost: CategoryCost;
   readonly speedCost: SpeedCost;
@@ -150,8 +170,10 @@ function claimSources(environments: readonly EnvironmentUsage[]): {
   const sessionsByFingerprint = new Map<string, number>();
   const duplicates: string[] = [];
 
+  // Two servers on one machine read the same logs; the one with a chart series keeps charts detailed.
   const ordered = [...environments].sort(
     (a, b) =>
+      Number(b.summary.series !== undefined) - Number(a.summary.series !== undefined) ||
       (Date.parse(b.summary.readAt) || 0) - (Date.parse(a.summary.readAt) || 0) ||
       a.environmentId.localeCompare(b.environmentId),
   );
@@ -223,6 +245,7 @@ function ownedContribution(
   sessionsByFingerprint: ReadonlyMap<string, number>,
 ): {
   readonly buckets: readonly UsageBucket[];
+  readonly seriesRows: readonly UsageSeriesRow[];
   readonly sessionsByProvider: ReadonlyMap<UsageProviderKind, number>;
 } {
   const ownedProviders = new Set<UsageProviderKind>();
@@ -243,14 +266,15 @@ function ownedContribution(
       );
     }
   }
+  const owns = (entry: Pick<UsageBucket, "provider" | "sourcePath">) =>
+    entry.sourcePath === undefined
+      ? ownedProviders.has(entry.provider)
+      : ownedSources.has(`${entry.provider}\u0000${entry.sourcePath}`);
   return {
     buckets: environment.summary.buckets.filter(
-      (bucket) =>
-        supplementalBuckets.has(bucket) ||
-        (bucket.sourcePath === undefined
-          ? ownedProviders.has(bucket.provider)
-          : ownedSources.has(`${bucket.provider}\u0000${bucket.sourcePath}`)),
+      (bucket) => supplementalBuckets.has(bucket) || owns(bucket),
     ),
+    seriesRows: environment.summary.series?.rows.filter(owns) ?? [],
     sessionsByProvider,
   };
 }
@@ -263,6 +287,83 @@ function bucketTokens(bucket: UsageBucket): number {
     bucket.totals.cacheCreationTokens +
     bucket.totals.outputTokens
   );
+}
+
+class SeriesAccumulator {
+  #usable = true;
+  #window: {
+    readonly stepHours: number;
+    readonly sinceDay: string;
+    readonly untilDay: string;
+  } | null = null;
+  readonly #byProvider = new Map<UsageProviderKind, { tokens: number[]; cost: number[] }>();
+
+  add(
+    series: UsageSeries | undefined,
+    window: Pick<UsageSummary, "sinceDay" | "untilDay">,
+    rows: readonly UsageSeriesRow[],
+  ): void {
+    if (!this.#usable) return;
+    const current = this.#window;
+    if (
+      series === undefined ||
+      (current !== null &&
+        (current.stepHours !== series.stepHours ||
+          current.sinceDay !== window.sinceDay ||
+          current.untilDay !== window.untilDay))
+    ) {
+      this.#usable = false;
+      return;
+    }
+    this.#window = {
+      stepHours: series.stepHours,
+      sinceDay: window.sinceDay,
+      untilDay: window.untilDay,
+    };
+    for (const row of rows) {
+      const totals = this.#byProvider.get(row.provider) ?? { tokens: [], cost: [] };
+      for (const [index, value] of row.totalTokens.entries()) {
+        totals.tokens[index] = (totals.tokens[index] ?? 0) + value;
+      }
+      for (const [index, value] of row.costUsd.entries()) {
+        totals.cost[index] = (totals.cost[index] ?? 0) + value;
+      }
+      this.#byProvider.set(row.provider, totals);
+    }
+  }
+
+  finish(): SeriesTotals | null {
+    const window = this.#window;
+    if (!this.#usable || window === null) return null;
+    const days = enumerateDays(window.sinceDay, window.untilDay);
+    const length = Math.max(
+      0,
+      ...[...this.#byProvider.values()].map((totals) => totals.tokens.length),
+    );
+    const slots: SeriesSlotTotals[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const startHour = index * window.stepHours;
+      const byProvider = new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>();
+      let costUsd = 0;
+      let totalTokens = 0;
+      for (const [provider, totals] of this.#byProvider) {
+        const slot = { costUsd: totals.cost[index] ?? 0, totalTokens: totals.tokens[index] ?? 0 };
+        byProvider.set(provider, slot);
+        costUsd += slot.costUsd;
+        totalTokens += slot.totalTokens;
+      }
+      const day = days[Math.floor(startHour / 24)];
+      if (day === undefined) break;
+      slots.push({
+        day,
+        hour: startHour % 24,
+        costUsd,
+        totalTokens,
+        byProvider,
+      });
+    }
+    return { stepHours: window.stepHours, slots };
+  }
 }
 
 export function isCompatibleUsageContractVersion(version: number, expected: number): boolean {
@@ -283,6 +384,7 @@ const EMPTY_MERGED: MergedUsage = {
   models: [],
   daily: [],
   hourly: [],
+  series: null,
   costQuality: {
     providerReportedShare: 0,
     modelPricedShare: 0,
@@ -377,15 +479,28 @@ export function mergeUsage(
     }
   >();
   const contributingEnvironments: EnvironmentId[] = [];
+  const seriesAccumulator = new SeriesAccumulator();
 
   for (const environment of current) {
-    const { buckets, sessionsByProvider } = ownedContribution(
+    const supplementalBuckets =
+      supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set();
+    const { buckets, seriesRows, sessionsByProvider } = ownedContribution(
       environment,
       ownerByFingerprint,
-      supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set(),
+      supplementalBuckets,
       sessionsByFingerprint,
     );
-    if (buckets.length > 0) contributingEnvironments.push(environment.environmentId);
+    if (buckets.length > 0) {
+      contributingEnvironments.push(environment.environmentId);
+      // Supplemental cells are per day and cannot be placed in slots.
+      seriesAccumulator.add(
+        supplementalBuckets.size > 0 ? undefined : environment.summary.series,
+        environment.summary,
+        seriesRows,
+      );
+    } else if (environment.summary.series !== undefined) {
+      seriesAccumulator.add(environment.summary.series, environment.summary, []);
+    }
 
     for (const [providerKind, providerSessions] of sessionsByProvider) {
       sessions += providerSessions;
@@ -557,6 +672,7 @@ export function mergeUsage(
     models,
     daily,
     hourly,
+    series: seriesAccumulator.finish(),
     costQuality: {
       providerReportedShare: records === 0 ? 0 : providerReportedRecords / records,
       unpricedShare: records === 0 ? 0 : unpricedRecords / records,
