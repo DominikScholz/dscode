@@ -898,15 +898,16 @@ export function shouldRecedeSidebarThread(input: {
   return false;
 }
 
-type SidebarThreadStatusInput = Pick<
-  SidebarThreadSummary,
-  | "hasPendingApprovals"
-  | "hasPendingUserInput"
-  | "pendingSubagentRequest"
-  | "pendingGuestMessageCount"
-  | "runtime"
-  | "blockedOnThreadWait"
->;
+type SidebarThreadStatusInput = Partial<Pick<SidebarThreadSummary, "pendingBackgroundTasks">> &
+  Pick<
+    SidebarThreadSummary,
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "pendingGuestMessageCount"
+    | "runtime"
+    | "blockedOnThreadWait"
+  >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -929,7 +930,9 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return "working";
   }
   if (thread.runtime?.status === "idle") {
-    return "waiting";
+    return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
+      ? "waiting"
+      : "working";
   }
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";

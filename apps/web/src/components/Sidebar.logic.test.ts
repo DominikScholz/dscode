@@ -254,6 +254,17 @@ describe("resolveSidebarThreadStatus", () => {
 
   const idle = { hasPendingApprovals: false, hasPendingUserInput: false, runtime: null };
 
+  it("shows ordinary idle sessions as Working and awaited background work as Waiting", () => {
+    const thread = { ...idle, runtime: { ...runtime, status: "idle" as const } };
+    expect(resolveSidebarThreadStatus(thread)).toBe("working");
+    expect(
+      resolveSidebarThreadStatus({
+        ...thread,
+        pendingBackgroundTasks: [{ taskId: "monitor", kind: "monitor", awaited: true }],
+      }),
+    ).toBe("waiting");
+  });
+
   it("prioritizes awaiting input over a running runtime, below approval", () => {
     expect(
       resolveSidebarThreadStatus({
@@ -333,7 +344,7 @@ describe("resolveSidebarThreadStatus", () => {
         ...idle,
         runtime: { ...runtime, status: "idle" as const, lastError: "persisted" },
       }),
-    ).toBe("waiting");
+    ).toBe("working");
   });
 });
 
