@@ -5,6 +5,8 @@ import { describe, expect, it, vi } from "vite-plus/test";
 import * as Cause from "effect/Cause";
 import { AsyncResult } from "effect/reactivity";
 import {
+  visibleSidebarSectionThreads,
+  groupThreadsByProject,
   archiveSelectedThreadEntries,
   deleteSelectedThreadEntries,
   getFallbackThreadIdAfterDelete,
@@ -1287,4 +1289,35 @@ describe("pendingSidebarRouteReveal", () => {
     expect(pendingSidebarRouteReveal(reveal, null)).toBeNull();
     expect(pendingSidebarRouteReveal(reveal, "env:a1")).toBe("env:a1");
   });
+});
+
+describe("visibleSidebarSectionThreads", () => {
+  it("excludes the open thread when its section is not selected", () => {
+    const threads = [{ id: "open-thread" }];
+    expect(visibleSidebarSectionThreads(["active"], "working", threads)).toEqual([]);
+  });
+
+  it("keeps threads in each selected section", () => {
+    const threads = [{ id: "open-thread" }];
+    expect(visibleSidebarSectionThreads(["active", "working"], "working", threads)).toBe(threads);
+  });
+});
+
+it("merges selected sections into one group per project while retaining thread sections", () => {
+  const active = { id: "active", environmentId: "local", projectId: "one", section: "active" };
+  const other = { id: "other", environmentId: "local", projectId: "two", section: "active" };
+  const working = { id: "working", environmentId: "local", projectId: "one", section: "working" };
+  expect(groupThreadsByProject([active, other, working])).toEqual([active, working, other]);
+});
+
+it("places Working at the bottom of each reversed project list without reordering projects", () => {
+  const active = { id: "active", environmentId: "local", projectId: "one", section: "active" };
+  const other = { id: "other", environmentId: "local", projectId: "two", section: "active" };
+  const working = { id: "working", environmentId: "local", projectId: "one", section: "working" };
+  expect(
+    groupThreadsByProject(
+      [active, other, working],
+      (a, b) => Number(b.section === "working") - Number(a.section === "working"),
+    ),
+  ).toEqual([working, active, other]);
 });
