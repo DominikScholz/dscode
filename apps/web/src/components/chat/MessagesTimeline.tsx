@@ -1049,6 +1049,7 @@ const ConversationTimeline = memo(function ConversationTimeline({
         <div
           className="@container/chat-lane chat-content-lane overflow-x-clip"
           data-timeline-root="true"
+          data-row-kind={item.kind}
         >
           <TimelineRowContent row={item} />
         </div>

@@ -562,7 +562,7 @@ type SidebarThreadRowProps = {
   onFileDropThreads?: ((threadRef: ScopedThreadRef, files: File[]) => void) | undefined;
 };
 
-const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
+export const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowProps) {
   const {
     isRenaming,
     onCancelRename,
@@ -1499,6 +1499,52 @@ const SidebarThreadRow = memo(function SidebarThreadRow(props: SidebarThreadRowP
     </li>
   );
 });
+
+/** The card row for a thread this client has no shell for, such as one on an unreachable machine. */
+export function SidebarThreadCardPreview(props: {
+  title: string;
+  branch: string | null;
+  timestamp: string;
+  done: boolean;
+  provider: ReactNode;
+  onOpen: () => void;
+}) {
+  return (
+    <li className="list-none py-1">
+      <button
+        type="button"
+        onClick={props.onOpen}
+        className="group/sidebar-row relative w-full cursor-pointer overflow-hidden rounded-xl bg-(--row-surface) text-left text-sidebar-foreground outline-none select-none squircle hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <div className="relative z-10 h-[3.5rem] px-3 py-2">
+          <div className="flex h-5 min-w-0 items-center gap-1.5">
+            <span className="min-w-0 flex-1 truncate text-start font-medium text-foreground text-sm">
+              {props.title}
+            </span>
+            <span className="ml-auto flex h-5 min-w-8 shrink-0 items-center justify-end text-secondary-label text-xs tabular-nums">
+              {props.done ? (
+                <span className="inline-flex items-center gap-1 font-medium text-success">
+                  <CheckCircleIcon aria-hidden className="size-4 shrink-0" />
+                  Done
+                </span>
+              ) : (
+                <RelativeTimeLabel timestamp={props.timestamp} />
+              )}
+            </span>
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-1.5 text-secondary-label text-xs opacity-50 transition-opacity group-focus-within/sidebar-row:opacity-100 group-hover/sidebar-row:opacity-100 motion-reduce:transition-none">
+            <span className="flex min-w-0 flex-1 text-muted-foreground/40">
+              {props.branch ? <MiddleTruncate value={props.branch} showTitle={false} /> : null}
+            </span>
+            <span aria-hidden className="ml-auto inline-flex shrink-0 items-center">
+              {props.provider}
+            </span>
+          </div>
+        </div>
+      </button>
+    </li>
+  );
+}
 
 function latestRunDiff(
   thread: SidebarThreadSummary,

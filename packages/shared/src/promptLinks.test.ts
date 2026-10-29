@@ -4,6 +4,7 @@ import {
   buildNewThreadLink,
   parseNewThreadLink,
   parseThreadLinkPrompt,
+  hostedThreadAppPath,
   promptLinkAppPath,
   sanitizeLinkedPrompt,
   withoutPromptLinkParams,
@@ -36,6 +37,17 @@ describe("sanitizeLinkedPrompt", () => {
 });
 
 describe("parseNewThreadLink", () => {
+  it("keeps an explicit environment and project together for remote digest actions", () => {
+    expect(parseNewThreadLink("?prompt=Ship&environmentId=idom&projectId=mobile")).toMatchObject({
+      ok: true,
+      value: { project: { environmentId: "idom", projectId: "mobile" } },
+    });
+    expect(parseNewThreadLink("?prompt=Ship&projectId=mobile").ok).toBe(false);
+    expect(parseNewThreadLink("?prompt=Ship&environmentId=idom").ok).toBe(false);
+    expect(
+      withoutPromptLinkParams("?prompt=Ship&environmentId=idom&projectId=mobile&view=all"),
+    ).toBe("?view=all");
+  });
   it("reads a shared prompt with its optional repository and model", () => {
     const result = parseNewThreadLink(
       "?prompt=Rate+me&repo=https://github.com/pingdotgg/t3code.git&provider=Codex&model=gpt-5",
@@ -114,5 +126,14 @@ describe("link round trips", () => {
     expect(promptLinkAppPath("https://app.t3.codes/settings/general")).toBeNull();
     expect(promptLinkAppPath("https://evil.test/new?prompt=hi")).toBeNull();
     expect(promptLinkAppPath("t3code://app/index.html")).toBeNull();
+  });
+
+  it("maps hosted links to one environment's threads, and not app pages", () => {
+    expect(hostedThreadAppPath("https://app.t3.codes/env-1/thread-1", "env-1")).toBe(
+      "/env-1/thread-1",
+    );
+    expect(hostedThreadAppPath("https://app.t3.codes/env-2/thread-1", "env-1")).toBeNull();
+    expect(hostedThreadAppPath("https://app.t3.codes/settings/general", "env-1")).toBeNull();
+    expect(hostedThreadAppPath("https://evil.test/env-1/thread-1", "env-1")).toBeNull();
   });
 });

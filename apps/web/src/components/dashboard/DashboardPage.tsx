@@ -4,6 +4,7 @@ import {
   ClockCountdownIcon,
   HammerIcon,
   type Icon,
+  NewspaperIcon,
 } from "@phosphor-icons/react";
 import { Link } from "@tanstack/react-router";
 import * as Schema from "effect/Schema";
@@ -14,6 +15,7 @@ import { useEscapeToGoBack } from "../../hooks/useNavigateBack";
 import { useNowMinute } from "../../hooks/useNowMinute";
 import { cn } from "../../lib/utils";
 import type { SidebarProjectSnapshot } from "../../sidebarProjectGrouping";
+import type { SidebarThreadSummary } from "../../types";
 import {
   useAllEnvironmentProjectSnapshotsReady,
   useServerConfigs,
@@ -181,31 +183,61 @@ function DashboardSectionFilterBar(props: {
 }
 
 function ProjectCard({
-  project: { group, working, active, snoozed, settled, lastActivityMs },
+  project: { group, working, active, snoozed, settled, lastActivityMs, digest },
 }: {
   project: DashboardProject<SidebarProjectSnapshot>;
 }) {
   return (
-    <Link
-      to="/project-graph/$projectKey"
-      params={{ projectKey: group.projectKey }}
-      className="flex items-center gap-3 rounded-xl bg-(--row-surface) px-3 py-2.5 outline-none squircle transition-colors hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-    >
-      <ProjectFavicon project={group} className="size-8 shrink-0" />
-      <div className="flex min-w-0 flex-1 flex-col gap-1">
-        <div className="flex min-w-0 items-baseline gap-2">
-          <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
-            {group.displayName}
-          </span>
-          {lastActivityMs === null ? null : (
-            <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
-              <LastActivityLabel timestampMs={lastActivityMs} />
+    <div className="flex items-center rounded-xl bg-(--row-surface) squircle transition-colors hover:bg-(--row-surface-hover)">
+      <Link
+        to="/project-graph/$projectKey"
+        params={{ projectKey: group.projectKey }}
+        className="flex min-w-0 flex-1 items-center gap-3 rounded-xl px-3 py-2.5 outline-none squircle focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <ProjectFavicon project={group} className="size-8 shrink-0" />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex min-w-0 items-baseline gap-2">
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-foreground">
+              {group.displayName}
             </span>
-          )}
+            {lastActivityMs === null ? null : (
+              <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                <LastActivityLabel timestampMs={lastActivityMs} />
+              </span>
+            )}
+          </div>
+          <ThreadCounts working={working} active={active} snoozed={snoozed} settled={settled} />
         </div>
-        <ThreadCounts working={working} active={active} snoozed={snoozed} settled={settled} />
-      </div>
-    </Link>
+      </Link>
+      {digest === null ? null : <DigestLink thread={digest.thread} unread={digest.unread} />}
+    </div>
+  );
+}
+
+function DigestLink(props: { thread: SidebarThreadSummary; unread: boolean }) {
+  const label = props.unread ? `${props.thread.title}, unread` : props.thread.title;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <Link
+            to="/$environmentId/$threadId"
+            params={{ environmentId: props.thread.environmentId, threadId: props.thread.id }}
+            aria-label={label}
+            className={cn(
+              "relative me-2 flex size-8 shrink-0 items-center justify-center rounded-lg outline-none squircle transition-colors hover:bg-(--row-surface-hover) focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring [&_svg]:size-4",
+              props.unread ? "text-foreground" : "text-muted-foreground hover:text-foreground",
+            )}
+          />
+        }
+      >
+        <NewspaperIcon aria-hidden />
+        {props.unread ? (
+          <span aria-hidden className="absolute end-1.5 top-1.5 size-1.5 rounded-full bg-info" />
+        ) : null}
+      </TooltipTrigger>
+      <TooltipPopup>{label}</TooltipPopup>
+    </Tooltip>
   );
 }
 

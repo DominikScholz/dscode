@@ -26,6 +26,7 @@ export type SettingsPath =
   | "/settings/providers"
   | "/settings/integrations"
   | "/settings/scheduled-tasks"
+  | "/settings/digest"
   | "/settings/source-control"
   | "/settings/storage"
   | "/settings/connections"
@@ -85,6 +86,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/providers": "Providers",
   "/settings/integrations": "Integrations",
   "/settings/scheduled-tasks": "Scheduled Tasks",
+  "/settings/digest": "Daily Digest",
   "/settings/source-control": "Source Control",
   "/settings/storage": "Storage",
   "/settings/connections": "Connections",
@@ -346,6 +348,34 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Auto-resume limited threads",
     to: "/settings/general",
     searchTerms: ["usage quota rate limit reset recover continue"],
+  },
+  {
+    id: "daily-digest",
+    title: "Daily digest",
+    to: "/settings/digest",
+    searchTerms: ["summary report morning overnight offline away briefing next steps"],
+    environmentOnly: true,
+  },
+  {
+    id: "daily-digest-away-hours",
+    title: "Daily digest delay",
+    to: "/settings/digest",
+    searchTerms: ["hours offline away timer wait"],
+    environmentOnly: true,
+  },
+  {
+    id: "daily-digest-model",
+    title: "Daily digest model",
+    to: "/settings/digest",
+    searchTerms: ["summary report provider"],
+    environmentOnly: true,
+  },
+  {
+    id: "daily-digest-instructions",
+    title: "Daily digest instructions",
+    to: "/settings/digest",
+    searchTerms: ["summary report prompt layout style preferences custom"],
+    environmentOnly: true,
   },
   {
     id: "working-shelf",
@@ -1060,6 +1090,7 @@ const SETTINGS_CATEGORY_SCOPES: Readonly<Record<SettingsPath, SettingsSearchScop
   "/settings/storage": "project-defaults",
   "/settings/connections": "connections",
   "/settings/scheduled-tasks": null,
+  "/settings/digest": null,
   "/settings/beta": null,
   "/settings/archived": "project-defaults",
 };

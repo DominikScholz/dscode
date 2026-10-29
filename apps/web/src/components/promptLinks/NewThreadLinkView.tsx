@@ -43,7 +43,7 @@ import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "../ui/empty";
 import { SidebarInset } from "../ui/sidebar";
 import { stackedThreadToast, toastManager } from "../ui/toast";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
-import { placeLinkedPrompt, warnAboutHiddenCharacters } from "./linkedPrompt";
+import { placeLinkedPrompt, sendLinkedPrompt, warnAboutHiddenCharacters } from "./linkedPrompt";
 
 type LinkState =
   | { readonly status: "opening" }
@@ -98,6 +98,7 @@ const NO_PULL_REQUEST_THREAD_LOOKUP = Atom.make(null);
 
 export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
   const locationKey = useLocation({ select: (location) => location.state.__TSR_key ?? "" });
+  const source = useLocation({ select: (location) => location.state.promptLinkSource });
   const navigate = useNavigate();
   const ready = useAtomValue(allReachableShellsLiveAtom);
   const projects = useProjects();
@@ -122,6 +123,23 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
       threads,
       "updated_at",
     );
+
+  // A card in a thread's page starts beside it when the link names no repository.
+  const sourceProject = () => {
+    if (link.kind === "new" && link.project)
+      return projects.find(
+        (entry) =>
+          entry.environmentId === link.project?.environmentId &&
+          entry.id === link.project.projectId,
+      );
+    if (source === undefined) return undefined;
+    const thread = threads.find(
+      (entry) => entry.environmentId === source.environmentId && entry.id === source.threadId,
+    );
+    return projects.find(
+      (entry) => entry.environmentId === source.environmentId && entry.id === thread?.projectId,
+    );
+  };
 
   const lastActiveEnvironmentId = () => {
     let latest: (typeof threads)[number] | undefined;
@@ -166,11 +184,12 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     }
     const text = [link.prompt?.text, extraPrompt].filter(Boolean).join("\n\n");
     if (text.length === 0) return;
-    placeLinkedPrompt(
-      opened.draftId,
-      { text, hiddenCharacters: link.prompt?.hiddenCharacters ?? 0 },
-      notes,
-    );
+    const prompt = { text, hiddenCharacters: link.prompt?.hiddenCharacters ?? 0 };
+    if (source !== undefined && link.kind === "new") {
+      sendLinkedPrompt(opened.draftId, prompt, notes);
+    } else {
+      placeLinkedPrompt(opened.draftId, prompt, notes);
+    }
   };
 
   const openScratchDraft = async () => {
@@ -285,15 +304,24 @@ export function NewThreadLinkView({ link }: { readonly link: NewThreadLink }) {
     const pullRequestThread = localPullRequestThread ?? serverPullRequestThread ?? undefined;
     const repository = link.kind === "new" ? link.repository : link.pullRequest;
     const project =
-      repository === null ? undefined : findPromptLinkProjects(recentProjects(), repository)[0];
+      repository === null || (link.kind === "new" && link.project)
+        ? sourceProject()
+        : findPromptLinkProjects(recentProjects(), repository)[0];
     if (pullRequestThread !== undefined) {
       setState({ status: "opened" });
       setLaunch({ kind: "thread", thread: pullRequestThread });
-    } else if (repository === null) {
-      setLaunch({ kind: "scratch" });
     } else if (project === undefined) {
-      setState({ status: "missing-repository", repository });
-      setLaunch({ kind: "settled" });
+      if (link.kind === "new" && link.project) {
+        setState({
+          status: "failed",
+          message: "Connect to the project's environment to start this thread.",
+        });
+      } else if (repository === null) {
+        setLaunch({ kind: "scratch" });
+      } else {
+        setState({ status: "missing-repository", repository });
+        setLaunch({ kind: "settled" });
+      }
     } else if (link.kind === "pull-request") {
       setState({ status: "pull-request-checkout", project });
       setLaunch({ kind: "settled" });

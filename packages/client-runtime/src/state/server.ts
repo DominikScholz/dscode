@@ -1376,6 +1376,11 @@ export function createServerEnvironmentAtoms<R, E>(
       label: "environment-data:server:scheduled-task:run-now",
       tag: WS_METHODS.scheduledTasksRunNow,
     }),
+    runDailyDigestNow: createEnvironmentRpcCommand(runtime, {
+      label: "environment-data:server:daily-digest:run-now",
+      tag: WS_METHODS.dailyDigestRunNow,
+      concurrency: { mode: "singleFlight", key: ({ environmentId }) => environmentId },
+    }),
     rotateScheduledTaskWebhookToken: createEnvironmentRpcCommand(runtime, {
       label: "environment-data:server:scheduled-task:rotate-webhook-token",
       tag: WS_METHODS.scheduledTasksRotateWebhookToken,

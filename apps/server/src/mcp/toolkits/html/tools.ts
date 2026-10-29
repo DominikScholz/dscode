@@ -1,5 +1,11 @@
-import { OrchestratorMcpFailure } from "@t3tools/contracts";
 import {
+  DailyDigestPublishInput,
+  DailyDigestStartRemoteInput,
+  OrchestratorMcpFailure,
+  ThreadId,
+} from "@t3tools/contracts";
+import {
+  DIGEST_PUBLISH_TOOL_NAME,
   HTML_RENDER_COLUMN_WIDTH,
   HTML_RENDER_LAYOUT_GUIDE,
   HTML_RENDER_MAX_FIT_HEIGHT,
@@ -12,6 +18,7 @@ import {
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
 
+import * as DailyDigestService from "../../../digest/DailyDigestService.ts";
 import * as HtmlRender from "../../../htmlRender/HtmlRender.ts";
 import * as ThreadManagementService from "../../../orchestration-v2/ThreadManagementService.ts";
 import * as McpInvocationContext from "../../McpInvocationContext.ts";
@@ -71,7 +78,7 @@ export const HtmlPreviewTool = Tool.make("html_preview", {
 
 // This affects only the caller's thread, not its workspace, so read-only sandboxes and plan mode may use it.
 const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
-  description: `Show a finished HTML page inline in this thread, above your final reply. Do not announce or restate the page. Frame fits height to ${HTML_RENDER_MAX_FIT_HEIGHT}px. On mobile, content past the given height scrolls. ${HTML_RENDER_LAYOUT_GUIDE} ${HTML_RENDER_THEME_GUIDE}`,
+  description: `Show a finished HTML page inline in this thread, above your final reply. Do not announce or restate the page. Frame fits height to ${HTML_RENDER_MAX_FIT_HEIGHT}px. On mobile, content past the given height scrolls. Clicking a link to https://app.t3.codes/new?prompt=<text> (optional repo=<owner/name>, provider, model) starts a new thread with that prompt, in this thread's project unless repo is set. ${HTML_RENDER_LAYOUT_GUIDE} ${HTML_RENDER_THEME_GUIDE}`,
   parameters: Schema.Struct({
     html: Html,
     title: Schema.String.check(
@@ -104,6 +111,52 @@ const HtmlRenderTool = Tool.make(HTML_RENDER_TOOL_NAME, {
   .annotate(Tool.Destructive, false)
   .annotate(Tool.Idempotent, false)
   .annotate(Tool.OpenWorld, true);
+
+const DigestPublishTool = Tool.make(DIGEST_PUBLISH_TOOL_NAME, {
+  description:
+    "Daily digest threads only. Publish the digest page from its content; the design, title, activity chart, and links are built for you. Text may use `backticks` for code. Call it once, after you have read everything.",
+  parameters: DailyDigestPublishInput,
+  success: Schema.Struct({
+    htmlRender: Schema.Struct({
+      attachmentId: Schema.String,
+      title: Schema.String,
+      height: Schema.Number,
+      heights: Schema.optional(Schema.Array(Schema.Tuple([Schema.Int, Schema.Int]))),
+    }),
+    message: Schema.String,
+  }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    HtmlRender.HtmlRender,
+    DailyDigestService.DailyDigestService,
+  ],
+})
+  .annotate(Tool.Title, "Publish daily digest")
+  .annotate(Tool.Readonly, true)
+  .annotate(Tool.Destructive, false)
+  .annotate(Tool.Idempotent, false)
+  .annotate(Tool.OpenWorld, false);
+
+const DigestStartRemoteTool = Tool.make("digest_start_remote", {
+  description:
+    "Digest discovery threads only. Start a local digest for a project found through another machine's T3 tools. Skips unchanged projects and digests already running. Never starts an agent on the source machine.",
+  parameters: DailyDigestStartRemoteInput,
+  success: Schema.Struct({ threadId: Schema.NullOr(ThreadId) }),
+  failure: OrchestratorMcpFailure,
+  failureMode: "return",
+  dependencies: [
+    McpInvocationContext.McpInvocationContext,
+    ThreadManagementService.ThreadManagementService,
+    DailyDigestService.DailyDigestService,
+  ],
+})
+  .annotate(Tool.Title, "Start remote project digest")
+  .annotate(Tool.Destructive, false);
+
+export const DigestToolkit = Toolkit.make(DigestPublishTool, DigestStartRemoteTool);
 
 export const HtmlPreviewToolkit = Toolkit.make(HtmlPreviewTool);
 

@@ -19,6 +19,16 @@ export interface DashboardProject<TGroup> {
   settled: number;
   /** When the user last wrote in any of the project's threads, as the sidebar sorts. */
   lastActivityMs: number | null;
+  /** The newest daily digest. Digests count toward nothing else. */
+  digest: { thread: SidebarThreadSummary; unread: boolean } | null;
+}
+
+/** Finished and not opened since, including never opened. */
+export function isDigestUnread(thread: SidebarThreadSummary): boolean {
+  const completedAt = thread.latestRun?.completedAt;
+  if (!completedAt) return false;
+  if (!thread.lastVisitedAt) return true;
+  return Date.parse(thread.lastVisitedAt) < Date.parse(completedAt);
 }
 
 /**
@@ -59,9 +69,16 @@ export function summarizeDashboardProjects<
       snoozed: 0,
       settled: 0,
       lastActivityMs: null,
+      digest: null,
     };
     for (const member of group.memberProjects) {
       for (const thread of threadsByProject.get(`${member.environmentId}:${member.id}`) ?? []) {
+        if (thread.source.digest === true) {
+          if (project.digest === null || thread.createdAt > project.digest.thread.createdAt) {
+            project.digest = { thread, unread: isDigestUnread(thread) };
+          }
+          continue;
+        }
         const capabilities = input.capabilities(thread.environmentId);
         if (capabilities?.threadSnooze === true && effectiveSnoozed(thread, { now: input.now })) {
           project.snoozed += 1;

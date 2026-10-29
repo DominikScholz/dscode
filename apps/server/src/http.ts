@@ -49,6 +49,7 @@ import {
 } from "./auth/http.ts";
 import * as ServerEnvironment from "./environment/ServerEnvironment.ts";
 import { WEBHOOK_ROUTE_PREFIX } from "./scheduledTasks/ScheduledTaskService.ts";
+import { digestSnapshotJson, servedDigestPage } from "./digest/dailyDigestAsset.ts";
 import {
   browserApiCorsAllowedHeaders,
   browserApiCorsAllowedMethods,
@@ -188,6 +189,17 @@ export const assetFileResponse = Effect.fn("assetFileResponse")(function* (
     return method === "HEAD"
       ? HttpServerResponse.empty({ status: 200, headers })
       : HttpServerResponse.uint8Array(body, { headers });
+  }
+  if (!asset.download && headers["Content-Type"] === "text/html; charset=utf-8") {
+    const digest = yield* servedDigestPage(asset.path);
+    if (digest !== null) {
+      headers["Content-Length"] = String(digest.byteLength);
+      // Revalidate so a design change shows on the next open, not after the cache expires.
+      headers["Cache-Control"] = "private, no-cache";
+      return method === "HEAD"
+        ? HttpServerResponse.empty({ status: 200, headers })
+        : HttpServerResponse.uint8Array(digest, { headers });
+    }
   }
   const mediaFile = asset.file;
   const mediaInfo = mediaFile ? yield* statMediaFile(asset.path, mediaFile) : undefined;
@@ -440,6 +452,15 @@ export const layerAssetRoute = HttpRouter.add(
           }),
         ),
       );
+    }
+    if (url.value.searchParams.has("digest")) {
+      const snapshot = yield* digestSnapshotJson(asset.path).pipe(Effect.orElseSucceed(() => null));
+      return snapshot === null
+        ? HttpServerResponse.text("Not Found", { status: 404 })
+        : HttpServerResponse.text(snapshot, {
+            contentType: "application/json",
+            headers: { "cache-control": "private, no-cache", "x-content-type-options": "nosniff" },
+          });
     }
     return yield* assetFileResponse(
       asset,

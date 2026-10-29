@@ -298,6 +298,22 @@ export function usePromptLinkResolver(params: Readonly<Record<string, unknown>> 
     }
 
     const repository = link.kind === "new" ? link.repository : link.pullRequest;
+    if (link.kind === "new" && link.project) {
+      const project = flow.projectScopes
+        .flatMap((scope) => scope.projects)
+        .find(
+          (project) =>
+            project.environmentId === link.project?.environmentId &&
+            project.id === link.project.projectId,
+        );
+      if (project) void openProjectDraft(project, request);
+      else
+        Dialog.alert(
+          "Project unavailable",
+          "Connect to the project's environment to start this thread.",
+        );
+      return;
+    }
     if (repository === null) {
       void openScratchDraft(request);
       return;
