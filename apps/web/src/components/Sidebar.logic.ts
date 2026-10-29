@@ -128,6 +128,14 @@ export function selectSectionFilter<T extends string>(
   return current.length > 1 ? current.filter((entry) => entry !== section) : current;
 }
 
+export function visibleSidebarSectionThreads<T>(
+  selected: readonly SidebarSection[],
+  section: SidebarSection,
+  threads: readonly T[],
+): readonly T[] {
+  return selected.includes(section) ? threads : [];
+}
+
 export function resolveSidebarThreadSection(input: {
   readonly snoozed: boolean;
   readonly settled: boolean;
@@ -890,15 +898,16 @@ export function shouldRecedeSidebarThread(input: {
   return false;
 }
 
-type SidebarThreadStatusInput = Pick<
-  SidebarThreadSummary,
-  | "hasPendingApprovals"
-  | "hasPendingUserInput"
-  | "pendingSubagentRequest"
-  | "pendingGuestMessageCount"
-  | "runtime"
-  | "blockedOnThreadWait"
->;
+type SidebarThreadStatusInput = Partial<Pick<SidebarThreadSummary, "pendingBackgroundTasks">> &
+  Pick<
+    SidebarThreadSummary,
+    | "hasPendingApprovals"
+    | "hasPendingUserInput"
+    | "pendingSubagentRequest"
+    | "pendingGuestMessageCount"
+    | "runtime"
+    | "blockedOnThreadWait"
+  >;
 
 export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): SidebarThreadStatus {
   if (thread.hasPendingApprovals || thread.pendingSubagentRequest === "approval") {
@@ -921,7 +930,9 @@ export function resolveSidebarThreadStatus(thread: SidebarThreadStatusInput): Si
     return "working";
   }
   if (thread.runtime?.status === "idle") {
-    return "waiting";
+    return backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? [])
+      ? "waiting"
+      : "working";
   }
   if (thread.runtime?.status === "failed") {
     return thread.runtime.lastErrorClass === "usage_limit" ? "limited" : "failed";
@@ -1383,7 +1394,7 @@ export function sortScopedProjectsForSidebar<
  */
 export function groupThreadsByProject<
   T extends { readonly environmentId: string; readonly projectId: string },
->(threads: readonly T[]): T[] {
+>(threads: readonly T[], compareWithinProject?: (a: T, b: T) => number): T[] {
   const groups = new Map<string, T[]>();
   for (const thread of threads) {
     const key = `${thread.environmentId}:${thread.projectId}`;
@@ -1391,5 +1402,7 @@ export function groupThreadsByProject<
     if (group) group.push(thread);
     else groups.set(key, [thread]);
   }
-  return [...groups.values()].flat();
+  return [...groups.values()].flatMap((group) =>
+    compareWithinProject ? group.sort(compareWithinProject) : group,
+  );
 }

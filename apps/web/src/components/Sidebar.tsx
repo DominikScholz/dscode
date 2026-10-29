@@ -183,6 +183,7 @@ import {
   resolveSidebarDropVerb,
   resolveSidebarThreadSection,
   selectSectionFilter,
+  visibleSidebarSectionThreads,
   searchSidebarThreads,
   shouldCreateNewThreadInCurrentProject,
   shouldNavigateAfterThreadPark,
@@ -298,7 +299,6 @@ const sidebarProviderEntriesAtom = Atom.make((get) => {
 }).pipe(Atom.withLabel("sidebar-provider-entries"));
 
 const EMPTY_PROVIDER_ENTRIES: ReadonlyMap<string, SidebarProviderEntry> = new Map();
-const EMPTY_THREADS: readonly EnvironmentThreadShell[] = [];
 
 const SETTLED_TAIL_INITIAL_COUNT = 10;
 const SETTLED_TAIL_PAGE_COUNT = 25;
@@ -434,15 +434,6 @@ function resolveDraggedOrders(input: {
   };
 }
 
-function routeThreadOnly(
-  threads: readonly EnvironmentThreadShell[],
-  routeThreadKey: string | null,
-): readonly EnvironmentThreadShell[] {
-  if (routeThreadKey === null) return EMPTY_THREADS;
-  const routeThread = threads.find((thread) => threadShellKey(thread) === routeThreadKey);
-  return routeThread === undefined ? EMPTY_THREADS : [routeThread];
-}
-
 // Separate hooks cache maps independently of later Sidebar hooks and preserve dnd-kit inputs.
 function useSidebarThreads(input: {
   readonly projectScopeKey: string | null;
@@ -531,18 +522,13 @@ function useSidebarThreads(input: {
     }
     return visible.length === settledThreads.length ? settledThreads : visible;
   })();
-  // A hidden section still keeps the open thread's row, so its highlight and
-  // quick actions stay reachable after a deep link, search, or a status change.
-  const shownOrRouteThread = (
-    section: SidebarSection,
-    list: readonly EnvironmentThreadShell[],
-  ): readonly EnvironmentThreadShell[] =>
-    sectionFilter.includes(section) ? list : routeThreadOnly(list, routeRowThreadKey);
-  const visiblePinnedThreads = shownOrRouteThread("pinned", pinnedThreads);
-  const visibleActiveThreads = shownOrRouteThread("active", activeThreads);
-  const visibleWorkingThreads = shownOrRouteThread("working", workingThreads);
-  const visibleSnoozedThreads = shownOrRouteThread("snoozed", snoozedThreads);
-  const renderedSettledThreads = shownOrRouteThread("settled", visibleSettledThreads);
+  const shownThreads = (section: SidebarSection, list: readonly EnvironmentThreadShell[]) =>
+    visibleSidebarSectionThreads(sectionFilter, section, list);
+  const visiblePinnedThreads = shownThreads("pinned", pinnedThreads);
+  const visibleActiveThreads = shownThreads("active", activeThreads);
+  const visibleWorkingThreads = shownThreads("working", workingThreads);
+  const visibleSnoozedThreads = shownThreads("snoozed", snoozedThreads);
+  const renderedSettledThreads = shownThreads("settled", visibleSettledThreads);
   const orderedThreads = [
     ...visiblePinnedThreads,
     ...visibleActiveThreads,
@@ -1825,6 +1811,18 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
     const settledRows = rowsOf(renderedSettledThreads, "settled");
     items.push({ kind: "marker", marker: "settled-placeholder" });
     items.push(...settledRows);
+    if (sectionFilter.length > 1) {
+      const merged = groupThreadsByProject(
+        items.flatMap((item) => {
+          if (item.kind !== "thread") return [];
+          const thread = threadByKey.get(item.key)!;
+          return [{ ...item, environmentId: thread.environmentId, projectId: thread.projectId }];
+        }),
+        // The list renders bottom-up, so Working comes first in storage order.
+        (a, b) => Number(b.section === "working") - Number(a.section === "working"),
+      );
+      return [...items.filter((item) => item.kind === "marker"), ...merged];
+    }
     return items;
   })();
   // Preserve the list while streamed updates leave order unchanged to retain row memoization.
@@ -2942,6 +2940,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                             sortableId={threadKey}
                             contextDrag={isContextDrag}
                             sortableDisabled={
+                              sectionFilter.length > 1 ||
                               renamingThreadKey === threadKey ||
                               !draggableThreadKeys.has(threadKey) ||
                               optimisticDrop !== null
