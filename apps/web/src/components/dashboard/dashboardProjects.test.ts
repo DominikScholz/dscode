@@ -51,6 +51,7 @@ function summarize(
   const result = summarizeDashboardProjects({
     groups,
     threads,
+    delegatedUnderParent: new Set(),
     capabilities: (environmentId) => ({
       threadSettlement: supportsSettlement(environmentId),
       threadSnooze: true,

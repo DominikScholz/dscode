@@ -1,4 +1,5 @@
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { isThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import { getThreadSortTimestamp } from "@t3tools/client-runtime/state/thread-sort";
 import type {
   EnvironmentId,
@@ -7,7 +8,7 @@ import type {
 } from "@t3tools/contracts";
 
 import type { SidebarThreadSummary } from "../../types";
-import { filterSidebarV2VisibleThreads, isSidebarThreadWorking } from "../Sidebar.logic";
+import { filterSidebarV2VisibleThreads } from "../Sidebar.logic";
 
 export type DashboardSection = "active" | "working" | "snoozed" | "settled";
 
@@ -33,13 +34,18 @@ export function summarizeDashboardProjects<
 >(input: {
   groups: ReadonlyArray<TGroup>;
   threads: ReadonlyArray<SidebarThreadSummary>;
+  delegatedUnderParent: ReadonlySet<string>;
   capabilities: (
     environmentId: EnvironmentId,
   ) => Pick<ExecutionEnvironmentCapabilities, "threadSettlement" | "threadSnooze"> | undefined;
   now: string;
 }): Record<DashboardSection, DashboardProject<TGroup>[]> {
   const threadsByProject = new Map<string, SidebarThreadSummary[]>();
-  for (const thread of filterSidebarV2VisibleThreads(input.threads, null)) {
+  for (const thread of filterSidebarV2VisibleThreads(
+    input.threads,
+    null,
+    input.delegatedUnderParent,
+  )) {
     const key = `${thread.environmentId}:${thread.projectId}`;
     const threads = threadsByProject.get(key);
     if (threads) threads.push(thread);
@@ -70,7 +76,7 @@ export function summarizeDashboardProjects<
           thread.settledOverride === "settled"
         ) {
           project.settled += 1;
-        } else if (isSidebarThreadWorking(thread)) {
+        } else if (isThreadWorking(thread)) {
           project.working += 1;
         } else {
           project.active += 1;

@@ -18,6 +18,7 @@ import type {
   ThreadId,
   TurnItemId,
 } from "@t3tools/contracts";
+import { backgroundWorkHoldsCompletion } from "@t3tools/shared/orchestrationV2PendingBackgroundWork";
 import { runRanAfter } from "@t3tools/shared/orchestrationV2ThreadError";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
@@ -60,6 +61,7 @@ export function makeSubagentChildThread(input: {
     creationSource: input.creationSource,
     id: input.childThreadId,
     title: input.title,
+    titleRegeneration: null,
     linkedPullRequest: null,
     pullRequests: [],
     historyOrigin: undefined,
@@ -82,6 +84,9 @@ export function makeSubagentChildThread(input: {
     settledAt: null,
     snoozedUntil: null,
     snoozedAt: null,
+    pinnedAt: null,
+    pinOrderKey: null,
+    autoSettleDisabledAt: null,
     // A guest link belongs to the thread it was made for.
     guestShare: null,
     lastVisitedAt: null,
@@ -254,7 +259,9 @@ export function delegatedTaskProgress(projection: {
           (task.completionDelivery?.state === "pending" ||
             task.completionDelivery?.state === "claimed")),
     ) ||
-    projection.providerThreads.some((thread) => (thread.pendingBackgroundTasks?.length ?? 0) > 0);
+    projection.providerThreads.some((thread) =>
+      backgroundWorkHoldsCompletion(thread.pendingBackgroundTasks ?? []),
+    );
   const resultRun = workRuns
     .filter((run) => terminal(run.status) && (run.startedAt !== null || run.ordinal === 1))
     .toSorted((a, b) => (runRanAfter(a, b) ? -1 : runRanAfter(b, a) ? 1 : 0))[0];
@@ -271,7 +278,7 @@ export function delegatedTaskProgress(projection: {
 
 function writtenIds(
   emitted: ReadonlyArray<OrchestrationV2DomainEvent>,
-  type: "subagent.updated" | "node.updated" | "turn-item.updated",
+  type: "subagent.updated" | "node.updated" | "turn-item.updated" | "provider-turn.updated",
 ): ReadonlySet<string> {
   return new Set(emitted.flatMap((event) => (event.type === type ? [event.payload.id] : [])));
 }
@@ -359,7 +366,10 @@ export const endRunlessRootTurns = Effect.fn("subagentProjection.endRunlessRootT
 >(input: {
   readonly threadId: ThreadId;
   readonly providerInstanceId: ProviderInstanceId;
-  readonly projection: Pick<OrchestrationV2ThreadProjection, "nodes" | "turnItems">;
+  readonly projection: Pick<
+    OrchestrationV2ThreadProjection,
+    "nodes" | "providerTurns" | "turnItems"
+  >;
   readonly status: "completed" | "failed" | "interrupted" | "cancelled";
   readonly completedAt?: DateTime.Utc;
   readonly now: DateTime.Utc;
@@ -369,6 +379,7 @@ export const endRunlessRootTurns = Effect.fn("subagentProjection.endRunlessRootT
   const { now, status, completedAt = now } = input;
   const endedNodeIds = writtenIds(input.emitted, "node.updated");
   const endedItemIds = writtenIds(input.emitted, "turn-item.updated");
+  const endedProviderTurnIds = writtenIds(input.emitted, "provider-turn.updated");
   const scope = {
     threadId: input.threadId,
     providerInstanceId: input.providerInstanceId,
@@ -419,6 +430,23 @@ export const endRunlessRootTurns = Effect.fn("subagentProjection.endRunlessRootT
             ? { streaming: false }
             : {}),
         },
+      });
+    }
+    for (const providerTurn of input.projection.providerTurns) {
+      if (
+        providerTurn.nodeId !== node.id ||
+        providerTurn.runAttemptId !== null ||
+        !isOrchestrationV2WorkActive(providerTurn.status) ||
+        endedProviderTurnIds.has(providerTurn.id)
+      ) {
+        continue;
+      }
+      events.push({
+        ...scope,
+        id: yield* input.allocateEventId(),
+        type: "provider-turn.updated",
+        nodeId: node.id,
+        payload: { ...providerTurn, status, completedAt },
       });
     }
   }

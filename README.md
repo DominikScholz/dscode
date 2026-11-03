@@ -6,6 +6,8 @@
 
 DS Code is my personal fork of [T3 Code](https://github.com/pingdotgg/t3code), the open source control surface for coding agents. It's my experimentation pad for new interactions and tools: ideas get tried here first, and some of them may never be more than experiments.
 
+Like upstream, it works with your subscriptions on Claude Code, Codex, Cursor, Grok Build, OpenCode, Google Antigravity, and fx. If they're set up on your computer, DS Code can control them.
+
 For installation, supported providers, and everything else T3 Code does, see the [T3 Code README](https://github.com/pingdotgg/t3code#readme).
 
 ## What's different
@@ -22,7 +24,6 @@ A per-project graph of branches, worktrees, and the threads working on them, on 
 
 <img width="1081" height="635" alt="Screenshot 2026-10-25 at 12 09 44" src="https://github.com/user-attachments/assets/a28e0ad0-70c1-4dee-97ba-2b34be45c025" />
 
-
 ### Dashboard
 
 All projects at a glance, grouped into active, working, snoozed, and settled.
@@ -33,7 +34,17 @@ All projects at a glance, grouped into active, working, snoozed, and settled.
 
 The web app is hosted at **[dominikscholz.github.io/dscode](https://dominikscholz.github.io/dscode/)**. Like [app.t3.codes](https://app.t3.codes), it's only the interface: it connects to a T3 server running on your own machine. Pair one under **Settings → Connections → Add environment**.
 
-A stock T3 server works, but some features here need DS Code's own server. To run everything from source, install [Vite+](https://viteplus.dev/guide/), then:
+A stock T3 server works, but some features here need DS Code's own server. To run everything from source, install [Vite+](https://viteplus.dev/guide/):
+
+```bash
+# macOS / Linux
+curl -fsSL https://vite.plus | bash
+
+# Windows (PowerShell)
+irm https://vite.plus/ps1 | iex
+```
+
+Then:
 
 ```bash
 vp i
